@@ -20,10 +20,6 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	config := &Config{
-		// Voyage AI configuration
-		VoyageAPIKey: getEnvString("VOYAGE_API_KEY", ""),
-		VoyageAPIURL: getEnvString("VOYAGE_API_URL", "https://api.voyageai.com/v1/embeddings"),
-		VoyageModel:  getEnvString("VOYAGE_MODEL", "voyage-3-large"),
 
 		// AWS S3 Vectors configuration
 		AWSS3VectorBucket: getEnvString("AWS_S3_VECTOR_BUCKET", ""),
@@ -52,10 +48,6 @@ func Load() (*Config, error) {
 // validateConfig validates that all required configuration is present
 func validateConfig(config *Config) error {
 	var missingFields []string
-
-	if config.VoyageAPIKey == "" {
-		missingFields = append(missingFields, "VOYAGE_API_KEY")
-	}
 
 	if config.AWSS3VectorBucket == "" {
 		missingFields = append(missingFields, "AWS_S3_VECTOR_BUCKET")
@@ -105,12 +97,7 @@ Vectorizer Configuration Guide
 Required Environment Variables:
 -------------------------------
 
-1. Voyage AI Configuration:
-   VOYAGE_API_KEY         - Your Voyage AI API key (required)
-   VOYAGE_API_URL         - Voyage AI API endpoint (optional, default: https://api.voyageai.com/v1/embeddings)
-   VOYAGE_MODEL           - Model to use (optional, default: voyage-3-large)
-
-2. AWS S3 Configuration:
+1. AWS S3 Configuration:
    AWS_S3_BUCKET          - S3 bucket name for storing vectors (required)
    AWS_S3_REGION          - AWS region (optional, default: us-east-1)
 
@@ -121,7 +108,6 @@ Required Environment Variables:
 
 Example .env file:
 -----------------
-VOYAGE_API_KEY=your_voyage_api_key_here
 AWS_S3_BUCKET=your-vector-bucket
 AWS_S3_REGION=us-east-1
 VECTORIZER_CONCURRENCY=5
@@ -139,11 +125,10 @@ You can configure AWS credentials using any of these methods:
 
 Setup Instructions:
 ------------------
-1. Sign up for Voyage AI and get your API key
-2. Create an S3 bucket for storing vectors
-3. Configure AWS credentials using your preferred method (see AWS Authentication above)
-4. Add the required environment variables to your .env file
-5. Run 'kiberag vectorize --directory ./markdown' to start processing
+1. Create an S3 bucket for storing vectors
+2. Configure AWS credentials using your preferred method (see AWS Authentication above)
+3. Add the required environment variables to your .env file
+4. Run 'kiberag vectorize --directory ./markdown' to start processing
 `
 }
 
@@ -193,12 +178,10 @@ func getEnvStringSlice(key string, defaultValue []string) []string {
 // GetConfigExample returns an example configuration for testing
 func GetConfigExample() *Config {
 	return &Config{
-		VoyageAPIKey:      "test-voyage-key",
-		VoyageAPIURL:      "https://api.voyageai.com/v1/embeddings",
-		VoyageModel:       "voyage-3-large",
 		AWSS3VectorBucket: "test-vector-bucket",
 		AWSS3VectorIndex:  "test-index",
 		AWSS3Region:       "us-east-1",
+		ChatModel:         "anthropic.claude-3-5-sonnet-20240620-v1:0",
 		Concurrency:       3,
 		RetryAttempts:     2,
 		RetryDelay:        time.Second,

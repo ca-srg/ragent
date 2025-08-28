@@ -33,7 +33,7 @@ var vectorizeCmd = &cobra.Command{
 	Short: "Convert markdown files to vectors and store in S3",
 	Long: `
 The vectorize command processes markdown files in a directory,
-extracts metadata, generates embeddings using Voyage AI,
+extracts metadata, generates embeddings using Amazon Bedrock,
 and stores the vectors in Amazon S3.
 
 This enables the creation of a vector database from your markdown
