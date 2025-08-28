@@ -92,9 +92,6 @@ const (
 
 // Config represents the vectorizer configuration
 type Config struct {
-	VoyageAPIKey      string        `json:"voyage_api_key"`
-	VoyageAPIURL      string        `json:"voyage_api_url"`
-	VoyageModel       string        `json:"voyage_model"`
 	AWSS3VectorBucket string        `json:"aws_s3_vector_bucket"`
 	AWSS3VectorIndex  string        `json:"aws_s3_vector_index"`
 	AWSS3Region       string        `json:"aws_s3_region"`

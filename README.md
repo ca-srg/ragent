@@ -7,7 +7,7 @@ kiberag is a CLI tool that retrieves all notes from the Kibela GraphQL API, expo
 ## Features
 
 - **Note Export**: Retrieve all notes from Kibela GraphQL API and save them as markdown files
-- **Vectorization**: Convert markdown files to embeddings using Voyage-3-large model
+- **Vectorization**: Convert markdown files to embeddings using Amazon Bedrock
 - **S3 Vector Integration**: Store generated vectors in Amazon S3 Vectors
 - **Semantic Search**: Semantic similarity search using S3 Vector Index
 - **Vector Management**: List vectors stored in S3
@@ -30,8 +30,6 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 S3_VECTOR_INDEX_NAME=your_vector_index_name
 S3_BUCKET_NAME=your_s3_bucket_name
 
-# Voyage AI Configuration
-VOYAGE_API_KEY=your_voyage_api_key
 ```
 
 ## Installation
@@ -77,7 +75,7 @@ kiberag export
 
 ### 2. vectorize - Vectorization and S3 Storage
 
-Read markdown files, extract metadata, generate embeddings using Voyage AI, and store them in Amazon S3 Vectors.
+Read markdown files, extract metadata, generate embeddings using Amazon Bedrock, and store them in Amazon S3 Vectors.
 
 ```bash
 kiberag vectorize
@@ -91,7 +89,7 @@ kiberag vectorize
 **Features:**
 - Recursive scanning of markdown files
 - Automatic metadata extraction
-- Embedding generation using Voyage-3-large model
+- Embedding generation using Amazon Titan Text Embedding v2
 - Safe storage to S3 Vectors
 - High-speed processing through concurrency
 
@@ -196,7 +194,7 @@ kiberag/
 - **github.com/aws/aws-sdk-go-v2**: AWS SDK v2
   - S3 service
   - S3 Vectors
-  - Bedrock Runtime (Voyage AI integration)
+  - Bedrock Runtime (Titan Embeddings)
 - **gopkg.in/yaml.v3**: YAML processing
 
 ### AWS Related Libraries
@@ -276,7 +274,6 @@ kiberag vectorize --dry-run
 # Check environment variables
 env | grep KIBELA
 env | grep AWS
-env | grep VOYAGE
 ```
 
 ## License

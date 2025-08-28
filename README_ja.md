@@ -7,7 +7,7 @@ kiberag は Kibela GraphQL API から全てのノートを取得し、適切な�
 ## 機能
 
 - **ノートエクスポート**: Kibela GraphQL APIから全てのノートを取得してmarkdownファイルとして保存
-- **ベクトル化**: markdownファイルをVoyage-3-largeモデルを使用してembeddingに変換
+- **ベクトル化**: markdownファイルをAmazon Bedrockを使用してembeddingに変換
 - **S3 Vector統合**: 生成されたベクトルをAmazon S3 Vectorsに保存
 - **セマンティック検索**: S3 Vector Indexを使用したセマンティック類似性検索
 - **ベクトル管理**: S3に保存されたベクトルの一覧表示
@@ -30,8 +30,6 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 S3_VECTOR_INDEX_NAME=your_vector_index_name
 S3_BUCKET_NAME=your_s3_bucket_name
 
-# Voyage AI設定
-VOYAGE_API_KEY=your_voyage_api_key
 ```
 
 ## インストール
@@ -77,7 +75,7 @@ kiberag export
 
 ### 2. vectorize - ベクトル化とS3保存
 
-markdownファイルを読み込み、メタデータを抽出し、Voyage AIを使用してembeddingを生成してAmazon S3 Vectorsに保存します。
+markdownファイルを読み込み、メタデータを抽出し、Amazon Bedrockを使用してembeddingを生成してAmazon S3 Vectorsに保存します。
 
 ```bash
 kiberag vectorize
@@ -91,7 +89,7 @@ kiberag vectorize
 **機能:**
 - markdownファイルの再帰的スキャン
 - メタデータの自動抽出
-- Voyage-3-largeモデルを使用したembedding生成
+- Amazon Titan Text Embedding v2モデルを使用したembedding生成
 - S3 Vectorsへの安全な保存
 - 並行処理による高速化
 
@@ -196,7 +194,7 @@ kiberag/
 - **github.com/aws/aws-sdk-go-v2**: AWS SDK v2
   - S3サービス
   - S3 Vectors
-  - Bedrock Runtime（Voyage AI統合）
+  - Bedrock Runtime（Titan Embeddings）
 - **gopkg.in/yaml.v3**: YAML処理
 
 ### AWS関連ライブラリ
@@ -276,7 +274,6 @@ kiberag vectorize --dry-run
 # 環境変数の確認
 env | grep KIBERA
 env | grep AWS
-env | grep VOYAGE
 ```
 
 ## ライセンス

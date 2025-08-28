@@ -29,8 +29,7 @@ kiberag は Kibela GraphQL API から全てのノートを取得し、適切な�
   - ProcessingStats: 処理統計管理
   - エラーハンドリングとドライラン機能
 - **internal/embedding/**: 埋め込み生成
-  - `bedrock/`: Amazon Bedrock統合（Voyage AI）
-  - `voyage/`: Voyage AI直接統合
+  - `bedrock/`: Amazon Bedrock統合
   - 複数プロバイダー対応アーキテクチャ
 - **internal/s3vector/**: S3 Vector統合
   - ベクトルストレージとインデックス管理
@@ -75,8 +74,6 @@ kiberag は Kibela GraphQL API から全てのノートを取得し、適切な�
 - `S3_VECTOR_INDEX_NAME`: S3 Vector インデックス名
 - `S3_BUCKET_NAME`: S3バケット名
 
-### Voyage AI設定
-- `VOYAGE_API_KEY`: Voyage APIキー
 
 ### フィルタ設定
 - `EXCLUDE_CATEGORIES`: RAG検索で除外するカテゴリ（カンマ区切り、デフォルト: "個人メモ,日報"）
@@ -147,6 +144,6 @@ go run main.go list                      # ベクトル一覧表示
 3. デフォルト値
 
 推奨されるS3 Vector設定：
-- ディメンション: 1024次元（Voyage-3-large）
+- ディメンション: 1536次元（Amazon Titan Text Embedding v2）
 - 距離メトリック: コサイン距離
 - 対象: 6,583個の日本語ビジネス文書
