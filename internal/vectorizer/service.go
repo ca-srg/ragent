@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,12 +12,17 @@ import (
 
 // VectorizerService orchestrates the vectorization process
 type VectorizerService struct {
-	embeddingClient   EmbeddingClient
-	s3Client          S3VectorClient
-	metadataExtractor MetadataExtractor
-	fileScanner       FileScanner
-	config            *Config
-	stats             *ProcessingStats
+	embeddingClient     EmbeddingClient
+	s3Client            S3VectorClient
+	opensearchIndexer   OpenSearchIndexer
+	metadataExtractor   MetadataExtractor
+	fileScanner         FileScanner
+	parallelController  *ParallelController
+	errorHandler        *DualBackendErrorHandler
+	config              *Config
+	stats               *ProcessingStats
+	enableOpenSearch    bool
+	opensearchIndexName string
 }
 
 // ProcessingStats tracks processing statistics
@@ -33,11 +39,16 @@ type ProcessingStats struct {
 
 // ServiceConfig contains the configuration for creating a VectorizerService
 type ServiceConfig struct {
-	Config            *Config
-	EmbeddingClient   EmbeddingClient
-	S3Client          S3VectorClient
-	MetadataExtractor MetadataExtractor
-	FileScanner       FileScanner
+	Config              *Config
+	EmbeddingClient     EmbeddingClient
+	S3Client            S3VectorClient
+	OpenSearchIndexer   OpenSearchIndexer
+	MetadataExtractor   MetadataExtractor
+	FileScanner         FileScanner
+	ParallelController  *ParallelController
+	ErrorHandler        *DualBackendErrorHandler
+	EnableOpenSearch    bool
+	OpenSearchIndexName string
 }
 
 // NewVectorizerService creates a new vectorizer service with the given configuration
@@ -46,12 +57,39 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 		return nil, fmt.Errorf("service config cannot be nil")
 	}
 
+	// Initialize parallel controller if not provided
+	var parallelController *ParallelController
+	if serviceConfig.ParallelController != nil {
+		parallelController = serviceConfig.ParallelController
+	} else if serviceConfig.EnableOpenSearch && serviceConfig.OpenSearchIndexer != nil {
+		// Create parallel controller for dual backend processing
+		parallelController = NewParallelController(
+			serviceConfig.S3Client,
+			serviceConfig.OpenSearchIndexer,
+			serviceConfig.Config.Concurrency,
+		)
+	}
+
+	// Initialize error handler if not provided
+	errorHandler := serviceConfig.ErrorHandler
+	if errorHandler == nil {
+		errorHandler = NewDualBackendErrorHandler(
+			serviceConfig.Config.RetryAttempts,
+			serviceConfig.Config.RetryDelay,
+		)
+	}
+
 	service := &VectorizerService{
-		embeddingClient:   serviceConfig.EmbeddingClient,
-		s3Client:          serviceConfig.S3Client,
-		metadataExtractor: serviceConfig.MetadataExtractor,
-		fileScanner:       serviceConfig.FileScanner,
-		config:            serviceConfig.Config,
+		embeddingClient:     serviceConfig.EmbeddingClient,
+		s3Client:            serviceConfig.S3Client,
+		opensearchIndexer:   serviceConfig.OpenSearchIndexer,
+		metadataExtractor:   serviceConfig.MetadataExtractor,
+		fileScanner:         serviceConfig.FileScanner,
+		parallelController:  parallelController,
+		errorHandler:        errorHandler,
+		config:              serviceConfig.Config,
+		enableOpenSearch:    serviceConfig.EnableOpenSearch,
+		opensearchIndexName: serviceConfig.OpenSearchIndexName,
 		stats: &ProcessingStats{
 			StartTime: time.Now(),
 			Errors:    make([]ProcessingError, 0),
@@ -68,15 +106,26 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 func (vs *VectorizerService) ValidateConfiguration(ctx context.Context) error {
 	log.Println("Validating embedding service connection...")
 	if err := vs.embeddingClient.ValidateConnection(ctx); err != nil {
-		return fmt.Errorf("embedding service validation failed: %w", err)
+		return fmt.Errorf("embedding service validation failed: %w\nGuidance: Please check your AWS credentials and Bedrock service access", err)
 	}
+	log.Println("✓ Embedding service connection validated successfully")
 
 	log.Println("Validating S3 bucket access...")
 	if err := vs.s3Client.ValidateAccess(ctx); err != nil {
-		return fmt.Errorf("S3 bucket validation failed: %w", err)
+		return fmt.Errorf("S3 bucket validation failed: %w\nGuidance: Please check your S3 bucket name and AWS credentials", err)
+	}
+	log.Println("✓ S3 bucket access validated successfully")
+
+	// Validate OpenSearch connection if enabled
+	if vs.enableOpenSearch {
+		if err := vs.validateOpenSearchConnection(ctx); err != nil {
+			return fmt.Errorf("OpenSearch validation failed: %w", err)
+		}
+	} else {
+		log.Println("OpenSearch integration disabled - skipping OpenSearch validation")
 	}
 
-	log.Println("All services validated successfully")
+	log.Println("All configured services validated successfully")
 	return nil
 }
 
@@ -92,25 +141,25 @@ func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directo
 
 	if len(files) == 0 {
 		log.Println("No markdown files found")
-		return &ProcessingResult{
-			ProcessedFiles: 0,
-			SuccessCount:   0,
-			FailureCount:   0,
-			StartTime:      vs.stats.StartTime,
-			EndTime:        time.Now(),
-			Duration:       time.Since(vs.stats.StartTime),
-		}, nil
+		return vs.createEmptyResult(), nil
 	}
 
 	log.Printf("Found %d markdown files to process", len(files))
 
-	if dryRun {
-		log.Println("Dry run mode: will not actually create embeddings or upload to S3")
-		return vs.dryRunProcessing(files)
+	// Determine processing mode
+	if vs.enableOpenSearch && vs.parallelController != nil {
+		log.Printf("Using dual backend processing (S3 Vector + OpenSearch) with index: %s",
+			vs.opensearchIndexName)
+		return vs.processDualBackend(ctx, files, dryRun)
+	} else {
+		log.Println("Using single backend processing (S3 Vector only)")
+		if dryRun {
+			log.Println("Dry run mode: will not actually create embeddings or upload to S3")
+			return vs.dryRunProcessing(files)
+		}
+		// Fallback to original single backend processing
+		return vs.processFilesConcurrently(ctx, files)
 	}
-
-	// Process files with concurrency control
-	return vs.processFilesConcurrently(ctx, files)
 }
 
 // ProcessSingleFile processes a single markdown file
@@ -139,10 +188,20 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 	}
 
 	// Generate embedding
+	log.Printf("Generating embedding for file: %s", fileInfo.Path)
 	embedding, err := vs.embeddingClient.GenerateEmbedding(ctx, fileInfo.Content)
 	if err != nil {
+		log.Printf("ERROR: Failed to generate embedding for %s: %v", fileInfo.Path, err)
 		return WrapError(err, ErrorTypeEmbedding, fileInfo.Path)
 	}
+
+	// Validate embedding is not empty
+	if len(embedding) == 0 {
+		log.Printf("ERROR: Generated embedding is empty for file: %s", fileInfo.Path)
+		return WrapError(fmt.Errorf("embedding is empty"), ErrorTypeEmbedding, fileInfo.Path)
+	}
+
+	log.Printf("Successfully generated embedding with %d dimensions for file: %s", len(embedding), fileInfo.Path)
 
 	// Create vector data
 	vectorData := &VectorData{
@@ -242,6 +301,19 @@ func (vs *VectorizerService) processFilesConcurrently(ctx context.Context, files
 func (vs *VectorizerService) dryRunProcessing(files []*FileInfo) (*ProcessingResult, error) {
 	log.Println("Starting dry run processing...")
 
+	// Log OpenSearch simulation if enabled
+	if vs.enableOpenSearch && vs.opensearchIndexer != nil {
+		indexName := vs.opensearchIndexName
+		if indexName == "" {
+			indexName = "kiberag-vectors"
+		}
+		log.Printf("DRY RUN: OpenSearch indexing simulation enabled for index: %s", indexName)
+		log.Println("DRY RUN: Would create/verify OpenSearch index with Japanese-optimized mappings")
+		log.Println("DRY RUN: Would index documents with BM25 full-text search and k-NN vector search capabilities")
+	} else {
+		log.Println("DRY RUN: OpenSearch indexing disabled - S3 Vector only")
+	}
+
 	for i, file := range files {
 		log.Printf("DRY RUN [%d/%d]: %s", i+1, len(files), file.Name)
 
@@ -266,18 +338,57 @@ func (vs *VectorizerService) dryRunProcessing(files []*FileInfo) (*ProcessingRes
 		if metadata.Reference != "" {
 			log.Printf("  Reference: %s", metadata.Reference)
 		}
+
+		// Simulate processing actions
+		documentID := vs.metadataExtractor.GenerateKey(metadata)
+		log.Printf("  Document ID: %s", documentID)
+		log.Printf("  Would generate embedding vector (1024 dimensions)")
+		log.Printf("  Would store to S3 Vector with metadata")
+
+		if vs.enableOpenSearch && vs.opensearchIndexer != nil {
+			log.Printf("  Would index to OpenSearch with:")
+			log.Printf("    - BM25 searchable content (Japanese-optimized)")
+			log.Printf("    - k-NN vector field for semantic search")
+			log.Printf("    - Structured metadata fields (category, tags, date)")
+			if len(content) > 1000 {
+				log.Printf("    - Content preview: %s...", content[:100])
+			} else {
+				log.Printf("    - Full content length: %d characters", len(content))
+			}
+		}
 	}
 
 	endTime := time.Now()
-	return &ProcessingResult{
-		ProcessedFiles: len(files),
-		SuccessCount:   len(files), // All succeed in dry run
-		FailureCount:   0,
-		Errors:         []ProcessingError{},
-		StartTime:      vs.stats.StartTime,
-		EndTime:        endTime,
-		Duration:       endTime.Sub(vs.stats.StartTime),
-	}, nil
+	result := &ProcessingResult{
+		ProcessedFiles:           len(files),
+		SuccessCount:             len(files), // All succeed in dry run
+		FailureCount:             0,
+		Errors:                   []ProcessingError{},
+		StartTime:                vs.stats.StartTime,
+		EndTime:                  endTime,
+		Duration:                 endTime.Sub(vs.stats.StartTime),
+		OpenSearchEnabled:        vs.enableOpenSearch,
+		OpenSearchSuccessCount:   0,
+		OpenSearchFailureCount:   0,
+		OpenSearchIndexedCount:   0,
+		OpenSearchSkippedCount:   0,
+		OpenSearchRetryCount:     0,
+		OpenSearchProcessingTime: 0,
+	}
+
+	if vs.enableOpenSearch {
+		result.OpenSearchSuccessCount = len(files) // All would succeed in dry run
+		result.OpenSearchIndexedCount = len(files)
+	}
+
+	log.Printf("DRY RUN: Simulation completed for %d files", len(files))
+	if vs.enableOpenSearch {
+		log.Printf("DRY RUN: Would have indexed %d documents to both S3 Vector and OpenSearch", len(files))
+	} else {
+		log.Printf("DRY RUN: Would have indexed %d documents to S3 Vector only", len(files))
+	}
+
+	return result, nil
 }
 
 // updateStats updates processing statistics thread-safely
@@ -310,6 +421,180 @@ func (vs *VectorizerService) GetStats() ProcessingStats {
 	}
 }
 
+// processDualBackend processes files using both S3 Vector and OpenSearch backends
+func (vs *VectorizerService) processDualBackend(ctx context.Context, files []*FileInfo, dryRun bool) (*ProcessingResult, error) {
+	log.Printf("Starting dual backend processing for %d files", len(files))
+
+	// Validate OpenSearch index exists or create it if needed
+	if !dryRun && vs.opensearchIndexer != nil {
+		if err := vs.ensureOpenSearchIndex(ctx); err != nil {
+			log.Printf("Warning: Failed to ensure OpenSearch index: %v", err)
+			// Don't fail the entire operation, just log the warning
+		}
+	}
+
+	// Use parallel controller for dual backend processing
+	result, err := vs.parallelController.ProcessFiles(
+		ctx,
+		files,
+		vs.opensearchIndexName,
+		vs.embeddingClient,
+		vs.metadataExtractor,
+		dryRun,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("dual backend processing failed: %w", err)
+	}
+
+	log.Printf("Dual backend processing completed: %d files processed, %d successful, %d failed",
+		result.ProcessedFiles, result.SuccessCount, result.FailureCount)
+
+	return result, nil
+}
+
+// ensureOpenSearchIndex ensures the OpenSearch index exists with proper mappings
+func (vs *VectorizerService) ensureOpenSearchIndex(ctx context.Context) error {
+	if vs.opensearchIndexer == nil {
+		return fmt.Errorf("OpenSearch indexer not available")
+	}
+
+	indexName := vs.opensearchIndexName
+	if indexName == "" {
+		indexName = "kiberag-vectors" // Default index name
+	}
+
+	// Check if index exists
+	exists, err := vs.opensearchIndexer.IndexExists(ctx, indexName)
+	if err != nil {
+		return fmt.Errorf("failed to check index existence: %w", err)
+	}
+
+	if !exists {
+		log.Printf("Creating OpenSearch index: %s", indexName)
+		// Create index with Japanese-optimized mappings
+		if osIndexer, ok := vs.opensearchIndexer.(*OpenSearchIndexerImpl); ok {
+			// Use the Japanese-optimized index creation
+			err = osIndexer.CreateVectorIndexWithJapanese(ctx, indexName, 1024)
+		} else {
+			// Fallback to standard index creation
+			err = vs.opensearchIndexer.CreateIndex(ctx, indexName, 1024)
+		}
+
+		if err != nil {
+			return fmt.Errorf("failed to create OpenSearch index: %w", err)
+		}
+		log.Printf("Successfully created OpenSearch index: %s", indexName)
+	} else {
+		log.Printf("OpenSearch index already exists: %s", indexName)
+	}
+
+	return nil
+}
+
+// validateOpenSearchConnection validates OpenSearch connection with detailed logging and error guidance
+func (vs *VectorizerService) validateOpenSearchConnection(ctx context.Context) error {
+	log.Println("Validating OpenSearch connection...")
+
+	// Check if OpenSearch indexer is available
+	if vs.opensearchIndexer == nil {
+		return fmt.Errorf("OpenSearch indexer is not initialized\nGuidance: Ensure OPENSEARCH_ENDPOINT environment variable is set and OpenSearch client is properly configured")
+	}
+
+	// Log OpenSearch configuration details
+	indexName := vs.opensearchIndexName
+	if indexName == "" {
+		indexName = "kiberag-vectors" // Default index name
+	}
+	log.Printf("Target OpenSearch index: %s", indexName)
+
+	// Test OpenSearch connection
+	log.Println("Testing OpenSearch cluster connection...")
+	if err := vs.opensearchIndexer.ValidateConnection(ctx); err != nil {
+		// Provide specific error guidance based on error type
+		errorGuidance := vs.generateOpenSearchErrorGuidance(err)
+		return fmt.Errorf("OpenSearch connection test failed: %w\n%s", err, errorGuidance)
+	}
+
+	log.Println("✓ OpenSearch connection validated successfully")
+
+	// Test index operations (non-destructive)
+	log.Printf("Checking OpenSearch index status for: %s", indexName)
+	exists, err := vs.opensearchIndexer.IndexExists(ctx, indexName)
+	if err != nil {
+		log.Printf("Warning: Failed to check index existence: %v", err)
+		log.Println("Index will be created during processing if needed")
+	} else if exists {
+		log.Printf("✓ OpenSearch index '%s' already exists", indexName)
+
+		// Get index information if available
+		if info, err := vs.opensearchIndexer.GetIndexInfo(ctx, indexName); err == nil {
+			if docCount, ok := info["document_count"].(int64); ok && docCount > 0 {
+				log.Printf("  Existing documents: %d", docCount)
+			}
+		}
+	} else {
+		log.Printf("OpenSearch index '%s' does not exist - will be created during processing", indexName)
+	}
+
+	log.Println("✓ OpenSearch validation completed successfully")
+	return nil
+}
+
+// generateOpenSearchErrorGuidance provides specific guidance based on OpenSearch error types
+func (vs *VectorizerService) generateOpenSearchErrorGuidance(err error) string {
+	errorStr := err.Error()
+
+	if contains(errorStr, "connection refused") || contains(errorStr, "no such host") {
+		return "Guidance: Please check your OPENSEARCH_ENDPOINT setting and ensure the OpenSearch cluster is running and accessible"
+	}
+
+	if contains(errorStr, "unauthorized") || contains(errorStr, "authentication") {
+		return "Guidance: Please check your OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD credentials, or verify AWS IAM permissions for OpenSearch access"
+	}
+
+	if contains(errorStr, "timeout") {
+		return "Guidance: OpenSearch cluster may be overloaded or network connectivity is slow. Consider increasing timeout settings or checking network connectivity"
+	}
+
+	if contains(errorStr, "forbidden") || contains(errorStr, "permission") {
+		return "Guidance: Your credentials may be correct, but lack sufficient permissions. Please verify your user has appropriate index and cluster permissions"
+	}
+
+	if contains(errorStr, "ssl") || contains(errorStr, "tls") || contains(errorStr, "certificate") {
+		return "Guidance: SSL/TLS connection issue. Please check if your OpenSearch endpoint uses HTTPS and certificate validation is properly configured"
+	}
+
+	return "Guidance: Please check your OpenSearch endpoint configuration and ensure the cluster is accessible. See OpenSearch logs for more detailed error information"
+}
+
+// contains is a helper function for case-insensitive string containment check
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		strings.Contains(strings.ToLower(s), strings.ToLower(substr)))
+}
+
+// createEmptyResult creates an empty processing result
+func (vs *VectorizerService) createEmptyResult() *ProcessingResult {
+	now := time.Now()
+	return &ProcessingResult{
+		ProcessedFiles:           0,
+		SuccessCount:             0,
+		FailureCount:             0,
+		Errors:                   []ProcessingError{},
+		StartTime:                vs.stats.StartTime,
+		EndTime:                  now,
+		Duration:                 now.Sub(vs.stats.StartTime),
+		OpenSearchEnabled:        vs.enableOpenSearch,
+		OpenSearchSuccessCount:   0,
+		OpenSearchFailureCount:   0,
+		OpenSearchIndexedCount:   0,
+		OpenSearchSkippedCount:   0,
+		OpenSearchRetryCount:     0,
+		OpenSearchProcessingTime: 0,
+	}
+}
+
 // GetServiceInfo returns information about the configured services
 func (vs *VectorizerService) GetServiceInfo(ctx context.Context) (map[string]interface{}, error) {
 	info := make(map[string]interface{})
@@ -326,10 +611,24 @@ func (vs *VectorizerService) GetServiceInfo(ctx context.Context) (map[string]int
 		info["s3_info"] = bucketInfo
 	}
 
+	// Add OpenSearch info if enabled
+	if vs.enableOpenSearch && vs.opensearchIndexer != nil {
+		info["opensearch_enabled"] = true
+		info["opensearch_index"] = vs.opensearchIndexName
+
+		// Get OpenSearch index info
+		if indexInfo, err := vs.opensearchIndexer.GetIndexInfo(ctx, vs.opensearchIndexName); err == nil {
+			info["opensearch_info"] = indexInfo
+		}
+	} else {
+		info["opensearch_enabled"] = false
+	}
+
 	// Add configuration info
 	info["concurrency"] = vs.config.Concurrency
 	info["retry_attempts"] = vs.config.RetryAttempts
 	info["retry_delay"] = vs.config.RetryDelay.String()
+	info["dual_backend_mode"] = vs.enableOpenSearch && vs.parallelController != nil
 
 	return info, nil
 }

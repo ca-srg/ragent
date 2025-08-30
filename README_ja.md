@@ -30,6 +30,14 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 S3_VECTOR_INDEX_NAME=your_vector_index_name
 S3_BUCKET_NAME=your_s3_bucket_name
 
+# OpenSearch設定（ハイブリッドRAG用）
+OPENSEARCH_ENDPOINT=your_opensearch_endpoint
+OPENSEARCH_INDEX=your_opensearch_index
+OPENSEARCH_REGION=us-east-1  # デフォルト
+
+# チャット設定
+CHAT_MODEL=anthropic.claude-3-5-sonnet-20240620-v1:0  # デフォルト
+EXCLUDE_CATEGORIES=個人メモ,日報  # 検索から除外するカテゴリ
 ```
 
 ## インストール
@@ -145,6 +153,45 @@ kiberag list --prefix "docs/"
 - 保存されたベクトルキーの表示
 - プレフィックスによるフィルタリング
 - ベクトルデータベースの内容確認
+
+### 5. chat - 対話型RAGチャット
+
+ハイブリッド検索（OpenSearch BM25 + ベクトル検索）を使用してコンテキストを取得し、Amazon Bedrock（Claude）で応答を生成する対話型チャットセッションを開始します。
+
+```bash
+# デフォルト設定で対話型チャットを開始
+kiberag chat
+
+# カスタムコンテキストサイズでチャット
+kiberag chat --context-size 10
+
+# ハイブリッド検索の重みバランスをカスタマイズ
+kiberag chat --bm25-weight 0.7 --vector-weight 0.3
+
+# カスタムシステムプロンプトでチャット
+kiberag chat --system "あなたはドキュメントに特化した親切なアシスタントです。"
+```
+
+**オプション:**
+- `-c, --context-size`: 取得するコンテキストドキュメント数（デフォルト: 5）
+- `-i, --interactive`: 対話モードで実行（デフォルト: true）
+- `-s, --system`: チャット用のシステムプロンプト
+- `-b, --bm25-weight`: ハイブリッド検索でのBM25スコアリングの重み（0-1、デフォルト: 0.5）
+- `-v, --vector-weight`: ハイブリッド検索でのベクトルスコアリングの重み（0-1、デフォルト: 0.5）
+- `--use-japanese-nlp`: OpenSearchで日本語NLP最適化を使用（デフォルト: true）
+
+**機能:**
+- BM25とベクトル類似性を組み合わせたハイブリッド検索
+- OpenSearchが利用できない場合のS3 Vectorへの自動フォールバック
+- 取得したドキュメントを使用したコンテキスト認識応答
+- 会話履歴管理
+- ソースリンク付き参考文献引用
+- 日本語最適化
+
+**チャットコマンド:**
+- `exit` または `quit`: チャットセッションを終了
+- `clear`: 会話履歴をクリア
+- `help`: 利用可能なコマンドを表示
 
 ## 開発
 
@@ -275,6 +322,82 @@ kiberag vectorize --dry-run
 env | grep KIBERA
 env | grep AWS
 ```
+
+## ライセンス
+
+このプロジェクトのライセンス情報については、リポジトリのLICENSEファイルを参照してください。
+
+## OpenSearch RAG設定
+
+### AWS OpenSearchのロールマッピング
+
+AWS OpenSearchでIAM認証を使用する場合、IAMロールがOpenSearchクラスターにアクセスできるようにロールマッピングを設定する必要があります。
+
+#### 現在のロールマッピングを確認
+```bash
+curl -u "master_user:master_pass" -X GET \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/all_access"
+```
+
+#### IAMロールをOpenSearchロールにマッピング
+```bash
+curl -u "master_user:master_pass" -X PUT \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/all_access" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "backend_roles": ["arn:aws:iam::123456789012:role/your-iam-role"],
+    "hosts": [],
+    "users": []
+  }'
+```
+
+#### RAG操作用のカスタムロールを作成
+```bash
+# 必要な権限を持つカスタムロールを作成
+curl -u "master_user:master_pass" -X PUT \
+  "https://your-opensearch-endpoint/_plugins/_security/api/roles/kiberag_role" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cluster_permissions": [
+      "cluster:monitor/health",
+      "indices:data/read/search"
+    ],
+    "index_permissions": [{
+      "index_patterns": ["kiberag-*"],
+      "allowed_actions": [
+        "indices:data/read/search",
+        "indices:data/read/get",
+        "indices:data/write/index",
+        "indices:data/write/bulk",
+        "indices:admin/create",
+        "indices:admin/mapping/put"
+      ]
+    }]
+  }'
+
+# IAMロールをカスタムロールにマッピング
+curl -u "master_user:master_pass" -X PUT \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/kiberag_role" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "backend_roles": ["arn:aws:iam::123456789012:role/your-iam-role"],
+    "hosts": [],
+    "users": []
+  }'
+```
+
+### ハイブリッド検索の設定
+
+最適なRAGパフォーマンスのために、適切な重みでハイブリッド検索を設定します：
+
+- **一般的な検索**: BM25重み: 0.5、ベクトル重み: 0.5
+- **キーワード重視**: BM25重み: 0.7、ベクトル重み: 0.3
+- **セマンティック重視**: BM25重み: 0.3、ベクトル重み: 0.7
+
+#### 日本語文書の推奨設定
+- BM25演算子: "or"（デフォルト）
+- BM25最小一致数: 精度向上のために"2"または"70%"
+- 日本語NLP使用: true（kuromojiトークナイザーを有効化）
 
 ## ライセンス
 

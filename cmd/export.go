@@ -2,10 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"os"
 
-	"github.com/joho/godotenv"
+	"github.com/ca-srg/kiberag/internal/config"
 	"github.com/ca-srg/kiberag/internal/export"
 	"github.com/ca-srg/kiberag/internal/kibela"
 	"github.com/spf13/cobra"
@@ -19,22 +18,12 @@ var exportCmd = &cobra.Command{
 }
 
 func runExport(cmd *cobra.Command, args []string) error {
-	err := godotenv.Load()
+	cfg, err := config.Load()
 	if err != nil {
-		log.Printf("Warning: Error loading .env file: %v", err)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	token, err := checkEnv("KIBELA_TOKEN")
-	if err != nil {
-		return fmt.Errorf("failed to get Kibela token: %w", err)
-	}
-
-	team, err := checkEnv("KIBELA_TEAM")
-	if err != nil {
-		return fmt.Errorf("failed to get Kibela team: %w", err)
-	}
-
-	client := kibela.NewClient(team, token)
+	client := kibela.NewClient(cfg.KibelaTeam, cfg.KibelaToken)
 
 	if err := os.MkdirAll("markdown", 0755); err != nil {
 		return fmt.Errorf("failed to create markdown directory: %w", err)

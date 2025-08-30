@@ -30,6 +30,14 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 S3_VECTOR_INDEX_NAME=your_vector_index_name
 S3_BUCKET_NAME=your_s3_bucket_name
 
+# OpenSearch Configuration (for Hybrid RAG)
+OPENSEARCH_ENDPOINT=your_opensearch_endpoint
+OPENSEARCH_INDEX=your_opensearch_index
+OPENSEARCH_REGION=us-east-1  # default
+
+# Chat Configuration
+CHAT_MODEL=anthropic.claude-3-5-sonnet-20240620-v1:0  # default
+EXCLUDE_CATEGORIES=Personal,Daily  # Categories to exclude from search
 ```
 
 ## Installation
@@ -145,6 +153,45 @@ kiberag list --prefix "docs/"
 - Display stored vector keys
 - Filtering by prefix
 - Check vector database contents
+
+### 5. chat - Interactive RAG Chat
+
+Start an interactive chat session using hybrid search (OpenSearch BM25 + vector search) for context retrieval and Amazon Bedrock (Claude) for generating responses.
+
+```bash
+# Start interactive chat with default settings
+kiberag chat
+
+# Chat with custom context size
+kiberag chat --context-size 10
+
+# Chat with custom weight balance for hybrid search
+kiberag chat --bm25-weight 0.7 --vector-weight 0.3
+
+# Chat with custom system prompt
+kiberag chat --system "You are a helpful assistant specialized in documentation."
+```
+
+**Options:**
+- `-c, --context-size`: Number of context documents to retrieve (default: 5)
+- `-i, --interactive`: Run in interactive mode (default: true)
+- `-s, --system`: System prompt for the chat
+- `-b, --bm25-weight`: Weight for BM25 scoring in hybrid search (0-1, default: 0.5)
+- `-v, --vector-weight`: Weight for vector scoring in hybrid search (0-1, default: 0.5)
+- `--use-japanese-nlp`: Use Japanese NLP optimization for OpenSearch (default: true)
+
+**Features:**
+- Hybrid search combining BM25 and vector similarity
+- Automatic fallback to S3 Vector if OpenSearch is unavailable
+- Context-aware responses using retrieved documents
+- Conversation history management
+- Reference citations with source links
+- Japanese language optimization
+
+**Chat Commands:**
+- `exit` or `quit`: End the chat session
+- `clear`: Clear conversation history
+- `help`: Show available commands
 
 ## Development
 
@@ -275,6 +322,78 @@ kiberag vectorize --dry-run
 env | grep KIBELA
 env | grep AWS
 ```
+
+## OpenSearch RAG Configuration
+
+### Role Mapping for AWS OpenSearch
+
+When using AWS OpenSearch with IAM authentication, you need to configure role mapping to allow your IAM role to access the OpenSearch cluster.
+
+#### Check Current Role Mapping
+```bash
+curl -u "master_user:master_pass" -X GET \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/all_access"
+```
+
+#### Map IAM Role to OpenSearch Role
+```bash
+curl -u "master_user:master_pass" -X PUT \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/all_access" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "backend_roles": ["arn:aws:iam::123456789012:role/your-iam-role"],
+    "hosts": [],
+    "users": []
+  }'
+```
+
+#### Create Custom Role for RAG Operations
+```bash
+# Create a custom role with necessary permissions
+curl -u "master_user:master_pass" -X PUT \
+  "https://your-opensearch-endpoint/_plugins/_security/api/roles/kiberag_role" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cluster_permissions": [
+      "cluster:monitor/health",
+      "indices:data/read/search"
+    ],
+    "index_permissions": [{
+      "index_patterns": ["kiberag-*"],
+      "allowed_actions": [
+        "indices:data/read/search",
+        "indices:data/read/get",
+        "indices:data/write/index",
+        "indices:data/write/bulk",
+        "indices:admin/create",
+        "indices:admin/mapping/put"
+      ]
+    }]
+  }'
+
+# Map IAM role to the custom role
+curl -u "master_user:master_pass" -X PUT \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/kiberag_role" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "backend_roles": ["arn:aws:iam::123456789012:role/your-iam-role"],
+    "hosts": [],
+    "users": []
+  }'
+```
+
+### Hybrid Search Configuration
+
+For optimal RAG performance, configure hybrid search with appropriate weights:
+
+- **General search**: BM25 weight: 0.5, Vector weight: 0.5
+- **Keyword-focused**: BM25 weight: 0.7, Vector weight: 0.3
+- **Semantic-focused**: BM25 weight: 0.3, Vector weight: 0.7
+
+#### Recommended Settings for Japanese Documents
+- BM25 Operator: "or" (default)
+- BM25 Minimum Should Match: "2" or "70%" for precision
+- Use Japanese NLP: true (enables kuromoji tokenizer)
 
 ## License
 

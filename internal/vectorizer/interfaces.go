@@ -84,3 +84,36 @@ type Validator interface {
 	// GenerateConfigGuide returns a guide for setting up configuration
 	GenerateConfigGuide() string
 }
+
+// OpenSearchIndexer defines the interface for indexing documents in OpenSearch
+type OpenSearchIndexer interface {
+	// IndexDocument indexes a single document in OpenSearch
+	IndexDocument(ctx context.Context, indexName string, document *OpenSearchDocument) error
+
+	// IndexDocuments indexes multiple documents in OpenSearch using bulk operations
+	IndexDocuments(ctx context.Context, indexName string, documents []*OpenSearchDocument) error
+
+	// ValidateConnection checks if OpenSearch is accessible and responsive
+	ValidateConnection(ctx context.Context) error
+
+	// CreateIndex creates a new index with appropriate mappings for vector search
+	CreateIndex(ctx context.Context, indexName string, dimension int) error
+
+	// DeleteIndex removes an existing index (use with caution)
+	DeleteIndex(ctx context.Context, indexName string) error
+
+	// IndexExists checks if an index exists in OpenSearch
+	IndexExists(ctx context.Context, indexName string) (bool, error)
+
+	// GetIndexInfo returns information about an index (mappings, settings, document count)
+	GetIndexInfo(ctx context.Context, indexName string) (map[string]interface{}, error)
+
+	// RefreshIndex forces a refresh of the index to make recent changes visible
+	RefreshIndex(ctx context.Context, indexName string) error
+
+	// GetDocumentCount returns the number of documents in an index
+	GetDocumentCount(ctx context.Context, indexName string) (int64, error)
+
+	// ProcessJapaneseText processes text using Japanese analyzer for better indexing
+	ProcessJapaneseText(text string) (string, error)
+}

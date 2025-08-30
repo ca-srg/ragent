@@ -49,6 +49,14 @@ type ProcessingResult struct {
 	StartTime      time.Time         `json:"start_time"`
 	EndTime        time.Time         `json:"end_time"`
 	Duration       time.Duration     `json:"duration"`
+	// OpenSearch specific statistics
+	OpenSearchEnabled        bool          `json:"opensearch_enabled"`
+	OpenSearchSuccessCount   int           `json:"opensearch_success_count"`
+	OpenSearchFailureCount   int           `json:"opensearch_failure_count"`
+	OpenSearchIndexedCount   int           `json:"opensearch_indexed_count"`
+	OpenSearchSkippedCount   int           `json:"opensearch_skipped_count"`
+	OpenSearchRetryCount     int           `json:"opensearch_retry_count"`
+	OpenSearchProcessingTime time.Duration `json:"opensearch_processing_time"`
 }
 
 // ProcessingError represents an error that occurred during processing
@@ -85,21 +93,50 @@ const (
 	ErrorTypeEmbedding      ErrorType = "embedding_generation"
 	ErrorTypeS3Upload       ErrorType = "s3_upload"
 	ErrorTypeNetworkTimeout ErrorType = "network_timeout"
+	ErrorTypeTimeout        ErrorType = "timeout"
 	ErrorTypeRateLimit      ErrorType = "rate_limit"
 	ErrorTypeValidation     ErrorType = "validation"
+	ErrorTypeAuthentication ErrorType = "authentication"
 	ErrorTypeUnknown        ErrorType = "unknown"
+	// OpenSearch specific error types
+	ErrorTypeOpenSearchConnection ErrorType = "opensearch_connection"
+	ErrorTypeOpenSearchMapping    ErrorType = "opensearch_mapping"
+	ErrorTypeOpenSearchIndexing   ErrorType = "opensearch_indexing"
+	ErrorTypeOpenSearchBulkIndex  ErrorType = "opensearch_bulk_index"
+	ErrorTypeOpenSearchQuery      ErrorType = "opensearch_query"
+	ErrorTypeOpenSearchIndex      ErrorType = "opensearch_index"
 )
 
 // Config represents the vectorizer configuration
 type Config struct {
-	AWSS3VectorBucket string        `json:"aws_s3_vector_bucket"`
-	AWSS3VectorIndex  string        `json:"aws_s3_vector_index"`
-	AWSS3Region       string        `json:"aws_s3_region"`
-	ChatModel         string        `json:"chat_model"`
-	Concurrency       int           `json:"concurrency"`
-	RetryAttempts     int           `json:"retry_attempts"`
-	RetryDelay        time.Duration `json:"retry_delay"`
-	ExcludeCategories []string      `json:"exclude_categories"`
+	// Kibela configuration
+	KibelaToken string `json:"kibela_token" env:"KIBELA_TOKEN,required=true"`
+	KibelaTeam  string `json:"kibela_team" env:"KIBELA_TEAM,required=true"`
+
+	// AWS S3 Vectors configuration
+	AWSS3VectorBucket    string        `json:"aws_s3_vector_bucket" env:"AWS_S3_VECTOR_BUCKET,required=true"`
+	AWSS3VectorIndex     string        `json:"aws_s3_vector_index" env:"AWS_S3_VECTOR_INDEX,required=true"`
+	AWSS3Region          string        `json:"aws_s3_region" env:"AWS_S3_REGION,default=us-east-1"`
+	ChatModel            string        `json:"chat_model" env:"CHAT_MODEL,default=anthropic.claude-3-5-sonnet-20240620-v1:0"`
+	Concurrency          int           `json:"concurrency" env:"VECTORIZER_CONCURRENCY,default=10"`
+	RetryAttempts        int           `json:"retry_attempts" env:"VECTORIZER_RETRY_ATTEMPTS,default=0"`
+	RetryDelay           time.Duration `json:"retry_delay" env:"VECTORIZER_RETRY_DELAY,default=2s"`
+	ExcludeCategoriesStr string        `json:"-" env:"EXCLUDE_CATEGORIES,default=個人メモ|日報"`
+	ExcludeCategories    []string      `json:"exclude_categories"`
+	// OpenSearch configuration
+	OpenSearchEndpoint          string        `json:"opensearch_endpoint" env:"OPENSEARCH_ENDPOINT,required=true"`
+	OpenSearchIndex             string        `json:"opensearch_index" env:"OPENSEARCH_INDEX,required=true"`
+	OpenSearchRegion            string        `json:"opensearch_region" env:"OPENSEARCH_REGION,default=us-east-1"`
+	OpenSearchInsecureSkipTLS   bool          `json:"opensearch_insecure_skip_tls" env:"OPENSEARCH_INSECURE_SKIP_TLS,default=false"`
+	OpenSearchRateLimit         float64       `json:"opensearch_rate_limit" env:"OPENSEARCH_RATE_LIMIT,default=10.0"`
+	OpenSearchRateBurst         int           `json:"opensearch_rate_burst" env:"OPENSEARCH_RATE_BURST,default=20"`
+	OpenSearchConnectionTimeout time.Duration `json:"opensearch_connection_timeout" env:"OPENSEARCH_CONNECTION_TIMEOUT,default=30s"`
+	OpenSearchRequestTimeout    time.Duration `json:"opensearch_request_timeout" env:"OPENSEARCH_REQUEST_TIMEOUT,default=60s"`
+	OpenSearchMaxRetries        int           `json:"opensearch_max_retries" env:"OPENSEARCH_MAX_RETRIES,default=3"`
+	OpenSearchRetryDelay        time.Duration `json:"opensearch_retry_delay" env:"OPENSEARCH_RETRY_DELAY,default=1s"`
+	OpenSearchMaxConnections    int           `json:"opensearch_max_connections" env:"OPENSEARCH_MAX_CONNECTIONS,default=100"`
+	OpenSearchMaxIdleConns      int           `json:"opensearch_max_idle_conns" env:"OPENSEARCH_MAX_IDLE_CONNS,default=10"`
+	OpenSearchIdleConnTimeout   time.Duration `json:"opensearch_idle_conn_timeout" env:"OPENSEARCH_IDLE_CONN_TIMEOUT,default=90s"`
 }
 
 // QueryResult represents a single result from a vector query
