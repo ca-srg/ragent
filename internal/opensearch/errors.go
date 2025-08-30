@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/kiberag/internal/types"
+	"github.com/ca-srg/mdrag/internal/types"
 )
 
 type SearchError struct {

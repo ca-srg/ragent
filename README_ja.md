@@ -1,26 +1,39 @@
-# kiberag - Kibela API Gateway
+# mdRAG - Markdownドキュメント用RAGシステム構築ツール
 
 **[English README](README.md)**
 
-kiberag は Kibela GraphQL API から全てのノートを取得し、適切なメタデータを付与してmarkdownファイルとしてエクスポートするCLIツールです。さらに、Amazon S3 VectorsへのベクトルデータKHRA作成でRAGシステムとして利用することを目的としています。
+mdRAG は、Markdownドキュメントからハイブリッド検索（BM25 + ベクトル検索）を利用したRAG（Retrieval-Augmented Generation）システムを構築するCLIツールです。Amazon S3 VectorsとOpenSearchを活用した高精度な検索機能を提供します。
 
 ## 機能
 
-- **ノートエクスポート**: Kibela GraphQL APIから全てのノートを取得してmarkdownファイルとして保存
 - **ベクトル化**: markdownファイルをAmazon Bedrockを使用してembeddingに変換
 - **S3 Vector統合**: 生成されたベクトルをAmazon S3 Vectorsに保存
+- **ハイブリッド検索**: OpenSearchを使用したBM25 + ベクトル検索の組み合わせ
 - **セマンティック検索**: S3 Vector Indexを使用したセマンティック類似性検索
+- **対話型RAGチャット**: コンテキスト認識応答を行うチャットインターフェース
 - **ベクトル管理**: S3に保存されたベクトルの一覧表示
+
+## 前提条件
+
+### Markdownドキュメントの準備
+
+mdRAGを使用する前に、`markdown/` ディレクトリにMarkdownドキュメントを準備する必要があります。これらのドキュメントがRAGシステムで検索可能なコンテンツとなります。
+
+```bash
+# markdownディレクトリを作成
+mkdir markdown
+
+# markdownファイルをディレクトリに配置
+cp /path/to/your/documents/*.md markdown/
+```
+
+Kibelaからノートをエクスポートする場合は、`export/` ディレクトリにある別ツールをご利用ください。
 
 ## 必要な環境変数
 
 プロジェクトルートに `.env` ファイルを作成し、以下の環境変数を設定してください：
 
 ```env
-# Kibela API設定
-KIBELA_TOKEN=your_kibela_api_token
-KIBELA_TEAM=your_team_name
-
 # AWS設定
 AWS_REGION=your_aws_region
 AWS_ACCESS_KEY_ID=your_access_key
@@ -51,42 +64,27 @@ EXCLUDE_CATEGORIES=個人メモ,日報  # 検索から除外するカテゴリ
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/rluisr/kiberag.git
-cd kiberag
+git clone https://github.com/ca-srg/mdrag.git
+cd mdRAG
 
 # 依存関係をインストール
 go mod download
 
 # ビルド
-go build -o kiberag
+go build -o mdRAG
 
 # 実行可能ファイルをPATHに追加（オプション）
-mv kiberag /usr/local/bin/
+mv mdRAG /usr/local/bin/
 ```
 
 ## コマンド一覧
 
-### 1. export - ノートのエクスポート
-
-Kibela GraphQL APIから全てのノートを取得し、markdownファイルとして `markdown/` ディレクトリに保存します。
-
-```bash
-kiberag export
-```
-
-**機能:**
-- Kibela APIから全ノートを取得
-- 適切なメタデータを付与
-- ファイル名の自動生成
-- カテゴリの自動抽出
-- `markdown/` ディレクトリへの保存
-
-### 2. vectorize - ベクトル化とS3保存
+### 1. vectorize - ベクトル化とS3保存
 
 markdownファイルを読み込み、メタデータを抽出し、Amazon Bedrockを使用してembeddingを生成してAmazon S3 Vectorsに保存します。
 
 ```bash
-kiberag vectorize
+mdRAG vectorize
 ```
 
 **オプション:**
@@ -101,19 +99,19 @@ kiberag vectorize
 - S3 Vectorsへの安全な保存
 - 並行処理による高速化
 
-### 3. query - セマンティック検索
+### 2. query - セマンティック検索
 
 S3 Vector Indexに対してセマンティック類似性検索を実行します。
 
 ```bash
 # 基本的な検索
-kiberag query -q "machine learning algorithms"
+mdRAG query -q "machine learning algorithms"
 
 # 詳細オプション付きの検索
-kiberag query --query "API documentation" --top-k 5 --json
+mdRAG query --query "API documentation" --top-k 5 --json
 
 # メタデータフィルター付きの検索
-kiberag query -q "error handling" --filter '{"category":"programming"}'
+mdRAG query -q "error handling" --filter '{"category":"programming"}'
 ```
 
 **オプション:**
@@ -125,25 +123,25 @@ kiberag query -q "error handling" --filter '{"category":"programming"}'
 **使用例:**
 ```bash
 # 技術文書の検索
-kiberag query -q "Docker コンテナ設定" --top-k 3
+mdRAG query -q "Docker コンテナ設定" --top-k 3
 
 # 特定カテゴリでの検索
-kiberag query -q "authentication" --filter '{"type":"security"}' --json
+mdRAG query -q "authentication" --filter '{"type":"security"}' --json
 
 # より多くの結果を取得
-kiberag query -q "database optimization" --top-k 20
+mdRAG query -q "database optimization" --top-k 20
 ```
 
-### 4. list - ベクトル一覧表示
+### 3. list - ベクトル一覧表示
 
 S3 Vector Indexに保存されているベクトルの一覧を表示します。
 
 ```bash
 # 全ベクトルを表示
-kiberag list
+mdRAG list
 
 # プレフィックスでフィルタリング
-kiberag list --prefix "docs/"
+mdRAG list --prefix "docs/"
 ```
 
 **オプション:**
@@ -154,22 +152,22 @@ kiberag list --prefix "docs/"
 - プレフィックスによるフィルタリング
 - ベクトルデータベースの内容確認
 
-### 5. chat - 対話型RAGチャット
+### 4. chat - 対話型RAGチャット
 
 ハイブリッド検索（OpenSearch BM25 + ベクトル検索）を使用してコンテキストを取得し、Amazon Bedrock（Claude）で応答を生成する対話型チャットセッションを開始します。
 
 ```bash
 # デフォルト設定で対話型チャットを開始
-kiberag chat
+mdRAG chat
 
 # カスタムコンテキストサイズでチャット
-kiberag chat --context-size 10
+mdRAG chat --context-size 10
 
 # ハイブリッド検索の重みバランスをカスタマイズ
-kiberag chat --bm25-weight 0.7 --vector-weight 0.3
+mdRAG chat --bm25-weight 0.7 --vector-weight 0.3
 
 # カスタムシステムプロンプトでチャット
-kiberag chat --system "あなたはドキュメントに特化した親切なアシスタントです。"
+mdRAG chat --system "あなたはドキュメントに特化した親切なアシスタントです。"
 ```
 
 **オプション:**
@@ -214,18 +212,22 @@ go run main.go [command]
 ### プロジェクト構造
 
 ```
-kiberag/
+mdRAG/
 ├── main.go                 # エントリーポイント
 ├── cmd/                    # CLIコマンド定義
 │   ├── root.go            # ルートコマンドと共通設定
-│   ├── export.go          # exportコマンド
 │   ├── query.go           # queryコマンド
 │   ├── list.go            # listコマンド
+│   ├── chat.go            # chatコマンド
 │   └── vectorize.go       # vectorizeコマンド
 ├── internal/              # 内部ライブラリ
-│   ├── kibera/           # Kibela GraphQL APIクライアント
-│   └── export/           # エクスポート機能
-├── markdown/             # エクスポートされたmarkdownファイル
+│   ├── config/           # 設定管理
+│   ├── embedding/        # Embedding生成
+│   ├── s3vector/         # S3 Vector統合
+│   ├── opensearch/       # OpenSearch統合
+│   └── vectorizer/       # ベクトル化サービス
+├── markdown/             # Markdownドキュメント（使用前に準備）
+├── export/               # Kibela用エクスポートツール（別ツール）
 ├── .envrc                # direnv設定
 ├── .env                  # 環境変数ファイル
 └── CLAUDE.md            # Claude Code設定
@@ -236,7 +238,6 @@ kiberag/
 ### 主要なライブラリ
 
 - **github.com/spf13/cobra**: CLIフレームワーク
-- **github.com/machinebox/graphql**: GraphQLクライアント
 - **github.com/joho/godotenv**: 環境変数読み込み
 - **github.com/aws/aws-sdk-go-v2**: AWS SDK v2
   - S3サービス
@@ -260,28 +261,36 @@ kiberag/
    # .envファイルを編集
    ```
 
-2. **ノートのエクスポート**
+2. **Markdownドキュメントの準備**
    ```bash
-   kiberag export
+   # markdownディレクトリを作成（存在しない場合）
+   mkdir -p markdown
+   
+   # markdownファイルをディレクトリに配置
+   # または、Kibelaノート用のエクスポートツールを使用：
+   cd export
+   go build -o mdRAG-export
+   ./mdRAG-export
+   cd ..
    ```
 
 3. **ベクトル化とS3保存**
    ```bash
    # ドライランで確認
-   kiberag vectorize --dry-run
+   mdRAG vectorize --dry-run
    
    # 実際のベクトル化実行
-   kiberag vectorize
+   mdRAG vectorize
    ```
 
 4. **ベクトルデータの確認**
    ```bash
-   kiberag list
+   mdRAG list
    ```
 
 5. **セマンティック検索の実行**
    ```bash
-   kiberag query -q "検索したい内容"
+   mdRAG query -q "検索したい内容"
    ```
 
 ## トラブルシューティング
@@ -294,11 +303,11 @@ kiberag/
    ```
    → `.env`ファイルが正しく設定されているか確認
 
-2. **Kibela API接続エラー**
+2. **設定エラー**
    ```
-   Error: failed to connect to Kibela API
+   Error: configuration not found or invalid
    ```
-   → `KIBELA_TOKEN`と`KIBELA_TEAM`が正しいか確認
+   → 設定と認証情報が正しいか確認
 
 3. **AWS認証エラー**
    ```
@@ -316,10 +325,9 @@ kiberag/
 
 ```bash
 # 詳細ログ付きで実行
-kiberag vectorize --dry-run
+mdRAG vectorize --dry-run
 
 # 環境変数の確認
-env | grep KIBERA
 env | grep AWS
 ```
 
@@ -355,7 +363,7 @@ curl -u "master_user:master_pass" -X PUT \
 ```bash
 # 必要な権限を持つカスタムロールを作成
 curl -u "master_user:master_pass" -X PUT \
-  "https://your-opensearch-endpoint/_plugins/_security/api/roles/kiberag_role" \
+  "https://your-opensearch-endpoint/_plugins/_security/api/roles/mdRAG_role" \
   -H "Content-Type: application/json" \
   -d '{
     "cluster_permissions": [
@@ -363,7 +371,7 @@ curl -u "master_user:master_pass" -X PUT \
       "indices:data/read/search"
     ],
     "index_permissions": [{
-      "index_patterns": ["kiberag-*"],
+      "index_patterns": ["mdRAG-*"],
       "allowed_actions": [
         "indices:data/read/search",
         "indices:data/read/get",
@@ -377,7 +385,7 @@ curl -u "master_user:master_pass" -X PUT \
 
 # IAMロールをカスタムロールにマッピング
 curl -u "master_user:master_pass" -X PUT \
-  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/kiberag_role" \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/mdRAG_role" \
   -H "Content-Type: application/json" \
   -d '{
     "backend_roles": ["arn:aws:iam::123456789012:role/your-iam-role"],

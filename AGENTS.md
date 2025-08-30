@@ -9,12 +9,12 @@
 
 ## Build, Test, and Development Commands
 - `go mod tidy`: Sync dependencies.
-- `go build -o kiberag`: Build the CLI.
+- `go build -o mdrag`: Build the CLI.
 - `go run main.go <command>`: Run locally (e.g., `go run main.go export`).
 - `go test ./...`: Run tests (few exist; add package tests as you contribute).
 - `go vet ./...`: Basic static checks.
 Example (env inline):
-`OPENSEARCH_ENDPOINT=https://... OPENSEARCH_INDEX=kiberag-documents AWS_S3_VECTOR_BUCKET=... AWS_S3_VECTOR_INDEX=... KIBELA_TOKEN=... KIBELA_TEAM=... go run main.go vectorize --dry-run`
+`OPENSEARCH_ENDPOINT=https://... OPENSEARCH_INDEX=mdrag-documents AWS_S3_VECTOR_BUCKET=... AWS_S3_VECTOR_INDEX=... go run main.go vectorize --dry-run`
 
 ## Coding Style & Naming Conventions
 - Language: Go ≥ 1.25. Format with `go fmt ./...`; prefer `go vet` before PRs.
@@ -33,6 +33,6 @@ Example (env inline):
 
 ## Security & Configuration Tips
 - Do not commit secrets or `.env`. Use `direnv` or local env vars.
-- Required env (typical): `KIBELA_TOKEN`, `KIBELA_TEAM`, `AWS_S3_VECTOR_BUCKET`, `AWS_S3_VECTOR_INDEX`, `AWS_S3_REGION`, `OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, `OPENSEARCH_REGION`.
+- Required env (typical): `AWS_S3_VECTOR_BUCKET`, `AWS_S3_VECTOR_INDEX`, `AWS_S3_REGION`, `OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, `OPENSEARCH_REGION`.
 - Bedrock chat and some embeddings use region `us-east-1` by default. For dev clusters with self-signed certs, `OPENSEARCH_INSECURE_SKIP_TLS=true` (development only).
 

@@ -1,4 +1,4 @@
-module github.com/ca-srg/kiberag
+module github.com/ca-srg/mdrag
 
 go 1.25.0
 
@@ -7,7 +7,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.31.4
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.37.2
 	github.com/aws/aws-sdk-go-v2/service/s3vectors v1.4.3
-	github.com/machinebox/graphql v0.2.2
 	github.com/netflix/go-env v0.0.0-20220526054621-78278af1949d
 	github.com/opensearch-project/opensearch-go/v4 v4.5.0
 	github.com/spf13/cobra v1.9.1
@@ -32,8 +31,6 @@ require (
 	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/matryer/is v1.4.1 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.7 // indirect
 )

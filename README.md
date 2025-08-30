@@ -1,26 +1,39 @@
-# kiberag - Kibela API Gateway
+# mdRAG - RAG System Builder for Markdown Documents
 
 **[日本語版 (Japanese) / 日本語 README](README_ja.md)**
 
-kiberag is a CLI tool that retrieves all notes from the Kibela GraphQL API, exports them as markdown files with appropriate metadata, and serves as a RAG (Retrieval-Augmented Generation) system through vector data storage in Amazon S3 Vectors.
+mdRAG is a CLI tool for building a RAG (Retrieval-Augmented Generation) system from markdown documents using hybrid search capabilities (BM25 + vector search) with Amazon S3 Vectors and OpenSearch.
 
 ## Features
 
-- **Note Export**: Retrieve all notes from Kibela GraphQL API and save them as markdown files
 - **Vectorization**: Convert markdown files to embeddings using Amazon Bedrock
 - **S3 Vector Integration**: Store generated vectors in Amazon S3 Vectors
+- **Hybrid Search**: Combined BM25 + vector search using OpenSearch
 - **Semantic Search**: Semantic similarity search using S3 Vector Index
+- **Interactive RAG Chat**: Chat interface with context-aware responses
 - **Vector Management**: List vectors stored in S3
+
+## Prerequisites
+
+### Prepare Markdown Documents
+
+Before using mdRAG, you need to prepare markdown documents in a `markdown/` directory. These documents should contain the content you want to make searchable through the RAG system.
+
+```bash
+# Create markdown directory
+mkdir markdown
+
+# Place your markdown files in this directory
+cp /path/to/your/documents/*.md markdown/
+```
+
+For exporting notes from Kibela, use the separate export tool available in the `export/` directory.
 
 ## Required Environment Variables
 
 Create a `.env` file in the project root and configure the following environment variables:
 
 ```env
-# Kibela API Configuration
-KIBELA_TOKEN=your_kibela_api_token
-KIBELA_TEAM=your_team_name
-
 # AWS Configuration
 AWS_REGION=your_aws_region
 AWS_ACCESS_KEY_ID=your_access_key
@@ -51,42 +64,27 @@ EXCLUDE_CATEGORIES=Personal,Daily  # Categories to exclude from search
 
 ```bash
 # Clone the repository
-git clone https://github.com/rluisr/kiberag.git
-cd kiberag
+git clone https://github.com/ca-srg/mdrag.git
+cd mdRAG
 
 # Install dependencies
 go mod download
 
 # Build
-go build -o kiberag
+go build -o mdRAG
 
 # Add executable to PATH (optional)
-mv kiberag /usr/local/bin/
+mv mdRAG /usr/local/bin/
 ```
 
 ## Commands
 
-### 1. export - Export Notes
-
-Retrieve all notes from Kibela GraphQL API and save them as markdown files in the `markdown/` directory.
-
-```bash
-kiberag export
-```
-
-**Features:**
-- Fetch all notes from Kibela API
-- Add appropriate metadata
-- Automatic filename generation
-- Automatic category extraction
-- Save to `markdown/` directory
-
-### 2. vectorize - Vectorization and S3 Storage
+### 1. vectorize - Vectorization and S3 Storage
 
 Read markdown files, extract metadata, generate embeddings using Amazon Bedrock, and store them in Amazon S3 Vectors.
 
 ```bash
-kiberag vectorize
+mdRAG vectorize
 ```
 
 **Options:**
@@ -101,19 +99,19 @@ kiberag vectorize
 - Safe storage to S3 Vectors
 - High-speed processing through concurrency
 
-### 3. query - Semantic Search
+### 2. query - Semantic Search
 
 Execute semantic similarity search against S3 Vector Index.
 
 ```bash
 # Basic search
-kiberag query -q "machine learning algorithms"
+mdRAG query -q "machine learning algorithms"
 
 # Search with detailed options
-kiberag query --query "API documentation" --top-k 5 --json
+mdRAG query --query "API documentation" --top-k 5 --json
 
 # Search with metadata filter
-kiberag query -q "error handling" --filter '{"category":"programming"}'
+mdRAG query -q "error handling" --filter '{"category":"programming"}'
 ```
 
 **Options:**
@@ -125,25 +123,25 @@ kiberag query -q "error handling" --filter '{"category":"programming"}'
 **Usage Examples:**
 ```bash
 # Search technical documentation
-kiberag query -q "Docker container configuration" --top-k 3
+mdRAG query -q "Docker container configuration" --top-k 3
 
 # Search within specific category
-kiberag query -q "authentication" --filter '{"type":"security"}' --json
+mdRAG query -q "authentication" --filter '{"type":"security"}' --json
 
 # Get more results
-kiberag query -q "database optimization" --top-k 20
+mdRAG query -q "database optimization" --top-k 20
 ```
 
-### 4. list - List Vectors
+### 3. list - List Vectors
 
 Display a list of vectors stored in S3 Vector Index.
 
 ```bash
 # Display all vectors
-kiberag list
+mdRAG list
 
 # Filter by prefix
-kiberag list --prefix "docs/"
+mdRAG list --prefix "docs/"
 ```
 
 **Options:**
@@ -154,22 +152,22 @@ kiberag list --prefix "docs/"
 - Filtering by prefix
 - Check vector database contents
 
-### 5. chat - Interactive RAG Chat
+### 4. chat - Interactive RAG Chat
 
 Start an interactive chat session using hybrid search (OpenSearch BM25 + vector search) for context retrieval and Amazon Bedrock (Claude) for generating responses.
 
 ```bash
 # Start interactive chat with default settings
-kiberag chat
+mdRAG chat
 
 # Chat with custom context size
-kiberag chat --context-size 10
+mdRAG chat --context-size 10
 
 # Chat with custom weight balance for hybrid search
-kiberag chat --bm25-weight 0.7 --vector-weight 0.3
+mdRAG chat --bm25-weight 0.7 --vector-weight 0.3
 
 # Chat with custom system prompt
-kiberag chat --system "You are a helpful assistant specialized in documentation."
+mdRAG chat --system "You are a helpful assistant specialized in documentation."
 ```
 
 **Options:**
@@ -214,18 +212,22 @@ go run main.go [command]
 ### Project Structure
 
 ```
-kiberag/
+mdRAG/
 ├── main.go                 # Entry point
 ├── cmd/                    # CLI command definitions
 │   ├── root.go            # Root command and common settings
-│   ├── export.go          # export command
 │   ├── query.go           # query command
 │   ├── list.go            # list command
+│   ├── chat.go            # chat command
 │   └── vectorize.go       # vectorize command
 ├── internal/              # Internal libraries
-│   ├── kibera/           # Kibela GraphQL API client
-│   └── export/           # Export functionality
-├── markdown/             # Exported markdown files
+│   ├── config/           # Configuration management
+│   ├── embedding/        # Embedding generation
+│   ├── s3vector/         # S3 Vector integration
+│   ├── opensearch/       # OpenSearch integration
+│   └── vectorizer/       # Vectorization service
+├── markdown/             # Markdown documents (prepare before use)
+├── export/               # Separate export tool for Kibela
 ├── .envrc                # direnv configuration
 ├── .env                  # Environment variables file
 └── CLAUDE.md            # Claude Code configuration
@@ -236,7 +238,6 @@ kiberag/
 ### Core Libraries
 
 - **github.com/spf13/cobra**: CLI framework
-- **github.com/machinebox/graphql**: GraphQL client
 - **github.com/joho/godotenv**: Environment variable loader
 - **github.com/aws/aws-sdk-go-v2**: AWS SDK v2
   - S3 service
@@ -260,28 +261,36 @@ kiberag/
    # Edit .env file
    ```
 
-2. **Export Notes**
+2. **Prepare Markdown Documents**
    ```bash
-   kiberag export
+   # Create markdown directory if not exists
+   mkdir -p markdown
+   
+   # Place your markdown files in the directory
+   # Or use the export tool for Kibela notes:
+   cd export
+   go build -o mdRAG-export
+   ./mdRAG-export
+   cd ..
    ```
 
 3. **Vectorization and S3 Storage**
    ```bash
    # Verify with dry run
-   kiberag vectorize --dry-run
+   mdRAG vectorize --dry-run
    
    # Execute actual vectorization
-   kiberag vectorize
+   mdRAG vectorize
    ```
 
 4. **Check Vector Data**
    ```bash
-   kiberag list
+   mdRAG list
    ```
 
 5. **Execute Semantic Search**
    ```bash
-   kiberag query -q "content to search"
+   mdRAG query -q "content to search"
    ```
 
 ## Troubleshooting
@@ -294,11 +303,11 @@ kiberag/
    ```
    → Check if `.env` file is properly configured
 
-2. **Kibela API connection error**
+2. **Configuration error**
    ```
-   Error: failed to connect to Kibela API
+   Error: configuration not found or invalid
    ```
-   → Verify `KIBELA_TOKEN` and `KIBELA_TEAM` are correct
+   → Check configuration and authentication settings
 
 3. **AWS authentication error**
    ```
@@ -316,10 +325,9 @@ kiberag/
 
 ```bash
 # Execute with detailed logs
-kiberag vectorize --dry-run
+mdRAG vectorize --dry-run
 
 # Check environment variables
-env | grep KIBELA
 env | grep AWS
 ```
 
@@ -351,7 +359,7 @@ curl -u "master_user:master_pass" -X PUT \
 ```bash
 # Create a custom role with necessary permissions
 curl -u "master_user:master_pass" -X PUT \
-  "https://your-opensearch-endpoint/_plugins/_security/api/roles/kiberag_role" \
+  "https://your-opensearch-endpoint/_plugins/_security/api/roles/mdRAG_role" \
   -H "Content-Type: application/json" \
   -d '{
     "cluster_permissions": [
@@ -359,7 +367,7 @@ curl -u "master_user:master_pass" -X PUT \
       "indices:data/read/search"
     ],
     "index_permissions": [{
-      "index_patterns": ["kiberag-*"],
+      "index_patterns": ["mdRAG-*"],
       "allowed_actions": [
         "indices:data/read/search",
         "indices:data/read/get",
@@ -373,7 +381,7 @@ curl -u "master_user:master_pass" -X PUT \
 
 # Map IAM role to the custom role
 curl -u "master_user:master_pass" -X PUT \
-  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/kiberag_role" \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/mdRAG_role" \
   -H "Content-Type: application/json" \
   -d '{
     "backend_roles": ["arn:aws:iam::123456789012:role/your-iam-role"],

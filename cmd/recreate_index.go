@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/ca-srg/kiberag/internal/config"
-	"github.com/ca-srg/kiberag/internal/opensearch"
-	"github.com/ca-srg/kiberag/internal/vectorizer"
+	"github.com/ca-srg/mdrag/internal/config"
+	"github.com/ca-srg/mdrag/internal/opensearch"
+	"github.com/ca-srg/mdrag/internal/vectorizer"
 	"github.com/spf13/cobra"
 )
 

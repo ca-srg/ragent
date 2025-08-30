@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
-	appconfig "github.com/ca-srg/kiberag/internal/config"
-	"github.com/ca-srg/kiberag/internal/embedding/bedrock"
-	"github.com/ca-srg/kiberag/internal/filter"
-	"github.com/ca-srg/kiberag/internal/opensearch"
-	"github.com/ca-srg/kiberag/internal/s3vector"
-	commontypes "github.com/ca-srg/kiberag/internal/types"
+	appconfig "github.com/ca-srg/mdrag/internal/config"
+	"github.com/ca-srg/mdrag/internal/embedding/bedrock"
+	"github.com/ca-srg/mdrag/internal/filter"
+	"github.com/ca-srg/mdrag/internal/opensearch"
+	"github.com/ca-srg/mdrag/internal/s3vector"
+	commontypes "github.com/ca-srg/mdrag/internal/types"
 )
 
 var (

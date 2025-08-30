@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-kiberag は Kibela GraphQL API から全てのノートを取得し、適切なメタデータを付与してmarkdownファイルとしてエクスポートし、Amazon S3 VectorsへのベクトルデータKHRA作成によるRAGシステムです。ノートのエクスポート、ベクトル化、セマンティック検索の機能を提供します。
+mdRAG は Markdownドキュメントからハイブリッド検索（BM25 + ベクトル検索）を利用したRAGシステムを構築するツールです。Amazon S3 VectorsとOpenSearchを活用し、ベクトル化、セマンティック検索、対話型チャットの機能を提供します。
 
 ## Architecture
 
@@ -12,19 +12,12 @@ kiberag は Kibela GraphQL API から全てのノートを取得し、適切な�
 - **main.go**: エントリーポイント、cobra CLIのExecuteを呼び出し
 - **cmd/**: CLIコマンド定義
   - `root.go`: ルートコマンドと共通設定
-  - `export.go`: exportコマンドの実装（Kibela APIからのノート取得）
   - `vectorize.go`: vectorizeコマンドの実装（ベクトル化とS3保存）
   - `query.go`: queryコマンドの実装（セマンティック検索）
   - `list.go`: listコマンドの実装（ベクトル一覧表示）
   - `chat.go`: chatコマンドの実装（対話的RAGクエリ）
 
 ### Internal Packages
-- **internal/kibera/**: Kibela GraphQL APIクライアント
-  - データ構造体（Note, Author, Group, Folder等）
-  - GetAllNotes、fetchNotesメソッドによるAPI通信
-- **internal/export/**: エクスポート機能
-  - ノートのmarkdown変換とファイル保存
-  - ファイル名生成、カテゴリ抽出機能
 - **internal/vectorizer/**: ベクトル化サービス
   - VectorizerService: 並行処理によるベクトル化
   - ProcessingStats: 処理統計管理
@@ -58,18 +51,15 @@ kiberag は Kibela GraphQL API から全てのノートを取得し、適切な�
   - 日本語最適化処理
   - エラーハンドリングと設定管理
 
-### Output Directories
-- **markdown/**: エクスポートされたmarkdownファイルの出力先
+### Directories
+- **markdown/**: RAGシステムで使用するMarkdownドキュメントを配置（使用前に準備が必要）
+- **export/**: Kibelaノートエクスポート用の別ツール（独立したツール）
 - **doc/**: プロジェクト文書（S3 Vector設定推奨など）
 - **reference/**: 参考実装とサンプルコード
 
 ## Required Environment Variables
 
 環境変数は `.env` ファイルで設定され、direnv (`.envrc`) により自動ロードされます:
-
-### Kibela API設定
-- `KIBELA_TOKEN`: Kibela APIアクセストークン
-- `KIBELA_TEAM`: 対象チーム名
 
 ### AWS設定
 - `AWS_REGION`: AWSリージョン
@@ -96,7 +86,7 @@ go mod tidy
 go mod download
 
 # ビルド
-go build -o kiberag
+go build -o mdRAG
 
 # テスト実行（テストファイルが存在する場合）
 go test ./...
@@ -108,7 +98,6 @@ go fmt ./...
 go vet ./...
 
 # 各コマンドの実行例
-go run main.go export                    # ノートエクスポート
 go run main.go vectorize --dry-run       # ベクトル化（ドライラン）
 go run main.go vectorize                 # ベクトル化実行
 go run main.go query -q "検索クエリ"      # セマンティック検索
@@ -119,33 +108,33 @@ go run main.go list                      # ベクトル一覧表示
 # go mod vendor は使用しない
 ```
 
+## Prerequisites
+
+Markdownドキュメントを`markdown/`ディレクトリに準備する必要があります。Kibelaからのエクスポートには`export/`ディレクトリの別ツールを使用してください。
+
 ## Usage Examples
 
 ```bash
-# 1. 全ノートをエクスポート
-./kiberag export
+# 1. ベクトル化とS3保存
+./mdRAG vectorize --directory ./markdown --concurrency 10
 
-# 2. ベクトル化とS3保存
-./kiberag vectorize --directory ./markdown --concurrency 10
+# 2. セマンティック検索（ハイブリッドモード）
+./mdRAG query -q "機械学習のアルゴリズム" --top-k 5 --search-mode hybrid
 
-# 3. セマンティック検索（ハイブリッドモード）
-./kiberag query -q "機械学習のアルゴリズム" --top-k 5 --search-mode hybrid
+# 2a. OpenSearchのみ使用
+./mdRAG query -q "API documentation" --search-mode opensearch --bm25-weight 0.7
 
-# 3a. OpenSearchのみ使用
-./kiberag query -q "API documentation" --search-mode opensearch --bm25-weight 0.7
+# 3. 対話的RAGチャット
+./mdRAG chat
 
-# 4. 対話的RAGチャット
-./kiberag chat
-
-# 5. ベクトル一覧表示
-./kiberag list --prefix "docs/"
+# 4. ベクトル一覧表示
+./mdRAG list --prefix "docs/"
 ```
 
 ## Dependencies
 
 ### Core Framework
 - `github.com/spf13/cobra`: CLIフレームワーク
-- `github.com/machinebox/graphql`: GraphQLクライアント
 - `github.com/joho/godotenv`: 環境変数読み込み
 - `gopkg.in/yaml.v3`: YAML設定ファイル処理
 
