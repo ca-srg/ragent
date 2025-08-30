@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ca-srg/kiberag/internal/types"
+	"github.com/ca-srg/mdrag/internal/types"
 )
 
 func NewConfigFromTypes(cfg *types.Config) (*Config, error) {

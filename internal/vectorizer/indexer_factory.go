@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/ca-srg/kiberag/internal/opensearch"
-	"github.com/ca-srg/kiberag/internal/types"
+	"github.com/ca-srg/mdrag/internal/opensearch"
+	"github.com/ca-srg/mdrag/internal/types"
 )
 
 // IndexerFactory creates OpenSearch indexers based on configuration

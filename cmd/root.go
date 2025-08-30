@@ -1,17 +1,15 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "kiberag",
-	Short: "Kibela API Gateway - CLI tool for exporting Kibela notes",
-	Long: `Kibela API Gateway (kiberag) is a CLI tool that allows you to export all notes 
-from Kibela using the GraphQL API and save them as markdown files.`,
+	Use:   "mdrag",
+	Short: "mdRAG - RAG system builder for Markdown documents",
+	Long: `mdRAG is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
+from Markdown documents using hybrid search capabilities (BM25 + vector search) 
+with Amazon S3 Vectors and OpenSearch.`,
 }
 
 func Execute() error {
@@ -19,17 +17,8 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.AddCommand(exportCmd)
 	rootCmd.AddCommand(vectorizeCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(queryCmd)
 	rootCmd.AddCommand(chatCmd)
-}
-
-func checkEnv(key string) (string, error) {
-	value := os.Getenv(key)
-	if value == "" {
-		return "", fmt.Errorf("environment variable %s is required", key)
-	}
-	return value, nil
 }

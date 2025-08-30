@@ -1,7 +1,7 @@
 package vectorizer
 
 import (
-	"github.com/ca-srg/kiberag/internal/types"
+	"github.com/ca-srg/mdrag/internal/types"
 )
 
 // Type aliases for common types

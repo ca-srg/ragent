@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/ca-srg/kiberag/cmd"
+	"github.com/ca-srg/mdrag/cmd"
 )
 
 func main() {

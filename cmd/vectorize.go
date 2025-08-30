@@ -12,13 +12,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
-	appconfig "github.com/ca-srg/kiberag/internal/config"
-	"github.com/ca-srg/kiberag/internal/embedding/bedrock"
-	"github.com/ca-srg/kiberag/internal/metadata"
-	"github.com/ca-srg/kiberag/internal/s3vector"
-	"github.com/ca-srg/kiberag/internal/scanner"
-	"github.com/ca-srg/kiberag/internal/types"
-	"github.com/ca-srg/kiberag/internal/vectorizer"
+	appconfig "github.com/ca-srg/mdrag/internal/config"
+	"github.com/ca-srg/mdrag/internal/embedding/bedrock"
+	"github.com/ca-srg/mdrag/internal/metadata"
+	"github.com/ca-srg/mdrag/internal/s3vector"
+	"github.com/ca-srg/mdrag/internal/scanner"
+	"github.com/ca-srg/mdrag/internal/types"
+	"github.com/ca-srg/mdrag/internal/vectorizer"
 )
 
 var (
