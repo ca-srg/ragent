@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -15,14 +16,18 @@ import (
 	appconfig "github.com/ca-srg/kiberag/internal/config"
 	"github.com/ca-srg/kiberag/internal/embedding/bedrock"
 	"github.com/ca-srg/kiberag/internal/filter"
+	"github.com/ca-srg/kiberag/internal/opensearch"
 	"github.com/ca-srg/kiberag/internal/s3vector"
 	commontypes "github.com/ca-srg/kiberag/internal/types"
 )
 
 var (
-	contextSize  int
-	interactive  bool
-	systemPrompt string
+    contextSize        int
+    interactive        bool
+    systemPrompt       string
+    chatBM25Weight     float64
+    chatVectorWeight   float64
+    chatUseJapaneseNLP bool
 )
 
 var chatCmd = &cobra.Command{
@@ -44,9 +49,12 @@ Examples:
 }
 
 func init() {
-	chatCmd.Flags().IntVarP(&contextSize, "context-size", "c", 5, "Number of context documents to retrieve")
-	chatCmd.Flags().BoolVarP(&interactive, "interactive", "i", true, "Run in interactive mode")
-	chatCmd.Flags().StringVarP(&systemPrompt, "system", "s", "", "System prompt for the chat")
+    chatCmd.Flags().IntVarP(&contextSize, "context-size", "c", 5, "Number of context documents to retrieve")
+    chatCmd.Flags().BoolVarP(&interactive, "interactive", "i", true, "Run in interactive mode")
+    chatCmd.Flags().StringVarP(&systemPrompt, "system", "s", "", "System prompt for the chat")
+    chatCmd.Flags().Float64VarP(&chatBM25Weight, "bm25-weight", "b", 0.5, "Weight for BM25 scoring in hybrid search (0-1)")
+    chatCmd.Flags().Float64VarP(&chatVectorWeight, "vector-weight", "v", 0.5, "Weight for vector scoring in hybrid search (0-1)")
+    chatCmd.Flags().BoolVar(&chatUseJapaneseNLP, "use-japanese-nlp", true, "Use Japanese NLP optimization for OpenSearch")
 }
 
 func runChat(cmd *cobra.Command, args []string) error {
@@ -161,55 +169,35 @@ func startChatLoop(chatClient, embeddingClient *bedrock.BedrockClient, s3Service
 }
 
 func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient, embeddingClient *bedrock.BedrockClient, s3Service *s3vector.S3VectorService, cfg *commontypes.Config) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+    defer cancel()
 
-	// Generate embedding for user input to find relevant context
-	log.Printf("Searching for relevant context...")
-	queryEmbedding, err := embeddingClient.GenerateEmbedding(ctx, userInput)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate embedding: %w", err)
+    // Generate embedding for user input to find relevant context
+    log.Printf("Searching for relevant context using hybrid mode...")
+    queryEmbedding64, err := embeddingClient.GenerateEmbedding(ctx, userInput)
+    if err != nil {
+        return "", fmt.Errorf("failed to generate embedding: %w", err)
+    }
+
+	// Convert float64 to float32 for S3 Vector compatibility
+	queryEmbedding32 := make([]float32, len(queryEmbedding64))
+	for i, v := range queryEmbedding64 {
+		queryEmbedding32[i] = float32(v)
 	}
 
-	// Build filter with exclusions
-	excludeFilter, err := filter.BuildExclusionFilter(cfg, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to build exclusion filter: %w", err)
-	}
+    // Always use hybrid search with S3 Vector fallback
+    var contextParts []string
+    var references map[string]string // title -> reference URL
 
-	// Log filter for debugging
-	if len(cfg.ExcludeCategories) > 0 {
-		log.Printf("Excluding categories from chat context: %v", cfg.ExcludeCategories)
-	}
-
-	// Search for relevant context
-	searchResult, err := s3Service.QueryVectors(ctx, queryEmbedding, contextSize, excludeFilter)
-	if err != nil {
-		return "", fmt.Errorf("failed to search for context: %w", err)
-	}
-
-	// Build context from search results and collect references
-	var contextParts []string
-	references := make(map[string]string) // title -> reference URL
-	for _, result := range searchResult.Results {
-		if result.Metadata != nil {
-			if content, ok := result.Metadata["content"].(string); ok {
-				contextParts = append(contextParts, content)
-			}
-			// Collect title and reference URLs
-			var title, reference string
-			if t, ok := result.Metadata["title"].(string); ok {
-				title = t
-			}
-			if ref, ok := result.Metadata["reference"].(string); ok && ref != "" {
-				reference = ref
-			}
-			// Only add if both title and reference exist
-			if title != "" && reference != "" {
-				references[title] = reference
-			}
-		}
-	}
+    contextParts, references, err = searchWithHybrid(ctx, userInput, queryEmbedding64, cfg, embeddingClient)
+    if err != nil {
+        // S3 Vector with fallback if hybrid search fails
+        log.Printf("Hybrid search failed (%v), using S3 Vector", err)
+        contextParts, references, err = searchWithS3Vector(ctx, queryEmbedding32, cfg, s3Service)
+        if err != nil {
+            return "", fmt.Errorf("failed to search for context: %w", err)
+        }
+    }
 
 	// Prepare messages with context
 	messages := make([]bedrock.ChatMessage, len(history))
@@ -223,14 +211,19 @@ func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 		contextualPrompt = fmt.Sprintf("System: %s\n\n%s", systemPrompt, userInput)
 	}
 
-	// Add retrieved context
+	// Add retrieved context with explicit instructions to use it
 	if len(contextParts) > 0 {
+		// Create a strong instruction to use the retrieved context
+		ragInstruction := "以下の参考文献は、あなたの質問に関連する社内ドキュメントから検索されたものです。" +
+			"必ずこれらの参考文献の内容に基づいて回答してください。" +
+			"一般的な知識ではなく、提供された参考文献の具体的な内容を優先して使用してください。"
+		
 		if len(history) == 0 && systemPrompt != "" {
-			contextualPrompt = fmt.Sprintf("System: %s\n\nContext information:\n%s\n\nUser question: %s",
-				systemPrompt, strings.Join(contextParts, "\n\n---\n\n"), userInput)
+			contextualPrompt = fmt.Sprintf("System: %s\n\n%s\n\n参考文献:\n%s\n\nユーザーの質問: %s",
+				systemPrompt, ragInstruction, strings.Join(contextParts, "\n\n---\n\n"), userInput)
 		} else {
-			contextualPrompt = fmt.Sprintf("Context information:\n%s\n\nUser question: %s",
-				strings.Join(contextParts, "\n\n---\n\n"), userInput)
+			contextualPrompt = fmt.Sprintf("%s\n\n参考文献:\n%s\n\nユーザーの質問: %s",
+				ragInstruction, strings.Join(contextParts, "\n\n---\n\n"), userInput)
 		}
 	}
 
@@ -269,4 +262,157 @@ func printChatHelp() {
 	fmt.Println("  clear       - Clear conversation history")
 	fmt.Println("  help        - Show this help message")
 	fmt.Println()
+}
+
+// searchWithS3Vector performs search using S3 Vector
+func searchWithS3Vector(ctx context.Context, queryEmbedding []float32, cfg *commontypes.Config, s3Service *s3vector.S3VectorService) ([]string, map[string]string, error) {
+	var contextParts []string
+	references := make(map[string]string)
+
+	// Build filter with exclusions
+	excludeFilter, err := filter.BuildExclusionFilter(cfg, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build exclusion filter: %w", err)
+	}
+
+	// Log filter for debugging
+	if len(cfg.ExcludeCategories) > 0 {
+		log.Printf("Excluding categories from chat context: %v", cfg.ExcludeCategories)
+	}
+
+	// Search for relevant context
+	// Convert float32 to float64 for s3Service.QueryVectors
+	queryEmbedding64 := make([]float64, len(queryEmbedding))
+	for i, v := range queryEmbedding {
+		queryEmbedding64[i] = float64(v)
+	}
+	searchResult, err := s3Service.QueryVectors(ctx, queryEmbedding64, contextSize, excludeFilter)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to search for context: %w", err)
+	}
+
+	// Build context from search results and collect references
+	for _, result := range searchResult.Results {
+		if result.Metadata != nil {
+			if content, ok := result.Metadata["content"].(string); ok {
+				contextParts = append(contextParts, content)
+			}
+			// Collect title and reference URLs
+			var title, reference string
+			if t, ok := result.Metadata["title"].(string); ok {
+				title = t
+			}
+			if ref, ok := result.Metadata["reference"].(string); ok && ref != "" {
+				reference = ref
+			}
+			// Only add if both title and reference exist
+			if title != "" && reference != "" {
+				references[title] = reference
+			}
+		}
+	}
+
+	return contextParts, references, nil
+}
+
+// searchWithHybrid performs hybrid search using OpenSearch
+func searchWithHybrid(ctx context.Context, query string, queryEmbedding []float64, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) ([]string, map[string]string, error) {
+	// Validate OpenSearch configuration
+	if cfg.OpenSearchEndpoint == "" {
+		return nil, nil, fmt.Errorf("OpenSearch endpoint not configured")
+	}
+
+	// Create OpenSearch client
+	osConfig, err := opensearch.NewConfigFromTypes(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create OpenSearch config: %w", err)
+	}
+
+	if err := osConfig.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("OpenSearch config validation failed: %w", err)
+	}
+
+	osClient, err := opensearch.NewClient(osConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create OpenSearch client: %w", err)
+	}
+
+	// Test connection
+	if err := osClient.HealthCheck(ctx); err != nil {
+		return nil, nil, fmt.Errorf("OpenSearch health check failed: %w", err)
+	}
+
+	// Create hybrid search engine
+	hybridEngine := opensearch.NewHybridSearchEngine(osClient, embeddingClient)
+
+	// Build hybrid query
+	hybridQuery := &opensearch.HybridQuery{
+		Query:          query,
+		IndexName:      getIndexNameForChat(cfg, "hybrid"),
+		Size:           contextSize,
+		BM25Weight:     chatBM25Weight,
+		VectorWeight:   chatVectorWeight,
+		FusionMethod:   opensearch.FusionMethodWeightedSum,
+		UseJapaneseNLP: chatUseJapaneseNLP,
+		TimeoutSeconds: 30,
+	}
+
+	// Execute search
+	log.Println("Executing OpenSearch hybrid search...")
+	result, err := hybridEngine.Search(ctx, hybridQuery)
+	if err != nil {
+		return nil, nil, fmt.Errorf("hybrid search failed: %w", err)
+	}
+
+	// Extract context and references from results
+	var contextParts []string
+	references := make(map[string]string)
+
+	for _, doc := range result.FusionResult.Documents {
+		// Unmarshal the source JSON
+		var source map[string]interface{}
+		if err := json.Unmarshal(doc.Source, &source); err != nil {
+			continue // Skip this document if we can't unmarshal
+		}
+
+		// Extract content
+		if content, ok := source["content"].(string); ok && content != "" {
+			contextParts = append(contextParts, content)
+		}
+
+		// Extract title and reference
+		var title, reference string
+		if t, ok := source["title"].(string); ok {
+			title = t
+		}
+		if ref, ok := source["reference"].(string); ok && ref != "" {
+			reference = ref
+		}
+		if title != "" && reference != "" {
+			references[title] = reference
+		}
+	}
+
+	return contextParts, references, nil
+}
+
+// searchWithOpenSearchOnly performs search using OpenSearch BM25 only
+// Removed OpenSearch-only path; chat uses hybrid search exclusively
+
+// getIndexNameForChat returns the index name for chat queries based on search mode
+func getIndexNameForChat(cfg *commontypes.Config, searchMode string) string {
+	switch searchMode {
+	case "opensearch", "hybrid":
+		// Use OpenSearch index for OpenSearch-based searches
+		if cfg.OpenSearchIndex != "" {
+			return cfg.OpenSearchIndex
+		}
+		return "kiberag-documents"
+	default:
+		// Default to OpenSearch index
+		if cfg.OpenSearchIndex != "" {
+			return cfg.OpenSearchIndex
+		}
+		return "kiberag-documents"
+	}
 }

@@ -10,8 +10,8 @@ Vector Index 設定推奨
 
   推奨設定
 
-  ディメンション: 1536次元
-  - Amazon Titan Text Embedding v2のデフォルト設定
+  ディメンション: 1024次元
+  - Amazon Titan Text Embedding v2の最大次元数
   - 大規模コーパス（6,583文書）に適したバランス
   - 検索精度と性能の最適なトレードオフ
 

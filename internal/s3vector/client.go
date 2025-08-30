@@ -3,6 +3,7 @@ package s3vector
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -60,14 +61,22 @@ func NewS3VectorService(cfg *S3Config) (*S3VectorService, error) {
 // StoreVector saves a vector with its metadata to S3 Vectors
 func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *commontypes.VectorData) error {
 	if vectorData == nil {
+		log.Printf("ERROR: vector data is nil")
 		return fmt.Errorf("vector data cannot be nil")
 	}
 
 	if vectorData.ID == "" {
+		log.Printf("ERROR: vector ID is empty")
 		return fmt.Errorf("vector ID cannot be empty")
 	}
 
+	if vectorData.Embedding == nil {
+		log.Printf("ERROR: vector embedding is nil for ID: %s", vectorData.ID)
+		return fmt.Errorf("vector embedding cannot be nil")
+	}
+
 	if len(vectorData.Embedding) == 0 {
+		log.Printf("ERROR: vector embedding is empty for ID: %s", vectorData.ID)
 		return fmt.Errorf("vector embedding cannot be empty")
 	}
 

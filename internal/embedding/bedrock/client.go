@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -92,6 +93,9 @@ func (c *BedrockClient) GenerateEmbedding(ctx context.Context, text string) ([]f
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
+	// Log text length for debugging
+	log.Printf("Generating embedding for text with length: %d characters", len(text))
+
 	// Prepare request payload for Titan v2
 	request := TitanEmbeddingRequest{
 		InputText:  text,
@@ -101,6 +105,7 @@ func (c *BedrockClient) GenerateEmbedding(ctx context.Context, text string) ([]f
 
 	requestBody, err := json.Marshal(request)
 	if err != nil {
+		log.Printf("ERROR: Failed to marshal request: %v", err)
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
@@ -112,21 +117,28 @@ func (c *BedrockClient) GenerateEmbedding(ctx context.Context, text string) ([]f
 		Body:        requestBody,
 	}
 
+	log.Printf("Invoking Bedrock model: %s", c.modelID)
 	result, err := c.client.InvokeModel(ctx, input)
 	if err != nil {
+		log.Printf("ERROR: Failed to invoke bedrock model: %v", err)
 		return nil, fmt.Errorf("failed to invoke bedrock model: %w", err)
 	}
 
 	// Parse response
 	var response TitanEmbeddingResponse
 	if err := json.Unmarshal(result.Body, &response); err != nil {
+		log.Printf("ERROR: Failed to parse response: %v, Body: %s", err, string(result.Body))
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	// Validate response
 	if len(response.Embedding) == 0 {
+		log.Printf("ERROR: No embedding data in response, token count: %d", response.InputTextTokenCount)
 		return nil, fmt.Errorf("no embedding data in response")
 	}
+
+	log.Printf("Successfully generated embedding with %d dimensions, token count: %d",
+		len(response.Embedding), response.InputTextTokenCount)
 
 	return response.Embedding, nil
 }
@@ -211,7 +223,7 @@ func (c *BedrockClient) ValidateConnection(ctx context.Context) error {
 func (c *BedrockClient) GetModelInfo() (string, int, error) {
 	// Titan v2 model dimensions based on model ID
 	dimensions := map[string]int{
-		"amazon.titan-embed-text-v2:0": 1024,
+		"amazon.titan-embed-text-v2:0": 1024, // Titan v2 default dimension
 		"amazon.titan-embed-text-v1":   1536,
 	}
 
@@ -257,7 +269,7 @@ func (c *BedrockClient) GetModelCapabilities() map[string]interface{} {
 	capabilities := map[string]interface{}{
 		"model_id":            c.modelID,
 		"max_input_tokens":    8000,  // Titan v2 limit
-		"output_dimensions":   1024,  // Titan v2 default
+		"output_dimensions":   1024,  // Titan v2 default dimension
 		"supports_batch":      false, // Titan doesn't support batch processing in single call
 		"supports_normalize":  true,
 		"supports_dimensions": true,

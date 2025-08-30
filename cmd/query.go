@@ -12,32 +12,45 @@ import (
 
 	appconfig "github.com/ca-srg/kiberag/internal/config"
 	"github.com/ca-srg/kiberag/internal/embedding/bedrock"
-	"github.com/ca-srg/kiberag/internal/filter"
-	"github.com/ca-srg/kiberag/internal/s3vector"
+	"github.com/ca-srg/kiberag/internal/opensearch"
 	commontypes "github.com/ca-srg/kiberag/internal/types"
 )
 
 var (
-	queryText   string
-	topK        int
-	outputJSON  bool
-	filterQuery string
+	queryText      string
+	topK           int
+	outputJSON     bool
+	filterQuery    string
+	searchMode     string
+	indexName      string
+	bm25Weight     float64
+	vectorWeight   float64
+	fusionMethod   string
+	useJapaneseNLP bool
+	timeout        int
 )
 
 var queryCmd = &cobra.Command{
 	Use:   "query",
-	Short: "Search vectors in S3 Vector Index using semantic similarity",
+	Short: "Search using hybrid OpenSearch + S3 Vector",
 	Long: `
-Search vectors stored in the S3 Vector Index using semantic similarity.
-Provide a text query and this command will convert it to an embedding
-and find the most similar vectors in your index.
-
-You can also apply metadata filters to narrow down results.
+Search using hybrid OpenSearch BM25 + Dense Vector search with S3 Vector.
+Supports two search modes:
+- hybrid: OpenSearch BM25 + Dense Vector with result fusion (default)
+- opensearch: OpenSearch only (BM25 or Vector)
 
 Examples:
-  kiberag query -q "machine learning algorithms"
-  kiberag query -q "API documentation" --top-k 5
-  kiberag query -q "error handling" --filter '{"category":"programming"}'
+  # Hybrid search (default)
+  kiberag query -q "機械学習アルゴリズム"
+  
+  # OpenSearch only with custom weights
+  kiberag query -q "API documentation" --search-mode opensearch --bm25-weight 0.7 --vector-weight 0.3
+  
+  # Japanese NLP processing
+  kiberag query -q "機械学習とデータベース" --japanese-nlp
+  
+  # Custom fusion method
+  kiberag query -q "search algorithms" --fusion-method weighted_sum --top-k 10
 `,
 	RunE: runQuery,
 }
@@ -48,11 +61,20 @@ func init() {
 	queryCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output results in JSON format")
 	queryCmd.Flags().StringVarP(&filterQuery, "filter", "f", "", "JSON metadata filter (e.g., '{\"category\":\"docs\"}')")
 
+	// New hybrid search flags
+	queryCmd.Flags().StringVar(&searchMode, "search-mode", "hybrid", "Search mode: hybrid|opensearch")
+	queryCmd.Flags().StringVar(&indexName, "index-name", "", "OpenSearch index name (optional, defaults to config)")
+	queryCmd.Flags().Float64Var(&bm25Weight, "bm25-weight", 0.5, "BM25 search weight in hybrid mode (0.0-1.0)")
+	queryCmd.Flags().Float64Var(&vectorWeight, "vector-weight", 0.5, "Vector search weight in hybrid mode (0.0-1.0)")
+	queryCmd.Flags().StringVar(&fusionMethod, "fusion-method", "rrf", "Result fusion method: rrf|weighted_sum|max_score")
+	queryCmd.Flags().BoolVar(&useJapaneseNLP, "japanese-nlp", false, "Enable Japanese text processing and analysis")
+	queryCmd.Flags().IntVar(&timeout, "timeout", 30, "Request timeout in seconds")
+
 	queryCmd.MarkFlagRequired("query")
 }
 
 func runQuery(cmd *cobra.Command, args []string) error {
-	log.Printf("Searching for: %s", queryText)
+	log.Printf("Starting %s search for: %s", searchMode, queryText)
 
 	// Load configuration
 	cfg, err := appconfig.Load()
@@ -60,109 +82,230 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Load AWS configuration with fixed region
-	awsConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
+	// Set context timeout
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	// Load AWS configuration
+	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.AWSS3Region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
-	// Create embedding client using Bedrock
+	// Create embedding client
 	embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
 
-	// Create S3 Vector service
-	s3Config := &s3vector.S3Config{
-		VectorBucketName: cfg.AWSS3VectorBucket,
-		IndexName:        cfg.AWSS3VectorIndex,
-		Region:           cfg.AWSS3Region,
+	// Execute search based on mode
+	switch searchMode {
+	case "hybrid":
+		return runHybridSearch(ctx, cfg, embeddingClient)
+	case "opensearch":
+		return runOpenSearchOnly(ctx, cfg, embeddingClient)
+	default:
+		return fmt.Errorf("invalid search mode: %s. Valid modes: hybrid, opensearch", searchMode)
 	}
+}
 
-	s3Service, err := s3vector.NewS3VectorService(s3Config)
+func runHybridSearch(ctx context.Context, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) error {
+	// OpenSearch hybrid search with S3 Vector
+	osResult, osErr := attemptOpenSearchHybrid(ctx, cfg, embeddingClient)
+	if osErr != nil {
+		return fmt.Errorf("hybrid search failed: %w", osErr)
+	}
+	return outputHybridResults(osResult, "hybrid")
+}
+
+func runOpenSearchOnly(ctx context.Context, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) error {
+	osResult, err := attemptOpenSearchHybrid(ctx, cfg, embeddingClient)
 	if err != nil {
-		return fmt.Errorf("failed to create S3 Vector service: %w", err)
+		return fmt.Errorf("OpenSearch search failed: %w", err)
+	}
+	return outputHybridResults(osResult, "opensearch")
+}
+
+func attemptOpenSearchHybrid(ctx context.Context, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) (*opensearch.HybridSearchResult, error) {
+	// Validate OpenSearch configuration
+	if cfg.OpenSearchEndpoint == "" {
+		return nil, fmt.Errorf("OpenSearch endpoint not configured")
 	}
 
-	// Validate connections
-	log.Println("Validating service connections...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := embeddingClient.ValidateConnection(ctx); err != nil {
-		return fmt.Errorf("embedding service validation failed: %w", err)
-	}
-
-	if err := s3Service.ValidateAccess(ctx); err != nil {
-		return fmt.Errorf("S3 Vector access validation failed: %w", err)
-	}
-
-	// Generate embedding for query text
-	log.Println("Generating embedding for query...")
-	queryEmbedding, err := embeddingClient.GenerateEmbedding(ctx, queryText)
+	// Create OpenSearch client
+	osConfig, err := opensearch.NewConfigFromTypes(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to generate embedding: %w", err)
+		return nil, fmt.Errorf("failed to create OpenSearch config: %w", err)
 	}
 
-	// Build filter with exclusions and user filter
-	filter, err := filter.BuildExclusionFilterFromJSON(cfg, filterQuery)
+	if err := osConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("OpenSearch config validation failed: %w", err)
+	}
+
+	osClient, err := opensearch.NewClient(osConfig)
 	if err != nil {
-		return fmt.Errorf("failed to build filter: %w", err)
+		return nil, fmt.Errorf("failed to create OpenSearch client: %w", err)
 	}
 
-	// Log filter for debugging
-	if len(cfg.ExcludeCategories) > 0 {
-		log.Printf("Excluding categories: %v", cfg.ExcludeCategories)
+	// Test connection
+	if err := osClient.HealthCheck(ctx); err != nil {
+		return nil, fmt.Errorf("OpenSearch health check failed: %w", err)
 	}
 
-	// Execute vector query
-	log.Printf("Searching for %d similar vectors...", topK)
-	result, err := s3Service.QueryVectors(ctx, queryEmbedding, topK, filter)
-	if err != nil {
-		return fmt.Errorf("failed to query vectors: %w", err)
+	// Create hybrid search engine
+	hybridEngine := opensearch.NewHybridSearchEngine(osClient, embeddingClient)
+
+	// Build hybrid query
+	hybridQuery := &opensearch.HybridQuery{
+		Query:          queryText,
+		IndexName:      getIndexName(cfg),
+		Size:           topK,
+		BM25Weight:     bm25Weight,
+		VectorWeight:   vectorWeight,
+		FusionMethod:   getFusionMethod(),
+		UseJapaneseNLP: useJapaneseNLP,
+		TimeoutSeconds: timeout,
 	}
 
-	// Output results
+	// Parse filters
+	if filterQuery != "" {
+		filters, err := parseFilters(filterQuery)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse filters: %w", err)
+		}
+		hybridQuery.Filters = filters
+	}
+
+	// Execute search
+	log.Println("Executing OpenSearch hybrid search...")
+	return hybridEngine.Search(ctx, hybridQuery)
+}
+
+func getIndexName(cfg *commontypes.Config) string {
+	// Use explicitly provided index name if available
+	if indexName != "" {
+		return indexName
+	}
+
+	// Determine index based on search mode
+	switch searchMode {
+	case "opensearch", "hybrid":
+		// Use OpenSearch index for OpenSearch-based searches
+		if cfg.OpenSearchIndex != "" {
+			return cfg.OpenSearchIndex
+		}
+		return "kiberag-documents"
+	default:
+		// Default: try OpenSearch index first, then S3 Vector index
+		if cfg.OpenSearchIndex != "" {
+			return cfg.OpenSearchIndex
+		}
+		if cfg.AWSS3VectorIndex != "" {
+			return cfg.AWSS3VectorIndex
+		}
+		return "kiberag-documents"
+	}
+}
+
+func getFusionMethod() opensearch.FusionMethod {
+	switch fusionMethod {
+	case "weighted_sum":
+		return opensearch.FusionMethodWeightedSum
+	case "max_score":
+		return opensearch.FusionMethodMaxScore
+	default:
+		return opensearch.FusionMethodRRF
+	}
+}
+
+func parseFilters(filterJSON string) (map[string]string, error) {
+	if filterJSON == "" {
+		return nil, nil
+	}
+
+	var rawFilters map[string]interface{}
+	if err := json.Unmarshal([]byte(filterJSON), &rawFilters); err != nil {
+		return nil, err
+	}
+
+	filters := make(map[string]string)
+	for key, value := range rawFilters {
+		if strValue, ok := value.(string); ok {
+			filters[key] = strValue
+		}
+	}
+
+	return filters, nil
+}
+
+func outputHybridResults(result *opensearch.HybridSearchResult, searchType string) error {
 	if outputJSON {
-		result.Query = queryText
 		jsonOutput, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON output: %w", err)
 		}
 		fmt.Println(string(jsonOutput))
-	} else {
-		printQueryResults(result, queryText, cfg)
+		return nil
 	}
 
+	printHybridResults(result, searchType)
 	return nil
 }
 
-func printQueryResults(result *commontypes.QueryVectorsResult, query string, cfg *commontypes.Config) {
-	fmt.Printf("\nQuery: %s\n", query)
-	fmt.Printf("Found %d similar vectors (Top-%d results):\n", result.TotalCount, result.TopK)
-	fmt.Printf("Bucket: %s\n", cfg.AWSS3VectorBucket)
-	fmt.Printf("Index: %s\n", cfg.AWSS3VectorIndex)
-	fmt.Println("\nResults:")
+func printHybridResults(result *opensearch.HybridSearchResult, searchType string) {
+	fmt.Printf("\nQuery: %s\n", queryText)
+	fmt.Printf("Search Type: %s\n", searchType)
+	fmt.Printf("Execution Time: %v\n", result.ExecutionTime)
 
-	if len(result.Results) == 0 {
-		fmt.Println("  (no similar vectors found)")
-		return
+	if result.ProcessedQuery != nil {
+		fmt.Printf("Processed Query Language: %s\n", result.ProcessedQuery.Language)
 	}
 
-	for i, res := range result.Results {
-		fmt.Printf("\n  %d. Vector: %s\n", i+1, res.Key)
-		fmt.Printf("     Distance: %.4f\n", res.Distance)
+	if result.FusionResult != nil {
+		fmt.Printf("Found %d results (Fusion: %s)\n", result.FusionResult.TotalHits, result.FusionResult.FusionType)
+		fmt.Printf("BM25 Results: %d, Vector Results: %d\n", result.FusionResult.BM25Results, result.FusionResult.VectorResults)
 
-		if res.Metadata != nil {
-			if title, ok := res.Metadata["title"].(string); ok && title != "" {
-				fmt.Printf("     Title: %s\n", title)
+		if len(result.Errors) > 0 {
+			fmt.Printf("Warnings: %v\n", result.Errors)
+			fmt.Printf("Partial Results: %v\n", result.PartialResults)
+		}
+
+		fmt.Println("\nResults:")
+
+		if len(result.FusionResult.Documents) == 0 {
+			fmt.Println("  (no results found)")
+			return
+		}
+
+		for i, doc := range result.FusionResult.Documents {
+			fmt.Printf("\n  %d. Document: %s\n", i+1, doc.ID)
+			fmt.Printf("     Fused Score: %.4f", doc.FusedScore)
+			if doc.BM25Score > 0 {
+				fmt.Printf(" (BM25: %.4f)", doc.BM25Score)
 			}
-			if category, ok := res.Metadata["category"].(string); ok && category != "" {
-				fmt.Printf("     Category: %s\n", category)
+			if doc.VectorScore > 0 {
+				fmt.Printf(" (Vector: %.4f)", doc.VectorScore)
 			}
-			if filePath, ok := res.Metadata["file_path"].(string); ok && filePath != "" {
-				fmt.Printf("     File: %s\n", filePath)
-			}
-			if createdAt, ok := res.Metadata["created_at"].(string); ok && createdAt != "" {
-				fmt.Printf("     Created: %s\n", createdAt)
+			fmt.Printf(" [%s]\n", doc.SearchType)
+
+			if doc.Source != nil {
+				// Unmarshal the source JSON
+				var source map[string]interface{}
+				if err := json.Unmarshal(doc.Source, &source); err == nil {
+					if title, ok := source["title"].(string); ok && title != "" {
+						fmt.Printf("     Title: %s\n", title)
+					}
+					if category, ok := source["category"].(string); ok && category != "" {
+						fmt.Printf("     Category: %s\n", category)
+					}
+					if filePath, ok := source["file_path"].(string); ok && filePath != "" {
+						fmt.Printf("     File: %s\n", filePath)
+					}
+				}
 			}
 		}
 	}
+
+	fmt.Printf("\nPerformance:\n")
+	fmt.Printf("  BM25 Time: %v\n", result.BM25Time)
+	fmt.Printf("  Vector Time: %v\n", result.VectorTime)
+	fmt.Printf("  Embedding Time: %v\n", result.EmbeddingTime)
+	fmt.Printf("  Fusion Time: %v\n", result.FusionTime)
 }
