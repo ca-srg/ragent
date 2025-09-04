@@ -407,6 +407,34 @@ curl -u "master_user:master_pass" -X PUT \
 - BM25最小一致数: 精度向上のために"2"または"70%"
 - 日本語NLP使用: true（kuromojiトークナイザーを有効化）
 
+## セットアップ自動化（setup.sh）
+
+AWS OpenSearch のセキュリティ設定（ドメインアクセス・ロール・ロールマッピング）、RAG用インデックス作成、Bedrock/S3 Vectors の IAM 権限付与を対話式に一括実行するスクリプトです。OpenSearch Security API への呼び出しは SigV4 署名で行います。
+
+前提条件
+- AWS CLI v2 が設定済み（対象ドメイン/IAM を更新できる権限）
+- OpenSearch ドメインへ到達可能（VPC エンドポイントへ直接、または `https://localhost:9200` へのポートフォワード）
+
+実行
+```bash
+bash setup.sh
+```
+
+入力される内容（対話）
+- AWSアカウントID、OpenSearchドメイン/リージョン、エンドポイント利用（直アクセス or localhost:9200）、IAMロールARN（RAG実行ロール、必要なら管理ロール）、インデックス名、S3 Vectors バケット/インデックス/リージョン、Bedrock リージョンとモデルID
+
+実行される内容
+- ドメインのアクセスポリシー更新（指定したIAMロールを許可）
+- （任意）Advanced Security の MasterUserARN 設定
+- OpenSearch ロール `kibela_rag_role` の作成/更新（クラスタヘルス + <index>* への CRUD/Bulk 権限）とロールマッピング
+- 対象インデックスが無ければ作成（日本語 `kuromoji` + `knn_vector` 1024, lucene/cosinesimil）
+- （任意）トラブルシュート用に RAGロールを `all_access` に一時マッピング
+- RAGロールへ Bedrock InvokeModel と S3 Vectors（指定の bucket/index）用の IAM インラインポリシーを付与
+
+注意事項
+- ポートフォワードを使う場合は、本スクリプトが Host ヘッダを VPC ドメインへ設定するため `https://localhost:9200` でも SigV4 検証が通ります。
+- `all_access` 付与は検証用の一時措置です。検証完了後は除去してください。
+
 ## ライセンス
 
 このプロジェクトのライセンス情報については、リポジトリのLICENSEファイルを参照してください。

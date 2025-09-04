@@ -109,10 +109,6 @@ const (
 
 // Config represents the vectorizer configuration
 type Config struct {
-	// Kibela configuration
-	KibelaToken string `json:"kibela_token" env:"KIBELA_TOKEN,required=true"`
-	KibelaTeam  string `json:"kibela_team" env:"KIBELA_TEAM,required=true"`
-
 	// AWS S3 Vectors configuration
 	AWSS3VectorBucket    string        `json:"aws_s3_vector_bucket" env:"AWS_S3_VECTOR_BUCKET,required=true"`
 	AWSS3VectorIndex     string        `json:"aws_s3_vector_index" env:"AWS_S3_VECTOR_INDEX,required=true"`
