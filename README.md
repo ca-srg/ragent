@@ -403,6 +403,34 @@ For optimal RAG performance, configure hybrid search with appropriate weights:
 - BM25 Minimum Should Match: "2" or "70%" for precision
 - Use Japanese NLP: true (enables kuromoji tokenizer)
 
+## Automated Setup (setup.sh)
+
+Use the interactive `setup.sh` to configure AWS OpenSearch security, create/mapping roles, create the target index, and grant IAM permissions for Bedrock and S3 Vectors. This script drives AWS CLI and signs OpenSearch Security API calls with SigV4.
+
+Prerequisites
+- AWS CLI v2 configured (credentials/profile with permission to update the domain and IAM)
+- OpenSearch domain reachable (either VPC endpoint directly, or local port‑forward to `https://localhost:9200` with Host/SNI set to the VPC endpoint)
+
+Run
+```bash
+bash setup.sh
+```
+
+What it asks
+- AWS Account ID, OpenSearch domain/region, endpoint usage (direct vs. localhost:9200), IAM role ARNs (RAG runtime, optional master/admin), index name, S3 Vectors bucket/index/region, Bedrock region and model IDs.
+
+What it does
+- Updates the domain access policy to allow specified IAM roles
+- (Optional) Sets AdvancedSecurity MasterUserARN
+- Creates/updates OpenSearch role `kibela_rag_role` with cluster health + CRUD/bulk on <index>* and maps backend_roles to your IAM roles
+- Creates the index if missing with Japanese analyzers and `knn_vector` (1024, lucene, cosinesimil)
+- (Optional) Temporarily maps `all_access` to the RAG role for troubleshooting
+- Adds IAM inline policies to the RAG role for Bedrock InvokeModel and S3 Vectors bucket/index operations
+
+Notes
+- If you use local port‑forwarding, the script sets the Host header to the VPC endpoint so SigV4 validation works against `https://localhost:9200`.
+- The `all_access` mapping is optional and intended for short‑term troubleshooting; remove it after verification.
+
 ## License
 
 For license information, please refer to the LICENSE file in the repository.
