@@ -97,6 +97,7 @@ ask "S3 Vectors index name" "$OS_INDEX"; S3V_INDEX="$REPLY"
 
 echo "== Bedrock (models and region) =="
 ask "Bedrock region" "us-east-1"; BDR_REGION="$REPLY"
+ask "Grant UNRESTRICTED Bedrock invoke (all models, all regions)? (y/N)" "y"; BDR_UNRESTRICTED="${REPLY,,}"
 ask "Embedding model ID" "amazon.titan-embed-text-v2:0"; EMB_MODEL_ID="$REPLY"
 ask "Chat model ID (optional, leave empty to skip)" "anthropic.claude-3-5-sonnet-20240620-v1:0"; CHAT_MODEL_ID="$REPLY"
 
@@ -114,7 +115,8 @@ Plan:
 - Create index if missing: ${OS_INDEX}
 - Temp map all_access to RAG role: ${ADD_ALL_ACCESS}
 - IAM put-role-policy on $(basename_arn "${ROLE_RAG_ARN}"):
-  - Bedrock (${BDR_REGION}): ${EMB_MODEL_ID}${CHAT_MODEL_ID:+, ${CHAT_MODEL_ID}}
+  - Bedrock: ${BDR_UNRESTRICTED}
+    - If restricted, region=${BDR_REGION}, models=${EMB_MODEL_ID}${CHAT_MODEL_ID:+, ${CHAT_MODEL_ID}}
   - S3 Vectors (${S3V_REGION}): bucket=${S3V_BUCKET}, index=${S3V_INDEX}
 PLAN
 
@@ -229,7 +231,37 @@ fi
 ROLE_RAG_NAME="$(basename_arn "$ROLE_RAG_ARN")"
 
 # Bedrock
-if [ -n "$EMB_MODEL_ID" ] || [ -n "$CHAT_MODEL_ID" ]; then
+if [ "$BDR_UNRESTRICTED" = "y" ] || [ "$BDR_UNRESTRICTED" = "yes" ]; then
+  cat > /tmp/bedrock-invoke.json <<'JSON'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockUnrestrictedInvoke",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:Converse",
+        "bedrock:ConverseStream"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/*"
+      ]
+    },
+    {
+      "Sid": "BedrockModelDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:ListFoundationModels",
+        "bedrock:GetFoundationModel"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+JSON
+else
   BDR_STATEMENTS=""
   if [ -n "$EMB_MODEL_ID" ]; then
     BDR_STATEMENTS="${BDR_STATEMENTS}{\"Sid\":\"InvokeEmb\",\"Effect\":\"Allow\",\"Action\":[\"bedrock:InvokeModel\",\"bedrock:InvokeModelWithResponseStream\"],\"Resource\":[\"arn:aws:bedrock:${BDR_REGION}::foundation-model/${EMB_MODEL_ID}\"]}"
@@ -239,8 +271,8 @@ if [ -n "$EMB_MODEL_ID" ] || [ -n "$CHAT_MODEL_ID" ]; then
     BDR_STATEMENTS="${BDR_STATEMENTS}{\"Sid\":\"InvokeChat\",\"Effect\":\"Allow\",\"Action\":[\"bedrock:InvokeModel\",\"bedrock:InvokeModelWithResponseStream\"],\"Resource\":[\"arn:aws:bedrock:${BDR_REGION}::foundation-model/${CHAT_MODEL_ID}\"]}"
   fi
   printf '{ "Version":"2012-10-17", "Statement":[%s] }\n' "$BDR_STATEMENTS" > /tmp/bedrock-invoke.json
-  aws iam put-role-policy --role-name "$ROLE_RAG_NAME" --policy-name AllowBedrockInvoke --policy-document file:///tmp/bedrock-invoke.json
 fi
+aws iam put-role-policy --role-name "$ROLE_RAG_NAME" --policy-name AllowBedrockInvoke --policy-document file:///tmp/bedrock-invoke.json
 
 # S3 Vectors
 cat > /tmp/s3vectors-inline.json <<JSON
@@ -275,4 +307,3 @@ echo "== Index list =="
 os_curl GET "/_cat/indices/${OS_INDEX}?v" || true
 echo
 echo "Setup completed."
-

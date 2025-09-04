@@ -4,3 +4,7 @@ markdown/*.md
 .serena
 kiberag
 mdrag
+memory
+scripts
+templates
+.claude
