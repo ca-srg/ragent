@@ -180,7 +180,6 @@ mdRAG chat --system "You are a helpful assistant specialized in documentation."
 
 **Features:**
 - Hybrid search combining BM25 and vector similarity
-- Automatic fallback to S3 Vector if OpenSearch is unavailable
 - Context-aware responses using retrieved documents
 - Conversation history management
 - Reference citations with source links
@@ -190,6 +189,22 @@ mdRAG chat --system "You are a helpful assistant specialized in documentation."
 - `exit` or `quit`: End the chat session
 - `clear`: Clear conversation history
 - `help`: Show available commands
+
+### 5. slack-bot - Slack Bot for RAG Search (New)
+
+Start a Slack Bot that listens for mentions and answers with RAG results.
+
+```bash
+mdRAG slack-bot
+```
+
+Requirements:
+- Set `SLACK_BOT_TOKEN` in your environment (see `.env.example`).
+- Invite the bot user to the target Slack channel.
+- Optionally enable threading with `SLACK_ENABLE_THREADING=true`.
+ - Requires OpenSearch configuration (`OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, `OPENSEARCH_REGION`). Slack Bot does not use S3 Vector fallback.
+
+Details: see `docs/slack-bot.md`.
 
 ## Development
 
@@ -219,6 +234,7 @@ mdRAG/
 │   ├── query.go           # query command
 │   ├── list.go            # list command
 │   ├── chat.go            # chat command
+│   ├── slack.go           # slack-bot command (new)
 │   └── vectorize.go       # vectorize command
 ├── internal/              # Internal libraries
 │   ├── config/           # Configuration management

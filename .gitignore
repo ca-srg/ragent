@@ -2,9 +2,11 @@ markdown/*.md
 .env
 .kiro
 .serena
-kiberag
 mdrag
+# specify
 memory
 scripts
 templates
 .claude
+specs
+# end of specify

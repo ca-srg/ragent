@@ -18,24 +18,24 @@ type HybridSearchEngine struct {
 }
 
 type HybridQuery struct {
-	Query                   string            `json:"query"`
-	IndexName               string            `json:"index_name"`
-	Size                    int               `json:"size"`
-	From                    int               `json:"from"`
-	Fields                  []string          `json:"fields"`
-	VectorField             string            `json:"vector_field"`
-	K                       int               `json:"k"`
-	EfSearch                int               `json:"ef_search,omitempty"`
-	Filters                 map[string]string `json:"filters,omitempty"`
-	MinScore                float64           `json:"min_score,omitempty"`
-	BM25Weight              float64           `json:"bm25_weight"`
-	VectorWeight            float64           `json:"vector_weight"`
-	FusionMethod            FusionMethod      `json:"fusion_method"`
-	RankConstant            float64           `json:"rank_constant,omitempty"`
-	UseJapaneseNLP          bool              `json:"use_japanese_nlp"`
-	TimeoutSeconds          int               `json:"timeout_seconds,omitempty"`
-	BM25Operator            string            `json:"bm25_operator,omitempty"`            // "and" or "or", defaults to "or"
-	BM25MinimumShouldMatch  string            `json:"bm25_minimum_should_match,omitempty"` // e.g., "2", "75%"
+	Query                  string            `json:"query"`
+	IndexName              string            `json:"index_name"`
+	Size                   int               `json:"size"`
+	From                   int               `json:"from"`
+	Fields                 []string          `json:"fields"`
+	VectorField            string            `json:"vector_field"`
+	K                      int               `json:"k"`
+	EfSearch               int               `json:"ef_search,omitempty"`
+	Filters                map[string]string `json:"filters,omitempty"`
+	MinScore               float64           `json:"min_score,omitempty"`
+	BM25Weight             float64           `json:"bm25_weight"`
+	VectorWeight           float64           `json:"vector_weight"`
+	FusionMethod           FusionMethod      `json:"fusion_method"`
+	RankConstant           float64           `json:"rank_constant,omitempty"`
+	UseJapaneseNLP         bool              `json:"use_japanese_nlp"`
+	TimeoutSeconds         int               `json:"timeout_seconds,omitempty"`
+	BM25Operator           string            `json:"bm25_operator,omitempty"`             // "and" or "or", defaults to "or"
+	BM25MinimumShouldMatch string            `json:"bm25_minimum_should_match,omitempty"` // e.g., "2", "75%"
 }
 
 type HybridSearchResult struct {

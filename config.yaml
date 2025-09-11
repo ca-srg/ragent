@@ -1,0 +1,52 @@
+# mdRAG Configuration File
+
+# AWS Configuration
+aws:
+  region: ${AWS_REGION}
+  access_key_id: ${AWS_ACCESS_KEY_ID}
+  secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+
+# S3 Vector Configuration
+s3_vector:
+  index_name: ${S3_VECTOR_INDEX_NAME}
+  bucket_name: ${S3_BUCKET_NAME}
+  dimension: 1024
+  distance_metric: cosine
+
+# OpenSearch Configuration
+opensearch:
+  endpoint: ${OPENSEARCH_ENDPOINT}
+  username: ${OPENSEARCH_USERNAME}
+  password: ${OPENSEARCH_PASSWORD}
+  index_name: mdrag
+  dense_count: 100
+  bm25_count: 200
+  language_analyzer: kuromoji
+
+# RAG Configuration
+rag:
+  exclude_categories: ${EXCLUDE_CATEGORIES}
+  search_mode: hybrid
+  top_k: 5
+
+# Slack Bot Configuration
+slack:
+  bot_token: ${SLACK_BOT_TOKEN}
+  app_token: ${SLACK_APP_TOKEN}
+  socket_mode: ${SLACK_SOCKET_MODE:-false}
+  response_timeout: ${SLACK_RESPONSE_TIMEOUT:-5s}
+  max_results: ${SLACK_MAX_RESULTS:-5}
+  enable_threading: ${SLACK_ENABLE_THREADING:-false}
+  rate_limit:
+    user_per_minute: 10
+    channel_per_minute: 30
+    global_per_minute: 100
+  message_cache:
+    size: 100
+    ttl: 3600
+  retry:
+    max_attempts: 3
+    backoff_seconds: 1
+  logging:
+    level: info
+    format: json

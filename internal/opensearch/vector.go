@@ -102,7 +102,7 @@ func (c *Client) SearchDenseVector(ctx context.Context, indexName string, query 
 
 		// Convert opensearchapi.SearchResp to our VectorSearchResponse
 		vectorResponse := &VectorSearchResponse{
-			Took:   searchResp.Took,
+			Took: searchResp.Took,
 			Shards: Shards{
 				Total:      searchResp.Shards.Total,
 				Successful: searchResp.Shards.Successful,
