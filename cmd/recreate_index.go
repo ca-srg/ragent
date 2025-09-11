@@ -75,7 +75,7 @@ func runRecreateIndex(cmd *cobra.Command, args []string) error {
 		} else {
 			log.Printf("Successfully deleted index: %s", indexName)
 		}
-		
+
 		// Wait a bit for the deletion to propagate
 		time.Sleep(2 * time.Second)
 	}

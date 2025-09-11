@@ -1,6 +1,6 @@
 module github.com/ca-srg/mdrag
 
-go 1.25.0
+go 1.23.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.38.2
@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3vectors v1.4.3
 	github.com/netflix/go-env v0.0.0-20220526054621-78278af1949d
 	github.com/opensearch-project/opensearch-go/v4 v4.5.0
+	github.com/slack-go/slack v0.17.3
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sync v0.16.0
@@ -30,6 +31,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.1 // indirect
 	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.7 // indirect

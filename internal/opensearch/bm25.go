@@ -102,7 +102,7 @@ func (c *Client) SearchBM25(ctx context.Context, indexName string, query *BM25Qu
 
 		// Convert opensearchapi.SearchResp to our BM25SearchResponse
 		bm25Response := &BM25SearchResponse{
-			Took:   searchResp.Took,
+			Took: searchResp.Took,
 			Shards: Shards{
 				Total:      searchResp.Shards.Total,
 				Successful: searchResp.Shards.Successful,

@@ -86,24 +86,24 @@ func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *commontyp
 		float32Embedding[i] = float32(v)
 	}
 
-    // Prepare metadata for S3 Vectors
-    // NOTE: S3 Vectorsのフィルタ可能メタデータは最大2048バイト制限があるため
-    // 大きい本文は入れず、短い抜粋のみを保存する
-    metadataMap := map[string]interface{}{
-        "title":      vectorData.Metadata.Title,
-        "category":   vectorData.Metadata.Category,
-        "file_path":  vectorData.Metadata.FilePath,
-        "created_at": vectorData.CreatedAt.Format(time.RFC3339),
-        "word_count": vectorData.Metadata.WordCount,
-    }
+	// Prepare metadata for S3 Vectors
+	// NOTE: S3 Vectorsのフィルタ可能メタデータは最大2048バイト制限があるため
+	// 大きい本文は入れず、短い抜粋のみを保存する
+	metadataMap := map[string]interface{}{
+		"title":      vectorData.Metadata.Title,
+		"category":   vectorData.Metadata.Category,
+		"file_path":  vectorData.Metadata.FilePath,
+		"created_at": vectorData.CreatedAt.Format(time.RFC3339),
+		"word_count": vectorData.Metadata.WordCount,
+	}
 
-    // Add short excerpt of content to avoid metadata size limits (<= 2048 bytes in total)
-    if vectorData.Content != "" {
-        excerpt := truncateUTF8ByBytes(vectorData.Content, 512) // up to 512 bytes excerpt
-        if excerpt != "" {
-            metadataMap["content_excerpt"] = excerpt
-        }
-    }
+	// Add short excerpt of content to avoid metadata size limits (<= 2048 bytes in total)
+	if vectorData.Content != "" {
+		excerpt := truncateUTF8ByBytes(vectorData.Content, 512) // up to 512 bytes excerpt
+		if excerpt != "" {
+			metadataMap["content_excerpt"] = excerpt
+		}
+	}
 
 	// Add reference if available
 	if vectorData.Metadata.Reference != "" {
@@ -152,33 +152,33 @@ func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *commontyp
 // truncateUTF8ByBytes returns a string truncated so that its UTF-8 byte length
 // does not exceed the specified limit. It preserves rune boundaries.
 func truncateUTF8ByBytes(s string, limit int) string {
-    if limit <= 0 || len(s) == 0 {
-        return ""
-    }
-    // Fast path: already within limit
-    if len([]byte(s)) <= limit {
-        return s
-    }
-    // Walk runes and accumulate until exceeding limit
-    var (
-        total int
-        end   int
-    )
-    for i, r := range s {
-        // size in bytes of this rune in UTF-8
-        var buf [4]byte
-        n := copy(buf[:], string(r))
-        if total+n > limit {
-            end = i
-            break
-        }
-        total += n
-        end = i + n // i is byte index of rune start; but range over string gives byte index, so increment by n
-    }
-    if end <= 0 || end > len(s) {
-        end = len(s)
-    }
-    return s[:end]
+	if limit <= 0 || len(s) == 0 {
+		return ""
+	}
+	// Fast path: already within limit
+	if len([]byte(s)) <= limit {
+		return s
+	}
+	// Walk runes and accumulate until exceeding limit
+	var (
+		total int
+		end   int
+	)
+	for i, r := range s {
+		// size in bytes of this rune in UTF-8
+		var buf [4]byte
+		n := copy(buf[:], string(r))
+		if total+n > limit {
+			end = i
+			break
+		}
+		total += n
+		end = i + n // i is byte index of rune start; but range over string gives byte index, so increment by n
+	}
+	if end <= 0 || end > len(s) {
+		end = len(s)
+	}
+	return s[:end]
 }
 
 // ValidateAccess checks if S3 Vector bucket is accessible

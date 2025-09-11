@@ -58,7 +58,7 @@ func (osi *OpenSearchIndexerImpl) IndexDocument(ctx context.Context, indexName s
 		if err != nil {
 			return WrapError(err, ErrorTypeValidation, document.FilePath)
 		}
-		
+
 		req := opensearchapi.IndexReq{
 			Index:      indexName,
 			DocumentID: document.ID,

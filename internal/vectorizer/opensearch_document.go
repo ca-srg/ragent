@@ -39,13 +39,13 @@ func NewOpenSearchDocument(vectorData *VectorData, contentJa string) *OpenSearch
 		embeddingCopy = make([]float64, len(vectorData.Embedding))
 		copy(embeddingCopy, vectorData.Embedding)
 	}
-	
+
 	// Ensure tags is not nil
 	tags := vectorData.Metadata.Tags
 	if tags == nil {
 		tags = []string{}
 	}
-	
+
 	return &OpenSearchDocument{
 		ID:           vectorData.ID,
 		Title:        vectorData.Metadata.Title,
@@ -241,7 +241,7 @@ func (doc *OpenSearchDocument) ToMap() map[string]interface{} {
 		log.Printf("WARNING: embedding is nil for document %s, using empty slice", doc.ID)
 		embedding = []float64{}
 	}
-	
+
 	result := map[string]interface{}{
 		"title":      doc.Title,
 		"content":    doc.Content,
@@ -304,7 +304,7 @@ func (doc *OpenSearchDocument) MarshalJSON() ([]byte, error) {
 		TotalChunks  *int                   `json:"total_chunks,omitempty"`
 		CustomFields map[string]interface{} `json:"custom_fields,omitempty"`
 	}
-	
+
 	jsonDoc := &JSONDoc{
 		ID:           doc.ID,
 		Title:        doc.Title,
@@ -326,7 +326,7 @@ func (doc *OpenSearchDocument) MarshalJSON() ([]byte, error) {
 		TotalChunks:  doc.TotalChunks,
 		CustomFields: doc.CustomFields,
 	}
-	
+
 	return json.Marshal(jsonDoc)
 }
 

@@ -15,30 +15,28 @@ import (
 
 	appconfig "github.com/ca-srg/mdrag/internal/config"
 	"github.com/ca-srg/mdrag/internal/embedding/bedrock"
-	"github.com/ca-srg/mdrag/internal/filter"
 	"github.com/ca-srg/mdrag/internal/opensearch"
-	"github.com/ca-srg/mdrag/internal/s3vector"
 	commontypes "github.com/ca-srg/mdrag/internal/types"
 )
 
 var (
-    contextSize        int
-    interactive        bool
-    systemPrompt       string
-    chatBM25Weight     float64
-    chatVectorWeight   float64
-    chatUseJapaneseNLP bool
+	contextSize        int
+	interactive        bool
+	systemPrompt       string
+	chatBM25Weight     float64
+	chatVectorWeight   float64
+	chatUseJapaneseNLP bool
 )
 
 var chatCmd = &cobra.Command{
 	Use:   "chat",
-	Short: "Interactive chat using S3 Vector for context and Bedrock for responses",
+	Short: "Interactive chat using OpenSearch hybrid search for context",
 	Long: `
-Start an interactive chat session that uses your S3 Vector Index for context retrieval
-and Amazon Bedrock (Claude Sonnet 4) for generating responses.
+Start an interactive chat session that uses OpenSearch hybrid search (BM25 + vector)
+for context retrieval and Amazon Bedrock (Claude Sonnet 4) for generating responses.
 
-The chat will search your indexed documents for relevant context based on your questions
-and provide informed responses using the retrieved information.
+The chat searches your OpenSearch index for relevant context and answers using the
+retrieved information. OpenSearch configuration is required.
 
 Examples:
   kiberag chat                           # Start interactive chat
@@ -49,12 +47,12 @@ Examples:
 }
 
 func init() {
-    chatCmd.Flags().IntVarP(&contextSize, "context-size", "c", 5, "Number of context documents to retrieve")
-    chatCmd.Flags().BoolVarP(&interactive, "interactive", "i", true, "Run in interactive mode")
-    chatCmd.Flags().StringVarP(&systemPrompt, "system", "s", "", "System prompt for the chat")
-    chatCmd.Flags().Float64VarP(&chatBM25Weight, "bm25-weight", "b", 0.5, "Weight for BM25 scoring in hybrid search (0-1)")
-    chatCmd.Flags().Float64VarP(&chatVectorWeight, "vector-weight", "v", 0.5, "Weight for vector scoring in hybrid search (0-1)")
-    chatCmd.Flags().BoolVar(&chatUseJapaneseNLP, "use-japanese-nlp", true, "Use Japanese NLP optimization for OpenSearch")
+	chatCmd.Flags().IntVarP(&contextSize, "context-size", "c", 5, "Number of context documents to retrieve")
+	chatCmd.Flags().BoolVarP(&interactive, "interactive", "i", true, "Run in interactive mode")
+	chatCmd.Flags().StringVarP(&systemPrompt, "system", "s", "", "System prompt for the chat")
+	chatCmd.Flags().Float64VarP(&chatBM25Weight, "bm25-weight", "b", 0.5, "Weight for BM25 scoring in hybrid search (0-1)")
+	chatCmd.Flags().Float64VarP(&chatVectorWeight, "vector-weight", "v", 0.5, "Weight for vector scoring in hybrid search (0-1)")
+	chatCmd.Flags().BoolVar(&chatUseJapaneseNLP, "use-japanese-nlp", true, "Use Japanese NLP optimization for OpenSearch")
 }
 
 func runChat(cmd *cobra.Command, args []string) error {
@@ -64,6 +62,11 @@ func runChat(cmd *cobra.Command, args []string) error {
 	cfg, err := appconfig.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Require OpenSearch configuration for chat (fallback removed)
+	if cfg.OpenSearchEndpoint == "" {
+		return fmt.Errorf("OpenSearch is required for chat: set OPENSEARCH_ENDPOINT and related settings")
 	}
 
 	// Load AWS configuration - FIXED to us-east-1 for Bedrock chat functionality
@@ -79,18 +82,6 @@ func runChat(cmd *cobra.Command, args []string) error {
 	// Create embedding client for context retrieval
 	embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
 
-	// Create S3 Vector service
-	s3Config := &s3vector.S3Config{
-		VectorBucketName: cfg.AWSS3VectorBucket,
-		IndexName:        cfg.AWSS3VectorIndex,
-		Region:           cfg.AWSS3Region,
-	}
-
-	s3Service, err := s3vector.NewS3VectorService(s3Config)
-	if err != nil {
-		return fmt.Errorf("failed to create S3 Vector service: %w", err)
-	}
-
 	// Validate connections
 	log.Println("Validating service connections...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -104,8 +95,9 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("embedding service validation failed: %w", err)
 	}
 
-	if err := s3Service.ValidateAccess(ctx); err != nil {
-		return fmt.Errorf("S3 Vector access validation failed: %w", err)
+	// Optionally validate OpenSearch is reachable early
+	if err := validateOpenSearch(ctx, cfg, embeddingClient); err != nil {
+		return err
 	}
 
 	log.Printf("Chat ready! Using model: %s", cfg.ChatModel)
@@ -115,10 +107,10 @@ func runChat(cmd *cobra.Command, args []string) error {
 	fmt.Println("=============================")
 	fmt.Println()
 
-	return startChatLoop(chatClient, embeddingClient, s3Service, cfg)
+	return startChatLoop(chatClient, embeddingClient, cfg)
 }
 
-func startChatLoop(chatClient, embeddingClient *bedrock.BedrockClient, s3Service *s3vector.S3VectorService, cfg *commontypes.Config) error {
+func startChatLoop(chatClient, embeddingClient *bedrock.BedrockClient, cfg *commontypes.Config) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	var conversationHistory []bedrock.ChatMessage
 
@@ -150,7 +142,7 @@ func startChatLoop(chatClient, embeddingClient *bedrock.BedrockClient, s3Service
 		}
 
 		// Generate response
-		response, err := generateChatResponse(userInput, conversationHistory, chatClient, embeddingClient, s3Service, cfg)
+		response, err := generateChatResponse(userInput, conversationHistory, chatClient, embeddingClient, cfg)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
@@ -168,36 +160,22 @@ func startChatLoop(chatClient, embeddingClient *bedrock.BedrockClient, s3Service
 	return scanner.Err()
 }
 
-func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient, embeddingClient *bedrock.BedrockClient, s3Service *s3vector.S3VectorService, cfg *commontypes.Config) (string, error) {
-    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-    defer cancel()
+func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient, embeddingClient *bedrock.BedrockClient, cfg *commontypes.Config) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
-    // Generate embedding for user input to find relevant context
-    log.Printf("Searching for relevant context using hybrid mode...")
-    queryEmbedding64, err := embeddingClient.GenerateEmbedding(ctx, userInput)
-    if err != nil {
-        return "", fmt.Errorf("failed to generate embedding: %w", err)
-    }
-
-	// Convert float64 to float32 for S3 Vector compatibility
-	queryEmbedding32 := make([]float32, len(queryEmbedding64))
-	for i, v := range queryEmbedding64 {
-		queryEmbedding32[i] = float32(v)
+	// Generate embedding for user input to find relevant context
+	log.Printf("Searching for relevant context using hybrid mode...")
+	queryEmbedding64, err := embeddingClient.GenerateEmbedding(ctx, userInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate embedding: %w", err)
 	}
 
-    // Always use hybrid search with S3 Vector fallback
-    var contextParts []string
-    var references map[string]string // title -> reference URL
-
-    contextParts, references, err = searchWithHybrid(ctx, userInput, queryEmbedding64, cfg, embeddingClient)
-    if err != nil {
-        // S3 Vector with fallback if hybrid search fails
-        log.Printf("Hybrid search failed (%v), using S3 Vector", err)
-        contextParts, references, err = searchWithS3Vector(ctx, queryEmbedding32, cfg, s3Service)
-        if err != nil {
-            return "", fmt.Errorf("failed to search for context: %w", err)
-        }
-    }
+	// Use OpenSearch hybrid search only (fallback removed)
+	contextParts, references, err := searchWithHybrid(ctx, userInput, queryEmbedding64, cfg, embeddingClient)
+	if err != nil {
+		return "", fmt.Errorf("failed to search for context: %w", err)
+	}
 
 	// Prepare messages with context
 	messages := make([]bedrock.ChatMessage, len(history))
@@ -217,7 +195,7 @@ func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 		ragInstruction := "以下の参考文献は、あなたの質問に関連する社内ドキュメントから検索されたものです。" +
 			"必ずこれらの参考文献の内容に基づいて回答してください。" +
 			"一般的な知識ではなく、提供された参考文献の具体的な内容を優先して使用してください。"
-		
+
 		if len(history) == 0 && systemPrompt != "" {
 			contextualPrompt = fmt.Sprintf("System: %s\n\n%s\n\n参考文献:\n%s\n\nユーザーの質問: %s",
 				systemPrompt, ragInstruction, strings.Join(contextParts, "\n\n---\n\n"), userInput)
@@ -264,55 +242,24 @@ func printChatHelp() {
 	fmt.Println()
 }
 
-// searchWithS3Vector performs search using S3 Vector
-func searchWithS3Vector(ctx context.Context, queryEmbedding []float32, cfg *commontypes.Config, s3Service *s3vector.S3VectorService) ([]string, map[string]string, error) {
-	var contextParts []string
-	references := make(map[string]string)
-
-	// Build filter with exclusions
-	excludeFilter, err := filter.BuildExclusionFilter(cfg, nil)
+// validateOpenSearch performs a quick connectivity check
+func validateOpenSearch(ctx context.Context, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) error {
+	osConfig, err := opensearch.NewConfigFromTypes(cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to build exclusion filter: %w", err)
+		return fmt.Errorf("failed to create OpenSearch config: %w", err)
 	}
-
-	// Log filter for debugging
-	if len(cfg.ExcludeCategories) > 0 {
-		log.Printf("Excluding categories from chat context: %v", cfg.ExcludeCategories)
+	if err := osConfig.Validate(); err != nil {
+		return fmt.Errorf("OpenSearch config validation failed: %w", err)
 	}
-
-	// Search for relevant context
-	// Convert float32 to float64 for s3Service.QueryVectors
-	queryEmbedding64 := make([]float64, len(queryEmbedding))
-	for i, v := range queryEmbedding {
-		queryEmbedding64[i] = float64(v)
-	}
-	searchResult, err := s3Service.QueryVectors(ctx, queryEmbedding64, contextSize, excludeFilter)
+	osClient, err := opensearch.NewClient(osConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to search for context: %w", err)
+		return fmt.Errorf("failed to create OpenSearch client: %w", err)
 	}
-
-	// Build context from search results and collect references
-	for _, result := range searchResult.Results {
-		if result.Metadata != nil {
-			if content, ok := result.Metadata["content"].(string); ok {
-				contextParts = append(contextParts, content)
-			}
-			// Collect title and reference URLs
-			var title, reference string
-			if t, ok := result.Metadata["title"].(string); ok {
-				title = t
-			}
-			if ref, ok := result.Metadata["reference"].(string); ok && ref != "" {
-				reference = ref
-			}
-			// Only add if both title and reference exist
-			if title != "" && reference != "" {
-				references[title] = reference
-			}
-		}
+	if err := osClient.HealthCheck(ctx); err != nil {
+		return fmt.Errorf("OpenSearch health check failed: %w", err)
 	}
-
-	return contextParts, references, nil
+	// Quick embedding validation already done separately; return success
+	return nil
 }
 
 // searchWithHybrid performs hybrid search using OpenSearch

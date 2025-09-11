@@ -180,7 +180,6 @@ mdRAG chat --system "あなたはドキュメントに特化した親切なア�
 
 **機能:**
 - BM25とベクトル類似性を組み合わせたハイブリッド検索
-- OpenSearchが利用できない場合のS3 Vectorへの自動フォールバック
 - 取得したドキュメントを使用したコンテキスト認識応答
 - 会話履歴管理
 - ソースリンク付き参考文献引用
@@ -219,6 +218,7 @@ mdRAG/
 │   ├── query.go           # queryコマンド
 │   ├── list.go            # listコマンド
 │   ├── chat.go            # chatコマンド
+│   ├── slack.go           # slack-botコマンド（新規）
 │   └── vectorize.go       # vectorizeコマンド
 ├── internal/              # 内部ライブラリ
 │   ├── config/           # 設定管理
@@ -442,3 +442,19 @@ bash setup.sh
 ## 貢献
 
 プロジェクトへの貢献を歓迎します。Issue報告やPull Requestをお気軽にお送りください。
+### 5. slack-bot - Slack Bot（メンションでRAG検索）
+
+Slack の Bot を起動し、メンションで質問された内容に対して RAG 検索結果を Block Kit で返信します。
+
+```bash
+mdRAG slack-bot
+```
+
+要件:
+- `SLACK_BOT_TOKEN` を設定（`.env.example` 参照）。
+- Bot を対象チャンネルへ招待。
+- スレッド返信を有効化する場合は `SLACK_ENABLE_THREADING=true`。
+- レート制限は `SLACK_RATE_USER_PER_MINUTE`/`SLACK_RATE_CHANNEL_PER_MINUTE`/`SLACK_RATE_GLOBAL_PER_MINUTE` で調整。
+ - OpenSearch の設定（`OPENSEARCH_ENDPOINT`、`OPENSEARCH_INDEX`、`OPENSEARCH_REGION`）が必須です。Slack Bot では S3 Vector へのフォールバックは使用しません。
+
+詳細は `docs/slack-bot.md` を参照してください。
