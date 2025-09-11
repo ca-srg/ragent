@@ -1,8 +1,8 @@
-# mdRAG - Markdownドキュメント用RAGシステム構築ツール
+# RAGent - Markdownドキュメント用RAGシステム構築ツール
 
 **[English README](README.md)**
 
-mdRAG は、Markdownドキュメントからハイブリッド検索（BM25 + ベクトル検索）を利用したRAG（Retrieval-Augmented Generation）システムを構築するCLIツールです。Amazon S3 VectorsとOpenSearchを活用した高精度な検索機能を提供します。
+RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + ベクトル検索）を利用したRAG（Retrieval-Augmented Generation）システムを構築するCLIツールです。Amazon S3 VectorsとOpenSearchを活用した高精度な検索機能を提供します。
 
 ## 機能
 
@@ -17,7 +17,7 @@ mdRAG は、Markdownドキュメントからハイブリッド検索（BM25 + �
 
 ### Markdownドキュメントの準備
 
-mdRAGを使用する前に、`markdown/` ディレクトリにMarkdownドキュメントを準備する必要があります。これらのドキュメントがRAGシステムで検索可能なコンテンツとなります。
+RAGentを使用する前に、`markdown/` ディレクトリにMarkdownドキュメントを準備する必要があります。これらのドキュメントがRAGシステムで検索可能なコンテンツとなります。
 
 ```bash
 # markdownディレクトリを作成
@@ -64,17 +64,17 @@ EXCLUDE_CATEGORIES=個人メモ,日報  # 検索から除外するカテゴリ
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/ca-srg/mdrag.git
-cd mdRAG
+git clone https://github.com/ca-srg/ragent.git
+cd RAGent
 
 # 依存関係をインストール
 go mod download
 
 # ビルド
-go build -o mdRAG
+go build -o RAGent
 
 # 実行可能ファイルをPATHに追加（オプション）
-mv mdRAG /usr/local/bin/
+mv RAGent /usr/local/bin/
 ```
 
 ## コマンド一覧
@@ -84,7 +84,7 @@ mv mdRAG /usr/local/bin/
 markdownファイルを読み込み、メタデータを抽出し、Amazon Bedrockを使用してembeddingを生成してAmazon S3 Vectorsに保存します。
 
 ```bash
-mdRAG vectorize
+RAGent vectorize
 ```
 
 **オプション:**
@@ -105,13 +105,13 @@ S3 Vector Indexに対してセマンティック類似性検索を実行しま�
 
 ```bash
 # 基本的な検索
-mdRAG query -q "machine learning algorithms"
+RAGent query -q "machine learning algorithms"
 
 # 詳細オプション付きの検索
-mdRAG query --query "API documentation" --top-k 5 --json
+RAGent query --query "API documentation" --top-k 5 --json
 
 # メタデータフィルター付きの検索
-mdRAG query -q "error handling" --filter '{"category":"programming"}'
+RAGent query -q "error handling" --filter '{"category":"programming"}'
 ```
 
 **オプション:**
@@ -123,13 +123,13 @@ mdRAG query -q "error handling" --filter '{"category":"programming"}'
 **使用例:**
 ```bash
 # 技術文書の検索
-mdRAG query -q "Docker コンテナ設定" --top-k 3
+RAGent query -q "Docker コンテナ設定" --top-k 3
 
 # 特定カテゴリでの検索
-mdRAG query -q "authentication" --filter '{"type":"security"}' --json
+RAGent query -q "authentication" --filter '{"type":"security"}' --json
 
 # より多くの結果を取得
-mdRAG query -q "database optimization" --top-k 20
+RAGent query -q "database optimization" --top-k 20
 ```
 
 ### 3. list - ベクトル一覧表示
@@ -138,10 +138,10 @@ S3 Vector Indexに保存されているベクトルの一覧を表示します�
 
 ```bash
 # 全ベクトルを表示
-mdRAG list
+RAGent list
 
 # プレフィックスでフィルタリング
-mdRAG list --prefix "docs/"
+RAGent list --prefix "docs/"
 ```
 
 **オプション:**
@@ -158,16 +158,16 @@ mdRAG list --prefix "docs/"
 
 ```bash
 # デフォルト設定で対話型チャットを開始
-mdRAG chat
+RAGent chat
 
 # カスタムコンテキストサイズでチャット
-mdRAG chat --context-size 10
+RAGent chat --context-size 10
 
 # ハイブリッド検索の重みバランスをカスタマイズ
-mdRAG chat --bm25-weight 0.7 --vector-weight 0.3
+RAGent chat --bm25-weight 0.7 --vector-weight 0.3
 
 # カスタムシステムプロンプトでチャット
-mdRAG chat --system "あなたはドキュメントに特化した親切なアシスタントです。"
+RAGent chat --system "あなたはドキュメントに特化した親切なアシスタントです。"
 ```
 
 **オプション:**
@@ -211,7 +211,7 @@ go run main.go [command]
 ### プロジェクト構造
 
 ```
-mdRAG/
+RAGent/
 ├── main.go                 # エントリーポイント
 ├── cmd/                    # CLIコマンド定義
 │   ├── root.go            # ルートコマンドと共通設定
@@ -269,28 +269,28 @@ mdRAG/
    # markdownファイルをディレクトリに配置
    # または、Kibelaノート用のエクスポートツールを使用：
    cd export
-   go build -o mdRAG-export
-   ./mdRAG-export
+   go build -o RAGent-export
+   ./RAGent-export
    cd ..
    ```
 
 3. **ベクトル化とS3保存**
    ```bash
    # ドライランで確認
-   mdRAG vectorize --dry-run
+   RAGent vectorize --dry-run
    
    # 実際のベクトル化実行
-   mdRAG vectorize
+   RAGent vectorize
    ```
 
 4. **ベクトルデータの確認**
    ```bash
-   mdRAG list
+   RAGent list
    ```
 
 5. **セマンティック検索の実行**
    ```bash
-   mdRAG query -q "検索したい内容"
+   RAGent query -q "検索したい内容"
    ```
 
 ## トラブルシューティング
@@ -325,7 +325,7 @@ mdRAG/
 
 ```bash
 # 詳細ログ付きで実行
-mdRAG vectorize --dry-run
+RAGent vectorize --dry-run
 
 # 環境変数の確認
 env | grep AWS
@@ -363,7 +363,7 @@ curl -u "master_user:master_pass" -X PUT \
 ```bash
 # 必要な権限を持つカスタムロールを作成
 curl -u "master_user:master_pass" -X PUT \
-  "https://your-opensearch-endpoint/_plugins/_security/api/roles/mdRAG_role" \
+  "https://your-opensearch-endpoint/_plugins/_security/api/roles/RAGent_role" \
   -H "Content-Type: application/json" \
   -d '{
     "cluster_permissions": [
@@ -371,7 +371,7 @@ curl -u "master_user:master_pass" -X PUT \
       "indices:data/read/search"
     ],
     "index_permissions": [{
-      "index_patterns": ["mdRAG-*"],
+      "index_patterns": ["RAGent-*"],
       "allowed_actions": [
         "indices:data/read/search",
         "indices:data/read/get",
@@ -385,7 +385,7 @@ curl -u "master_user:master_pass" -X PUT \
 
 # IAMロールをカスタムロールにマッピング
 curl -u "master_user:master_pass" -X PUT \
-  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/mdRAG_role" \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/RAGent_role" \
   -H "Content-Type: application/json" \
   -d '{
     "backend_roles": ["arn:aws:iam::123456789012:role/your-iam-role"],
@@ -447,7 +447,7 @@ bash setup.sh
 Slack の Bot を起動し、メンションで質問された内容に対して RAG 検索結果を Block Kit で返信します。
 
 ```bash
-mdRAG slack-bot
+RAGent slack-bot
 ```
 
 要件:

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/ca-srg/mdrag/internal/slackbot"
+	"github.com/ca-srg/ragent/internal/slackbot"
 )
 
 func TestMapDocSourceToItem(t *testing.T) {
@@ -16,7 +16,7 @@ func TestMapDocSourceToItem(t *testing.T) {
 		"category":        "architecture",
 	}
 	b, _ := json.Marshal(src)
-	item := slackbot.MapDocSourceToItem(b, "DOCID", "mdrag", 0.87)
+	item := slackbot.MapDocSourceToItem(b, "DOCID", "ragent", 0.87)
 	if item.Title != "設計方針" || item.Link != "https://example.com/doc" || item.Snippet == "" {
 		t.Fatalf("unexpected mapping: %+v", item)
 	}

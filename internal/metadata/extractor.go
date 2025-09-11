@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/mdrag/internal/types"
+	"github.com/ca-srg/ragent/internal/types"
 	"gopkg.in/yaml.v3"
 )
 

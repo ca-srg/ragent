@@ -3,7 +3,7 @@ package slackbot
 import (
 	"encoding/json"
 
-	"github.com/ca-srg/mdrag/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/opensearch"
 )
 
 // osSource mirrors common fields present in OpenSearch _source

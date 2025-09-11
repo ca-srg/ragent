@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-mdRAG は Markdownドキュメントからハイブリッド検索（BM25 + ベクトル検索）を利用したRAGシステムを構築するツールです。Amazon S3 VectorsとOpenSearchを活用し、ベクトル化、セマンティック検索、対話型チャットの機能を提供します。
+RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベクトル検索）を利用したRAGシステムを構築するツールです。Amazon S3 VectorsとOpenSearchを活用し、ベクトル化、セマンティック検索、対話型チャットの機能を提供します。
 
 ## Architecture
 
@@ -97,7 +97,7 @@ go mod tidy
 go mod download
 
 # ビルド
-go build -o mdRAG
+go build -o RAGent
 
 # テスト実行（テストファイルが存在する場合）
 go test ./...
@@ -128,23 +128,23 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 
 ```bash
 # 1. ベクトル化とS3保存
-./mdRAG vectorize --directory ./markdown --concurrency 10
+./RAGent vectorize --directory ./markdown --concurrency 10
 
 # 2. セマンティック検索（ハイブリッドモード）
-./mdRAG query -q "機械学習のアルゴリズム" --top-k 5 --search-mode hybrid
+./RAGent query -q "機械学習のアルゴリズム" --top-k 5 --search-mode hybrid
 
 # 2a. OpenSearchのみ使用
-./mdRAG query -q "API documentation" --search-mode opensearch --bm25-weight 0.7
+./RAGent query -q "API documentation" --search-mode opensearch --bm25-weight 0.7
 
 # 3. 対話的RAGチャット
-./mdRAG chat
+./RAGent chat
 
 # 4. ベクトル一覧表示
-./mdRAG list --prefix "docs/"
+./RAGent list --prefix "docs/"
 
 # 5. Slack Bot起動 [NEW]
-./mdRAG slack-bot
-# Slackでの使用: @mdrag-bot <質問内容>
+./RAGent slack-bot
+# Slackでの使用: @ragent-bot <質問内容>
 ```
 
 ## Dependencies
@@ -189,7 +189,7 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 ## Active Specifications
 
 ### slack-bot-app [NEW]
-Slack Bot機能を追加し、SlackでBotにメンションすることでRAG検索を実行できるようにする。RTM APIを利用し、mdRAGのchatコマンドと同等の機能を提供。
+Slack Bot機能を追加し、SlackでBotにメンションすることでRAG検索を実行できるようにする。RTM APIを利用し、RAGentのchatコマンドと同等の機能を提供。
 
 **Status**: planning complete
 **Branch**: `001-slack-bot-app`

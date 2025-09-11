@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ca-srg/mdrag/internal/config"
-	"github.com/ca-srg/mdrag/internal/s3vector"
+	"github.com/ca-srg/ragent/internal/config"
+	"github.com/ca-srg/ragent/internal/s3vector"
 )
 
 var (

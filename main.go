@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/ca-srg/mdrag/cmd"
+	"github.com/ca-srg/ragent/cmd"
 )
 
 func main() {

@@ -2,7 +2,7 @@ markdown/*.md
 .env
 .kiro
 .serena
-mdrag
+ragent
 # specify
 memory
 scripts

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ca-srg/mdrag/internal/types"
+	"github.com/ca-srg/ragent/internal/types"
 )
 
 // Type alias for FileInfo

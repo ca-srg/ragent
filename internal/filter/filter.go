@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ca-srg/mdrag/internal/types"
+	"github.com/ca-srg/ragent/internal/types"
 )
 
 // BuildExclusionFilter は除外カテゴリを元にS3 Vector用のフィルタを構築します

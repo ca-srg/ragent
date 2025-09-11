@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/mdrag/internal/slackbot"
+	"github.com/ca-srg/ragent/internal/slackbot"
 )
 
 func TestBuildSearchResult_EmptyAndSingle(t *testing.T) {

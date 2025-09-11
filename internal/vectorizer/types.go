@@ -1,7 +1,7 @@
 package vectorizer
 
 import (
-	"github.com/ca-srg/mdrag/internal/types"
+	"github.com/ca-srg/ragent/internal/types"
 )
 
 // Type aliases for common types

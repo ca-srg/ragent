@@ -3,7 +3,7 @@ package unit
 import (
 	"testing"
 
-	"github.com/ca-srg/mdrag/internal/slackbot"
+	"github.com/ca-srg/ragent/internal/slackbot"
 )
 
 func TestQueryExtractor(t *testing.T) {

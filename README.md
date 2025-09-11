@@ -1,8 +1,8 @@
-# mdRAG - RAG System Builder for Markdown Documents
+# RAGent - RAG System Builder for Markdown Documents
 
 **[日本語版 (Japanese) / 日本語 README](README_ja.md)**
 
-mdRAG is a CLI tool for building a RAG (Retrieval-Augmented Generation) system from markdown documents using hybrid search capabilities (BM25 + vector search) with Amazon S3 Vectors and OpenSearch.
+RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system from markdown documents using hybrid search capabilities (BM25 + vector search) with Amazon S3 Vectors and OpenSearch.
 
 ## Features
 
@@ -17,7 +17,7 @@ mdRAG is a CLI tool for building a RAG (Retrieval-Augmented Generation) system f
 
 ### Prepare Markdown Documents
 
-Before using mdRAG, you need to prepare markdown documents in a `markdown/` directory. These documents should contain the content you want to make searchable through the RAG system.
+Before using RAGent, you need to prepare markdown documents in a `markdown/` directory. These documents should contain the content you want to make searchable through the RAG system.
 
 ```bash
 # Create markdown directory
@@ -64,17 +64,17 @@ EXCLUDE_CATEGORIES=Personal,Daily  # Categories to exclude from search
 
 ```bash
 # Clone the repository
-git clone https://github.com/ca-srg/mdrag.git
-cd mdRAG
+git clone https://github.com/ca-srg/ragent.git
+cd RAGent
 
 # Install dependencies
 go mod download
 
 # Build
-go build -o mdRAG
+go build -o RAGent
 
 # Add executable to PATH (optional)
-mv mdRAG /usr/local/bin/
+mv RAGent /usr/local/bin/
 ```
 
 ## Commands
@@ -84,7 +84,7 @@ mv mdRAG /usr/local/bin/
 Read markdown files, extract metadata, generate embeddings using Amazon Bedrock, and store them in Amazon S3 Vectors.
 
 ```bash
-mdRAG vectorize
+RAGent vectorize
 ```
 
 **Options:**
@@ -105,13 +105,13 @@ Execute semantic similarity search against S3 Vector Index.
 
 ```bash
 # Basic search
-mdRAG query -q "machine learning algorithms"
+RAGent query -q "machine learning algorithms"
 
 # Search with detailed options
-mdRAG query --query "API documentation" --top-k 5 --json
+RAGent query --query "API documentation" --top-k 5 --json
 
 # Search with metadata filter
-mdRAG query -q "error handling" --filter '{"category":"programming"}'
+RAGent query -q "error handling" --filter '{"category":"programming"}'
 ```
 
 **Options:**
@@ -123,13 +123,13 @@ mdRAG query -q "error handling" --filter '{"category":"programming"}'
 **Usage Examples:**
 ```bash
 # Search technical documentation
-mdRAG query -q "Docker container configuration" --top-k 3
+RAGent query -q "Docker container configuration" --top-k 3
 
 # Search within specific category
-mdRAG query -q "authentication" --filter '{"type":"security"}' --json
+RAGent query -q "authentication" --filter '{"type":"security"}' --json
 
 # Get more results
-mdRAG query -q "database optimization" --top-k 20
+RAGent query -q "database optimization" --top-k 20
 ```
 
 ### 3. list - List Vectors
@@ -138,10 +138,10 @@ Display a list of vectors stored in S3 Vector Index.
 
 ```bash
 # Display all vectors
-mdRAG list
+RAGent list
 
 # Filter by prefix
-mdRAG list --prefix "docs/"
+RAGent list --prefix "docs/"
 ```
 
 **Options:**
@@ -158,16 +158,16 @@ Start an interactive chat session using hybrid search (OpenSearch BM25 + vector 
 
 ```bash
 # Start interactive chat with default settings
-mdRAG chat
+RAGent chat
 
 # Chat with custom context size
-mdRAG chat --context-size 10
+RAGent chat --context-size 10
 
 # Chat with custom weight balance for hybrid search
-mdRAG chat --bm25-weight 0.7 --vector-weight 0.3
+RAGent chat --bm25-weight 0.7 --vector-weight 0.3
 
 # Chat with custom system prompt
-mdRAG chat --system "You are a helpful assistant specialized in documentation."
+RAGent chat --system "You are a helpful assistant specialized in documentation."
 ```
 
 **Options:**
@@ -195,7 +195,7 @@ mdRAG chat --system "You are a helpful assistant specialized in documentation."
 Start a Slack Bot that listens for mentions and answers with RAG results.
 
 ```bash
-mdRAG slack-bot
+RAGent slack-bot
 ```
 
 Requirements:
@@ -227,7 +227,7 @@ go run main.go [command]
 ### Project Structure
 
 ```
-mdRAG/
+RAGent/
 ├── main.go                 # Entry point
 ├── cmd/                    # CLI command definitions
 │   ├── root.go            # Root command and common settings
@@ -285,28 +285,28 @@ mdRAG/
    # Place your markdown files in the directory
    # Or use the export tool for Kibela notes:
    cd export
-   go build -o mdRAG-export
-   ./mdRAG-export
+   go build -o RAGent-export
+   ./RAGent-export
    cd ..
    ```
 
 3. **Vectorization and S3 Storage**
    ```bash
    # Verify with dry run
-   mdRAG vectorize --dry-run
+   RAGent vectorize --dry-run
    
    # Execute actual vectorization
-   mdRAG vectorize
+   RAGent vectorize
    ```
 
 4. **Check Vector Data**
    ```bash
-   mdRAG list
+   RAGent list
    ```
 
 5. **Execute Semantic Search**
    ```bash
-   mdRAG query -q "content to search"
+   RAGent query -q "content to search"
    ```
 
 ## Troubleshooting
@@ -341,7 +341,7 @@ mdRAG/
 
 ```bash
 # Execute with detailed logs
-mdRAG vectorize --dry-run
+RAGent vectorize --dry-run
 
 # Check environment variables
 env | grep AWS
@@ -375,7 +375,7 @@ curl -u "master_user:master_pass" -X PUT \
 ```bash
 # Create a custom role with necessary permissions
 curl -u "master_user:master_pass" -X PUT \
-  "https://your-opensearch-endpoint/_plugins/_security/api/roles/mdRAG_role" \
+  "https://your-opensearch-endpoint/_plugins/_security/api/roles/RAGent_role" \
   -H "Content-Type: application/json" \
   -d '{
     "cluster_permissions": [
@@ -383,7 +383,7 @@ curl -u "master_user:master_pass" -X PUT \
       "indices:data/read/search"
     ],
     "index_permissions": [{
-      "index_patterns": ["mdRAG-*"],
+      "index_patterns": ["RAGent-*"],
       "allowed_actions": [
         "indices:data/read/search",
         "indices:data/read/get",
@@ -397,7 +397,7 @@ curl -u "master_user:master_pass" -X PUT \
 
 # Map IAM role to the custom role
 curl -u "master_user:master_pass" -X PUT \
-  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/mdRAG_role" \
+  "https://your-opensearch-endpoint/_plugins/_security/api/rolesmapping/RAGent_role" \
   -H "Content-Type: application/json" \
   -d '{
     "backend_roles": ["arn:aws:iam::123456789012:role/your-iam-role"],

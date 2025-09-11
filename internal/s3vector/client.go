@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3vectors/document"
 	"github.com/aws/aws-sdk-go-v2/service/s3vectors/types"
 
-	commontypes "github.com/ca-srg/mdrag/internal/types"
+	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
 // S3VectorService implements the S3VectorClient interface

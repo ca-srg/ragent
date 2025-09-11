@@ -9,9 +9,9 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/spf13/cobra"
 
-	appcfg "github.com/ca-srg/mdrag/internal/config"
-	"github.com/ca-srg/mdrag/internal/slackbot"
-	commontypes "github.com/ca-srg/mdrag/internal/types"
+	appcfg "github.com/ca-srg/ragent/internal/config"
+	"github.com/ca-srg/ragent/internal/slackbot"
+	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
 var (

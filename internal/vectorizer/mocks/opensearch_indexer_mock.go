@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ca-srg/mdrag/internal/vectorizer"
+	"github.com/ca-srg/ragent/internal/vectorizer"
 )
 
 // OpenSearchIndexerMock is a mock implementation of the OpenSearchIndexer interface

@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/ca-srg/mdrag/internal/config"
-	"github.com/ca-srg/mdrag/internal/opensearch"
-	"github.com/ca-srg/mdrag/internal/vectorizer"
+	"github.com/ca-srg/ragent/internal/config"
+	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/vectorizer"
 	"github.com/spf13/cobra"
 )
 

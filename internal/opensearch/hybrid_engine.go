@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/ca-srg/mdrag/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"golang.org/x/sync/errgroup"
 )
 

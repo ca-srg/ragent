@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/mdrag/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/opensearch"
 )
 
 // MockOpenSearchClient provides a test double for OpenSearch client

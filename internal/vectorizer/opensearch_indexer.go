@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/mdrag/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 )
 

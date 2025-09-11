@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/ca-srg/mdrag/internal/types"
+	"github.com/ca-srg/ragent/internal/types"
 	env "github.com/netflix/go-env"
 )
 

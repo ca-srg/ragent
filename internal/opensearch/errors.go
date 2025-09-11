@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/mdrag/internal/types"
+	"github.com/ca-srg/ragent/internal/types"
 )
 
 type SearchError struct {

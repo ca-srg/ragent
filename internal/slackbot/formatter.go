@@ -59,7 +59,7 @@ func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.
 	if len(blocks) == 2 {
 		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, "該当する結果が見つかりませんでした。", false, false), nil, nil))
 	}
-	footer := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%sにより生成", "mdRAG"), false, false))
+	footer := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%sにより生成", "RAGent"), false, false))
 	blocks = append(blocks, footer)
 	return slack.MsgOptionBlocks(blocks...)
 }
@@ -111,7 +111,7 @@ func (f *Formatter) BuildChatResponse(query string, response string, total int, 
 	}
 
 	// Footer
-	footer := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%sにより生成", "mdRAG"), false, false))
+	footer := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%sにより生成", "RAGent"), false, false))
 	blocks = append(blocks, footer)
 
 	return slack.MsgOptionBlocks(blocks...)

@@ -10,10 +10,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
-	appconfig "github.com/ca-srg/mdrag/internal/config"
-	"github.com/ca-srg/mdrag/internal/embedding/bedrock"
-	"github.com/ca-srg/mdrag/internal/opensearch"
-	commontypes "github.com/ca-srg/mdrag/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/config"
+	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/opensearch"
+	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
 var (
