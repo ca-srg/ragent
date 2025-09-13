@@ -284,11 +284,15 @@ func (sw *ServerWrapper) Stop() error {
 
 			if err := sw.httpServer.Shutdown(shutdownCtx); err != nil {
 				sw.logger.Printf("Graceful shutdown failed: %v, forcing immediate shutdown", err)
-				sw.httpServer.Close()
+				if err := sw.httpServer.Close(); err != nil {
+					sw.logger.Printf("Failed to close HTTP server: %v", err)
+				}
 			}
 		} else {
 			// Immediate shutdown
-			sw.httpServer.Close()
+			if err := sw.httpServer.Close(); err != nil {
+				sw.logger.Printf("Failed to close HTTP server: %v", err)
+			}
 		}
 	}
 
@@ -403,7 +407,9 @@ func (sw *ServerWrapper) handleHealthCheck(w http.ResponseWriter, r *http.Reques
 	// Simple JSON encoding for health check
 	response := fmt.Sprintf(`{"status":"%v","server_type":"%v","sdk_version":"%v","running":%v,"address":"%v"}`,
 		status["status"], status["server_type"], status["sdk_version"], status["running"], status["address"])
-	w.Write([]byte(response))
+	if _, err := w.Write([]byte(response)); err != nil {
+		sw.logger.Printf("Failed to write response: %v", err)
+	}
 }
 
 // registerAuthRoutes registers authentication-related HTTP routes on the server mux

@@ -150,15 +150,8 @@ func (tra *ToolRegistryAdapter) ToolCount() int {
 }
 
 // getConfiguredToolName maintains existing name mapping logic
-func (tra *ToolRegistryAdapter) getConfiguredToolName(internalName string) string {
-	tra.mutex.RLock()
-	defer tra.mutex.RUnlock()
-
-	if configuredName, exists := tra.toolNameMap[internalName]; exists {
-		return configuredName
-	}
-	return internalName
-}
+// getConfiguredToolName is not needed in the adapter because name mapping
+// is handled directly via RegisterToolWithConfig and GetToolNameMapping.
 
 // GetToolNameMapping returns tool name mappings
 func (tra *ToolRegistryAdapter) GetToolNameMapping() map[string]string {

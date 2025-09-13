@@ -120,11 +120,13 @@ func TestOIDCAuthMiddleware_CustomUserInfo(t *testing.T) {
 
 		// Return user info
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
-			"sub": "test-user",
-			"email": "test@example.com",
-			"name": "Test User"
-		}`))
+		if _, err := w.Write([]byte(`{
+        "sub": "test-user",
+        "email": "test@example.com",
+        "name": "Test User"
+    }`)); err != nil {
+			t.Fatalf("failed to write userinfo response: %v", err)
+		}
 	}))
 	defer server.Close()
 

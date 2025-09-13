@@ -70,7 +70,9 @@ func init() {
 	queryCmd.Flags().BoolVar(&useJapaneseNLP, "japanese-nlp", false, "Enable Japanese text processing and analysis")
 	queryCmd.Flags().IntVar(&timeout, "timeout", 30, "Request timeout in seconds")
 
-	queryCmd.MarkFlagRequired("query")
+	if err := queryCmd.MarkFlagRequired("query"); err != nil {
+		log.Fatalf("Failed to mark query flag as required: %v", err)
+	}
 }
 
 func runQuery(cmd *cobra.Command, args []string) error {

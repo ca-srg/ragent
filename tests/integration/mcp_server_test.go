@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,28 +72,18 @@ func createJSONRPCRequest(method string, params interface{}, id interface{}) *ht
 	return req
 }
 
-// Helper function to parse JSON-RPC response
-func parseJSONRPCResponse(t *testing.T, resp *http.Response) map[string]interface{} {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("Failed to read response body: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(body, &response); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
-
-	return response
-}
+// (removed) parseJSONRPCResponse was unused
 
 func TestMCPServer_JSONRPCProtocolCompliance(t *testing.T) {
 	server, _ := createTestMCPServer(t)
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			t.Logf("Failed to stop server: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name               string
@@ -172,7 +161,11 @@ func TestMCPServer_JSONRPCProtocolCompliance(t *testing.T) {
 			if err != nil {
 				t.Fatalf("HTTP request failed: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 
 			if resp.StatusCode != tt.expectedStatusCode {
 				t.Errorf("Expected status code %d, got %d", tt.expectedStatusCode, resp.StatusCode)
@@ -232,19 +225,26 @@ func TestMCPServer_ToolsList(t *testing.T) {
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			t.Logf("Failed to stop server: %v", err)
+		}
+	}()
 
 	req := createJSONRPCRequest("tools/list", nil, "test-1")
 	url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
 	client := &http.Client{Timeout: 5 * time.Second}
-	bodyBytes, _ := json.Marshal(req)
-	httpReq, _ := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	httpReq, _ := http.NewRequest("POST", url, req.Body)
 	httpReq.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		t.Fatalf("HTTP request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Failed to close response body: %v", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
@@ -318,15 +318,22 @@ func TestMCPServer_ToolCall_ValidRequest(t *testing.T) {
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			t.Logf("Failed to stop server: %v", err)
+		}
+	}()
 
 	url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
-	body, _ := json.Marshal(req)
-	httpResp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	httpResp, err := http.Post(url, "application/json", req.Body)
 	if err != nil {
 		t.Fatalf("HTTP request failed: %v", err)
 	}
-	defer httpResp.Body.Close()
+	defer func() {
+		if err := httpResp.Body.Close(); err != nil {
+			t.Logf("Failed to close response body: %v", err)
+		}
+	}()
 
 	if httpResp.StatusCode != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", httpResp.StatusCode)
@@ -403,15 +410,22 @@ func TestMCPServer_ToolCall_InvalidRequests(t *testing.T) {
 			if err := server.Start(); err != nil {
 				t.Fatalf("Failed to start test server: %v", err)
 			}
-			defer server.Stop()
+			defer func() {
+				if err := server.Stop(); err != nil {
+					t.Logf("Failed to stop server: %v", err)
+				}
+			}()
 
 			url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
-			body, _ := json.Marshal(req)
-			httpResp, err := http.Post(url, "application/json", bytes.NewReader(body))
+			httpResp, err := http.Post(url, "application/json", req.Body)
 			if err != nil {
 				t.Fatalf("HTTP request failed: %v", err)
 			}
-			defer httpResp.Body.Close()
+			defer func() {
+				if err := httpResp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 
 			if httpResp.StatusCode != http.StatusOK {
 				t.Errorf("Expected status 200, got %d", httpResp.StatusCode)
@@ -441,14 +455,21 @@ func TestMCPServer_UnknownMethod(t *testing.T) {
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			t.Logf("Failed to stop server: %v", err)
+		}
+	}()
 	url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
-	body, _ := json.Marshal(req)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	resp, err := http.Post(url, "application/json", req.Body)
 	if err != nil {
 		t.Fatalf("HTTP request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -512,11 +533,15 @@ func TestMCPServer_IPAuthenticationIntegration(t *testing.T) {
 			if err := server.Start(); err != nil {
 				t.Fatalf("Failed to start test server: %v", err)
 			}
-			defer server.Stop()
+			defer func() {
+				if err := server.Stop(); err != nil {
+					t.Logf("Failed to stop server: %v", err)
+				}
+			}()
 
-			body, _ := json.Marshal(createJSONRPCRequest("tools/list", nil, "auth-test"))
+			reqHTTP := createJSONRPCRequest("tools/list", nil, "auth-test")
 			url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
-			httpReq, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+			httpReq, _ := http.NewRequest("POST", url, reqHTTP.Body)
 			httpReq.Header.Set("Content-Type", "application/json")
 			// Simulate client IP via X-Forwarded-For which middleware respects first
 			clientIP := strings.Split(tt.remoteAddr, ":")[0]
@@ -526,7 +551,11 @@ func TestMCPServer_IPAuthenticationIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatalf("HTTP request failed: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 
 			if resp.StatusCode != tt.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tt.expectedStatus, resp.StatusCode)
@@ -550,7 +579,11 @@ func TestMCPServer_ConcurrentRequests(t *testing.T) {
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			t.Logf("Failed to stop server: %v", err)
+		}
+	}()
 
 	const numRequests = 10
 	results := make(chan error, numRequests)
@@ -559,13 +592,16 @@ func TestMCPServer_ConcurrentRequests(t *testing.T) {
 		go func(id int) {
 			req := createJSONRPCRequest("tools/list", nil, fmt.Sprintf("concurrent-%d", id))
 			url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
-			body, _ := json.Marshal(req)
-			resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+			resp, err := http.Post(url, "application/json", req.Body)
 			if err != nil {
 				results <- fmt.Errorf("request %d: http error: %v", id, err)
 				return
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 
 			if resp.StatusCode != http.StatusOK {
 				results <- fmt.Errorf("request %d: expected status 200, got %d", id, resp.StatusCode)
@@ -612,13 +648,21 @@ func TestMCPServer_HealthCheckEndpoint(t *testing.T) {
 	if err := server.Start(); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			t.Logf("Failed to stop server: %v", err)
+		}
+	}()
 	url := fmt.Sprintf("http://%s:%d/health", server.GetConfig().Host, server.GetConfig().Port)
 	resp, err := http.Get(url)
 	if err != nil {
 		t.Fatalf("Health check request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("Failed to close response body: %v", err)
+		}
+	}()
 	if resp.StatusCode != 404 && resp.StatusCode != 200 {
 		t.Logf("Health check endpoint returned status: %d", resp.StatusCode)
 	}
@@ -628,7 +672,7 @@ func TestMCPServer_HealthCheckEndpoint(t *testing.T) {
 func BenchmarkMCPServer_ToolsList(b *testing.B) {
 	server, _ := createTestMCPServer(b)
 
-	req := createJSONRPCRequest("tools/list", nil, "bench")
+	// request prepared per iteration below
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -636,12 +680,16 @@ func BenchmarkMCPServer_ToolsList(b *testing.B) {
 			b.Fatalf("Failed to start server: %v", err)
 		}
 		url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
-		body, _ := json.Marshal(req)
-		resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+		req := createJSONRPCRequest("tools/list", nil, "bench")
+		resp, err := http.Post(url, "application/json", req.Body)
 		if err == nil {
-			resp.Body.Close()
+			if cerr := resp.Body.Close(); cerr != nil {
+				b.Logf("Failed to close response body: %v", cerr)
+			}
 		}
-		server.Stop()
+		if err := server.Stop(); err != nil {
+			b.Logf("Failed to stop server: %v", err)
+		}
 	}
 }
 
@@ -655,7 +703,7 @@ func BenchmarkMCPServer_ToolCall(b *testing.B) {
 		},
 	}
 
-	req := createJSONRPCRequest("tools/call", params, "bench")
+	// request prepared per iteration below
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -663,11 +711,15 @@ func BenchmarkMCPServer_ToolCall(b *testing.B) {
 			b.Fatalf("Failed to start server: %v", err)
 		}
 		url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
-		body, _ := json.Marshal(req)
-		resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+		req := createJSONRPCRequest("tools/call", params, "bench")
+		resp, err := http.Post(url, "application/json", req.Body)
 		if err == nil {
-			resp.Body.Close()
+			if cerr := resp.Body.Close(); cerr != nil {
+				b.Logf("Failed to close response body: %v", cerr)
+			}
 		}
-		server.Stop()
+		if err := server.Stop(); err != nil {
+			b.Logf("Failed to stop server: %v", err)
+		}
 	}
 }

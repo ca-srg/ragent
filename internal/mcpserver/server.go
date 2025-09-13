@@ -242,7 +242,11 @@ func (s *MCPServer) handleMCPRequest(w http.ResponseWriter, r *http.Request) {
 		s.writeErrorResponse(w, nil, types.MCPErrorParseError, "Failed to read request body", nil)
 		return
 	}
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			s.logger.Printf("Failed to close request body: %v", err)
+		}
+	}()
 
 	// Parse JSON-RPC request
 	var request types.LegacyMCPToolRequest
@@ -363,7 +367,9 @@ func (s *MCPServer) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(status)
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		s.logger.Printf("Failed to encode status response: %v", err)
+	}
 }
 
 // writeJSONResponse writes a JSON response
@@ -375,7 +381,9 @@ func (s *MCPServer) writeJSONResponse(w http.ResponseWriter, response *types.MCP
 		s.logger.Printf("Failed to encode response: %v", err)
 		// Write a basic error response if JSON encoding fails
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal server error"}}`))
+		if _, err := w.Write([]byte(`{"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal server error"}}`)); err != nil {
+			s.logger.Printf("Failed to write error response: %v", err)
+		}
 	}
 }
 
@@ -390,7 +398,9 @@ func (s *MCPServer) writeErrorResponse(w http.ResponseWriter, id interface{}, co
 		s.logger.Printf("Failed to encode error response: %v", err)
 		// Write a basic error response if JSON encoding fails
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal server error"}}`))
+		if _, err := w.Write([]byte(`{"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal server error"}}`)); err != nil {
+			s.logger.Printf("Failed to write error response: %v", err)
+		}
 	}
 
 	if s.config.EnableAccessLogging {
@@ -464,5 +474,7 @@ func (s *MCPServer) handleSSEInfo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(info)
+	if err := json.NewEncoder(w).Encode(info); err != nil {
+		s.logger.Printf("Failed to encode SSE info response: %v", err)
+	}
 }

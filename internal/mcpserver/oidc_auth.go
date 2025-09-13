@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -254,7 +253,7 @@ func (m *OIDCAuthMiddleware) Middleware(next http.Handler) http.Handler {
 		}
 
 		// Add user info to request context
-		ctx := context.WithValue(r.Context(), "user", tokenInfo)
+		ctx := context.WithValue(r.Context(), userContextKey, tokenInfo)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -413,7 +412,9 @@ func (m *OIDCAuthMiddleware) sendAuthenticationRequired(w http.ResponseWriter, r
 		},
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+	}
 }
 
 // GetAuthURL generates the authentication URL
@@ -612,9 +613,9 @@ func (m *OIDCAuthMiddleware) HandleCallback(w http.ResponseWriter, r *http.Reque
 	// Optionally set a cookie for browser-based calls
 	http.SetCookie(w, &http.Cookie{Name: "mcp_auth_token", Value: rawIDToken, Path: "/", HttpOnly: true, Secure: scheme == "https"})
 
-	// Success response with instruction
+	// Success response with instruction (English first, then Japanese)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `
+	if _, err := fmt.Fprintf(w, `
         <!DOCTYPE html>
         <html>
         <head>
@@ -624,16 +625,26 @@ func (m *OIDCAuthMiddleware) HandleCallback(w http.ResponseWriter, r *http.Reque
                 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 40px; line-height: 1.6; }
                 code, pre { background: #f5f7fa; border: 1px solid #e3e8ef; border-radius: 6px; padding: 12px; display: block; white-space: pre-wrap; word-break: break-all; }
                 .small { color: #6b7280; font-size: 12px; }
+                hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
             </style>
         </head>
         <body>
+            <h1>Authentication Successful</h1>
+            <p>Run the following command to add this MCP server to Claude.</p>
+            <pre><code>%s</code></pre>
+            <p class="small">This token is sensitive. Do not share it with anyone.</p>
+
+            <hr />
+
             <h1>認証に成功しました</h1>
             <p>以下のコマンドを実行して、Claude にこの MCP サーバーを追加してください。</p>
             <pre><code>%s</code></pre>
             <p class="small">このトークンは機密情報です。第三者に共有しないでください。</p>
         </body>
         </html>
-    `, addCmd)
+    `, addCmd, addCmd); err != nil {
+		log.Printf("Failed to write HTML response: %v", err)
+	}
 
 	// Notify pending flow if present
 	m.notifyPendingFlowSuccess(state, tokenInfo)
@@ -662,134 +673,12 @@ func (m *OIDCAuthMiddleware) notifyPendingFlowError(state string, err error) {
 }
 
 // startCallbackServer starts the OAuth2 callback server
-func (m *OIDCAuthMiddleware) startCallbackServer(expectedState string, tokenChan chan<- *TokenInfo, errorChan chan<- error) (net.Listener, error) {
-	// Choose port
-	port := m.callbackPort
-	if port == 0 {
-		// Find available port
-		listener, err := net.Listen("tcp", "localhost:0")
-		if err != nil {
-			return nil, err
-		}
-		port = listener.Addr().(*net.TCPAddr).Port
-		listener.Close()
-	}
-
-	// Create listener
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-	if err != nil {
-		return nil, err
-	}
-
-	// Create HTTP server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		// Check state
-		state := r.URL.Query().Get("state")
-		if state != expectedState {
-			errorChan <- fmt.Errorf("invalid state parameter")
-			http.Error(w, "Invalid state", http.StatusBadRequest)
-			return
-		}
-
-		// Check for error
-		if errMsg := r.URL.Query().Get("error"); errMsg != "" {
-			errorChan <- fmt.Errorf("authentication error: %s", errMsg)
-			http.Error(w, "Authentication failed", http.StatusBadRequest)
-			return
-		}
-
-		// Get authorization code
-		code := r.URL.Query().Get("code")
-		if code == "" {
-			errorChan <- fmt.Errorf("no authorization code received")
-			http.Error(w, "No authorization code", http.StatusBadRequest)
-			return
-		}
-
-		// Exchange code for tokens
-		ctx := context.Background()
-		token, err := m.oauth2Config.Exchange(ctx, code)
-		if err != nil {
-			errorChan <- fmt.Errorf("failed to exchange code: %w", err)
-			http.Error(w, "Token exchange failed", http.StatusInternalServerError)
-			return
-		}
-
-		// Extract ID token
-		rawIDToken, ok := token.Extra("id_token").(string)
-		if !ok {
-			errorChan <- fmt.Errorf("no ID token in response")
-			http.Error(w, "No ID token", http.StatusInternalServerError)
-			return
-		}
-
-		// Verify ID token
-		idToken, err := m.verifier.Verify(ctx, rawIDToken)
-		if err != nil {
-			errorChan <- fmt.Errorf("failed to verify ID token: %w", err)
-			http.Error(w, "Token verification failed", http.StatusInternalServerError)
-			return
-		}
-
-		// Extract claims
-		var claims map[string]interface{}
-		if err := idToken.Claims(&claims); err != nil {
-			errorChan <- fmt.Errorf("failed to extract claims: %w", err)
-			http.Error(w, "Claims extraction failed", http.StatusInternalServerError)
-			return
-		}
-
-		// Create token info
-		tokenInfo := &TokenInfo{
-			IDToken:      rawIDToken,
-			AccessToken:  token.AccessToken,
-			RefreshToken: token.RefreshToken,
-			Claims:       claims,
-			ExpiresAt:    token.Expiry,
-			Subject:      idToken.Subject,
-		}
-
-		// Extract email if available
-		if email, ok := claims["email"].(string); ok {
-			tokenInfo.Email = email
-		}
-
-		// Store token
-		m.tokenStore.mutex.Lock()
-		m.tokenStore.tokens[rawIDToken] = tokenInfo
-		m.tokenStore.mutex.Unlock()
-
-		// Send success response
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `
-			<html>
-			<head><title>Authentication Successful</title></head>
-			<body>
-				<h1>Authentication Successful</h1>
-				<p>You can now close this window and return to the application.</p>
-				<script>window.close();</script>
-			</body>
-			</html>
-		`)
-
-		// Send token to channel
-		tokenChan <- tokenInfo
-	})
-
-	// Start server
-	server := &http.Server{
-		Handler: mux,
-	}
-	go server.Serve(listener)
-
-	return listener, nil
-}
-
 // generateState generates a random state string for CSRF protection
 func (m *OIDCAuthMiddleware) generateState() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("Failed to generate random bytes: %v", err)
+	}
 	return base64.URLEncoding.EncodeToString(b)
 }
 
@@ -856,7 +745,11 @@ func (m *OIDCAuthMiddleware) getUserInfoFromCustomEndpoint(ctx context.Context, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("user info request failed with status: %s", resp.Status)

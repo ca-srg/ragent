@@ -104,8 +104,14 @@ func TestToolRegistry_RegisterTool(t *testing.T) {
 
 func TestToolRegistry_RegisterToolWithEnvVarNaming(t *testing.T) {
 	// Test tool name configuration via environment variable
-	os.Setenv("MCP_TOOL_NAME_TEST_TOOL", "custom_test_tool")
-	defer os.Unsetenv("MCP_TOOL_NAME_TEST_TOOL")
+	if err := os.Setenv("MCP_TOOL_NAME_TEST_TOOL", "custom_test_tool"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("MCP_TOOL_NAME_TEST_TOOL"); err != nil {
+			t.Fatalf("failed to unset env: %v", err)
+		}
+	}()
 
 	registry := mcpserver.NewToolRegistry()
 
@@ -138,8 +144,14 @@ func TestToolRegistry_RegisterToolWithEnvVarNaming(t *testing.T) {
 
 func TestToolRegistry_RegisterToolWithPrefix(t *testing.T) {
 	// Test tool prefix configuration
-	os.Setenv("MCP_TOOL_PREFIX", "prefix_")
-	defer os.Unsetenv("MCP_TOOL_PREFIX")
+	if err := os.Setenv("MCP_TOOL_PREFIX", "prefix_"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("MCP_TOOL_PREFIX"); err != nil {
+			t.Fatalf("failed to unset env: %v", err)
+		}
+	}()
 
 	registry := mcpserver.NewToolRegistry()
 
@@ -216,8 +228,12 @@ func TestToolRegistry_ExecuteTool(t *testing.T) {
 		InputSchema: nil,
 	}
 
-	registry.RegisterTool("test_tool", definition, mockToolHandler)
-	registry.RegisterTool("error_tool", errorDefinition, errorToolHandler)
+	if err := registry.RegisterTool("test_tool", definition, mockToolHandler); err != nil {
+		t.Fatalf("failed to register tool: %v", err)
+	}
+	if err := registry.RegisterTool("error_tool", errorDefinition, errorToolHandler); err != nil {
+		t.Fatalf("failed to register error tool: %v", err)
+	}
 
 	tests := []struct {
 		name        string
@@ -278,7 +294,9 @@ func TestToolRegistry_ListTools(t *testing.T) {
 	}
 
 	for i, def := range definitions {
-		registry.RegisterTool(def.Name, def, mockToolHandler)
+		if err := registry.RegisterTool(def.Name, def, mockToolHandler); err != nil {
+			t.Fatalf("failed to register tool %s: %v", def.Name, err)
+		}
 
 		tools = registry.ListTools()
 		if len(tools) != i+1 {
@@ -314,7 +332,9 @@ func TestToolRegistry_GetTool(t *testing.T) {
 		InputSchema: nil,
 	}
 
-	registry.RegisterTool("test_tool", definition, mockToolHandler)
+	if err := registry.RegisterTool("test_tool", definition, mockToolHandler); err != nil {
+		t.Fatalf("failed to register tool: %v", err)
+	}
 
 	// Get existing tool
 	tool, err := registry.GetTool("test_tool")
@@ -350,7 +370,9 @@ func TestToolRegistry_HasTool(t *testing.T) {
 	}
 
 	// Register tool
-	registry.RegisterTool("test_tool", definition, mockToolHandler)
+	if err := registry.RegisterTool("test_tool", definition, mockToolHandler); err != nil {
+		t.Fatalf("failed to register tool: %v", err)
+	}
 
 	// Tool should exist now
 	if !registry.HasTool("test_tool") {
@@ -384,7 +406,9 @@ func TestToolRegistry_ConcurrentAccess(t *testing.T) {
 					Description: "Concurrent test tool",
 					InputSchema: nil,
 				}
-				registry.RegisterTool(toolName, definition, mockToolHandler)
+				if err := registry.RegisterTool(toolName, definition, mockToolHandler); err != nil {
+					t.Logf("register tool failed (%s): %v", toolName, err)
+				}
 			}
 		}(i)
 	}
@@ -405,7 +429,9 @@ func TestToolRegistry_ConcurrentAccess(t *testing.T) {
 			for j := 0; j < 10; j++ { // Fewer executions than registrations
 				toolName := fmt.Sprintf("tool_%d_%d", id, j)
 				ctx := context.Background()
-				registry.ExecuteTool(ctx, toolName, map[string]interface{}{})
+				if _, err := registry.ExecuteTool(ctx, toolName, map[string]interface{}{}); err != nil {
+					t.Logf("execute tool failed (%s): %v", toolName, err)
+				}
 			}
 		}(i)
 	}
@@ -442,7 +468,9 @@ func TestToolRegistry_ConcurrentRegistrationAndUnregistration(t *testing.T) {
 			Description: "Test tool",
 			InputSchema: nil,
 		}
-		registry.RegisterTool(toolName, definition, mockToolHandler)
+		if err := registry.RegisterTool(toolName, definition, mockToolHandler); err != nil {
+			t.Logf("register tool failed (%s): %v", toolName, err)
+		}
 	}
 
 	var wg sync.WaitGroup
@@ -462,7 +490,9 @@ func TestToolRegistry_ConcurrentRegistrationAndUnregistration(t *testing.T) {
 					Description: "New test tool",
 					InputSchema: nil,
 				}
-				registry.RegisterTool(toolName, definition, mockToolHandler)
+				if err := registry.RegisterTool(toolName, definition, mockToolHandler); err != nil {
+					t.Logf("register tool failed (%s): %v", toolName, err)
+				}
 			}
 		}(i)
 	}
@@ -473,7 +503,9 @@ func TestToolRegistry_ConcurrentRegistrationAndUnregistration(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < 5; j++ { // Unregister fewer than we have
 				toolName := fmt.Sprintf("tool_%d", id*5+j)
-				registry.UnregisterTool(toolName) // Ignore errors for non-existent tools
+				if err := registry.UnregisterTool(toolName); err != nil {
+					t.Logf("unregister tool failed (%s): %v", toolName, err)
+				}
 			}
 		}(i)
 	}
@@ -495,7 +527,9 @@ func TestToolRegistry_ExecuteToolTimeout(t *testing.T) {
 		InputSchema: nil,
 	}
 
-	registry.RegisterTool("slow_tool", definition, slowToolHandler)
+	if err := registry.RegisterTool("slow_tool", definition, slowToolHandler); err != nil {
+		t.Fatalf("failed to register slow_tool: %v", err)
+	}
 
 	// Test with timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -565,7 +599,7 @@ func TestToolRegistry_HelperFunctions(t *testing.T) {
 	// Test CreateToolCallResult
 	result := mcpserver.CreateToolCallResult("test content")
 	if result == nil {
-		t.Error("CreateToolCallResult returned nil")
+		t.Fatal("CreateToolCallResult returned nil")
 	}
 	if result.IsError {
 		t.Error("CreateToolCallResult should not create error result")
@@ -577,7 +611,7 @@ func TestToolRegistry_HelperFunctions(t *testing.T) {
 	// Test CreateToolCallErrorResult
 	errorResult := mcpserver.CreateToolCallErrorResult("test error")
 	if errorResult == nil {
-		t.Error("CreateToolCallErrorResult returned nil")
+		t.Fatal("CreateToolCallErrorResult returned nil")
 	}
 	if !errorResult.IsError {
 		t.Error("CreateToolCallErrorResult should create error result")
@@ -590,7 +624,7 @@ func TestToolRegistry_HelperFunctions(t *testing.T) {
 	metadata := map[string]interface{}{"key1": "value1", "key2": 42}
 	metadataResult := mcpserver.CreateToolCallResultWithMetadata("content with metadata", metadata)
 	if metadataResult == nil {
-		t.Error("CreateToolCallResultWithMetadata returned nil")
+		t.Fatal("CreateToolCallResultWithMetadata returned nil")
 	}
 	if metadataResult.IsError {
 		t.Error("CreateToolCallResultWithMetadata should not create error result")
@@ -613,7 +647,9 @@ func BenchmarkToolRegistry_RegisterTool(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		toolName := fmt.Sprintf("tool_%d", i)
 		definition.Name = toolName
-		registry.RegisterTool(toolName, definition, mockToolHandler)
+		if err := registry.RegisterTool(toolName, definition, mockToolHandler); err != nil {
+			b.Fatalf("failed to register tool: %v", err)
+		}
 	}
 }
 
@@ -625,14 +661,18 @@ func BenchmarkToolRegistry_ExecuteTool(b *testing.B) {
 		InputSchema: nil,
 	}
 
-	registry.RegisterTool("benchmark_tool", definition, mockToolHandler)
+	if err := registry.RegisterTool("benchmark_tool", definition, mockToolHandler); err != nil {
+		b.Fatalf("failed to register benchmark_tool: %v", err)
+	}
 
 	ctx := context.Background()
 	params := map[string]interface{}{"param": "value"}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		registry.ExecuteTool(ctx, "benchmark_tool", params)
+		if _, err := registry.ExecuteTool(ctx, "benchmark_tool", params); err != nil {
+			b.Logf("execute tool failed: %v", err)
+		}
 	}
 }
 
@@ -647,7 +687,9 @@ func BenchmarkToolRegistry_ListTools(b *testing.B) {
 			Description: "Benchmark tool",
 			InputSchema: nil,
 		}
-		registry.RegisterTool(toolName, definition, mockToolHandler)
+		if err := registry.RegisterTool(toolName, definition, mockToolHandler); err != nil {
+			b.Fatalf("failed to register tool: %v", err)
+		}
 	}
 
 	b.ResetTimer()

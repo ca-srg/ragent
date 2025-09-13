@@ -605,6 +605,8 @@ After setting up the MCP server and completing authentication, add the server to
 4. Copy the provided Claude Desktop configuration
 5. Add configuration to Claude Desktop settings
 
+![OIDC Authentication](doc/oidc.png)
+
 ## Contributing
 
 We welcome contributions to the project. Feel free to submit issues and pull requests.

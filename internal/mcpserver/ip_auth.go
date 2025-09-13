@@ -88,7 +88,9 @@ func (m *IPAuthMiddleware) Middleware(next http.Handler) http.Handler {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte(`{"error": {"code": -32603, "message": "Access denied: IP not authorized"}}`))
+			if _, err := w.Write([]byte(`{"error": {"code": -32603, "message": "Access denied: IP not authorized"}}`)); err != nil {
+				log.Printf("Failed to write error response: %v", err)
+			}
 			return
 		}
 

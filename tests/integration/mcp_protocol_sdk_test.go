@@ -70,7 +70,11 @@ func (c *SDKMCPClient) CallTool(ctx context.Context, toolName string, args map[s
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			return
+		}
+	}()
 
 	// Parse SDK-compatible response
 	var sdkResponse map[string]interface{}
@@ -126,7 +130,11 @@ func (c *SDKMCPClient) ListTools(ctx context.Context) (*mcp.ListToolsResult, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			return
+		}
+	}()
 
 	var sdkResponse map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&sdkResponse); err != nil {
@@ -289,7 +297,9 @@ func createSDKMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 		// Register cleanup
 		t.Cleanup(func() {
 			cancel()
-			serverWrapper.Stop()
+			if err := serverWrapper.Stop(); err != nil {
+				t.Logf("Failed to stop server wrapper: %v", err)
+			}
 		})
 		return serverWrapper, serverURL
 	case err := <-serverError:
@@ -496,7 +506,11 @@ func TestSDKProtocolCompliance_ErrorHandling(t *testing.T) {
 			if err != nil {
 				t.Fatalf("HTTP request failed: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 
 			var sdkResponse map[string]interface{}
 			if err := json.NewDecoder(resp.Body).Decode(&sdkResponse); err != nil {

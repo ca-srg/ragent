@@ -79,7 +79,7 @@ func (e *MetadataExtractor) ParseFrontMatter(content string) (map[string]interfa
 	if strings.HasPrefix(content, "---") {
 		// Find the end of front matter
 		lines := strings.Split(content, "\n")
-		var endIndex int = -1
+		var endIndex = -1
 
 		for i := 1; i < len(lines); i++ {
 			if strings.TrimSpace(lines[i]) == "---" {
@@ -124,8 +124,8 @@ func (e *MetadataExtractor) parseMarkdownMetadata(content string) (map[string]in
 	metadata := make(map[string]interface{})
 	lines := strings.Split(content, "\n")
 
-	var metadataStartIndex int = -1
-	var metadataEndIndex int = -1
+	var metadataStartIndex = -1
+	var metadataEndIndex = -1
 
 	// Find "## メタデータ" section
 	for i, line := range lines {

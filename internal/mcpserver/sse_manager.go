@@ -384,13 +384,22 @@ func (m *SSEManager) HandleSSE(w http.ResponseWriter, r *http.Request) {
 
 			// Format SSE message
 			if event.ID != "" {
-				fmt.Fprintf(w, "id: %s\n", event.ID)
+				if _, err := fmt.Fprintf(w, "id: %s\n", event.ID); err != nil {
+					m.logger.Printf("Failed to write event ID: %v", err)
+					return
+				}
 			}
 			if event.Event != "" {
-				fmt.Fprintf(w, "event: %s\n", event.Event)
+				if _, err := fmt.Fprintf(w, "event: %s\n", event.Event); err != nil {
+					m.logger.Printf("Failed to write event type: %v", err)
+					return
+				}
 			}
 			if event.Retry > 0 {
-				fmt.Fprintf(w, "retry: %d\n", event.Retry)
+				if _, err := fmt.Fprintf(w, "retry: %d\n", event.Retry); err != nil {
+					m.logger.Printf("Failed to write retry value: %v", err)
+					return
+				}
 			}
 
 			// Marshal data to JSON
@@ -399,7 +408,10 @@ func (m *SSEManager) HandleSSE(w http.ResponseWriter, r *http.Request) {
 				m.logger.Printf("Failed to marshal event data: %v", err)
 				continue
 			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+				m.logger.Printf("Failed to write event data: %v", err)
+				return
+			}
 
 			// Flush the data immediately
 			flusher.Flush()

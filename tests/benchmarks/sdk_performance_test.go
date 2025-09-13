@@ -134,7 +134,9 @@ func BenchmarkServerStartup_Custom(b *testing.B) {
 		startupTime := time.Since(startTime)
 
 		// Stop server immediately
-		server.Stop()
+		if err := server.Stop(); err != nil {
+			b.Logf("Failed to stop server: %v", err)
+		}
 
 		// Record custom metrics
 		b.ReportMetric(float64(startupTime.Nanoseconds())/1e6, "startup_ms")
@@ -189,7 +191,9 @@ func BenchmarkServerStartup_SDK(b *testing.B) {
 		startupTime := time.Since(startTime)
 
 		// Stop server immediately
-		serverWrapper.Stop()
+		if err := serverWrapper.Stop(); err != nil {
+			b.Logf("Failed to stop server wrapper: %v", err)
+		}
 
 		// Record custom metrics
 		b.ReportMetric(float64(startupTime.Nanoseconds())/1e6, "startup_ms")
@@ -227,7 +231,11 @@ func BenchmarkToolCall_Custom(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to start server: %v", err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			b.Logf("Failed to stop server: %v", err)
+		}
+	}()
 
 	// Wait for server to be ready
 	time.Sleep(100 * time.Millisecond)
@@ -264,7 +272,9 @@ func BenchmarkToolCall_Custom(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Request failed: %v", err)
 		}
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			b.Logf("Failed to close response body: %v", err)
+		}
 
 		latency := time.Since(startTime)
 
@@ -310,7 +320,11 @@ func BenchmarkToolCall_SDK(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to start server: %v", err)
 	}
-	defer serverWrapper.Stop()
+	defer func() {
+		if err := serverWrapper.Stop(); err != nil {
+			b.Logf("Failed to stop server wrapper: %v", err)
+		}
+	}()
 
 	// Wait for server to be ready
 	time.Sleep(100 * time.Millisecond)
@@ -347,7 +361,9 @@ func BenchmarkToolCall_SDK(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Request failed: %v", err)
 		}
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			b.Logf("Failed to close response body: %v", err)
+		}
 
 		latency := time.Since(startTime)
 
@@ -387,7 +403,11 @@ func BenchmarkConcurrentToolCalls_Custom(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to start server: %v", err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			b.Logf("Failed to stop server: %v", err)
+		}
+	}()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -423,7 +443,9 @@ func BenchmarkConcurrentToolCalls_Custom(b *testing.B) {
 				requestBody, _ := json.Marshal(request)
 				resp, err := httpClient.Post(serverURL, "application/json", bytes.NewReader(requestBody))
 				if err == nil {
-					resp.Body.Close()
+					if cerr := resp.Body.Close(); cerr != nil {
+						b.Logf("Failed to close response body: %v", cerr)
+					}
 				}
 			}(j)
 		}
@@ -468,7 +490,11 @@ func BenchmarkConcurrentToolCalls_SDK(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to start server: %v", err)
 	}
-	defer serverWrapper.Stop()
+	defer func() {
+		if err := serverWrapper.Stop(); err != nil {
+			b.Logf("Failed to stop server wrapper: %v", err)
+		}
+	}()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -504,7 +530,9 @@ func BenchmarkConcurrentToolCalls_SDK(b *testing.B) {
 				requestBody, _ := json.Marshal(request)
 				resp, err := httpClient.Post(serverURL, "application/json", bytes.NewReader(requestBody))
 				if err == nil {
-					resp.Body.Close()
+					if cerr := resp.Body.Close(); cerr != nil {
+						b.Logf("Failed to close response body: %v", cerr)
+					}
 				}
 			}(j)
 		}
@@ -542,8 +570,12 @@ func BenchmarkMemoryUsage_Custom(b *testing.B) {
 		)
 
 		toolRegistry := server.GetToolRegistry()
-		toolRegistry.RegisterTool("hybrid_search", hybridSearchTool.GetToolDefinition(), hybridSearchTool.HandleToolCall)
-		server.Start()
+		if err := toolRegistry.RegisterTool("hybrid_search", hybridSearchTool.GetToolDefinition(), hybridSearchTool.HandleToolCall); err != nil {
+			b.Fatalf("Failed to register tool: %v", err)
+		}
+		if err := server.Start(); err != nil {
+			b.Fatalf("Failed to start server: %v", err)
+		}
 
 		// Measure memory after startup
 		runtime.GC()
@@ -570,7 +602,9 @@ func BenchmarkMemoryUsage_Custom(b *testing.B) {
 			requestBody, _ := json.Marshal(request)
 			resp, err := httpClient.Post(serverURL, "application/json", bytes.NewReader(requestBody))
 			if err == nil {
-				resp.Body.Close()
+				if cerr := resp.Body.Close(); cerr != nil {
+					b.Logf("Failed to close response body: %v", cerr)
+				}
 			}
 		}
 
@@ -579,7 +613,9 @@ func BenchmarkMemoryUsage_Custom(b *testing.B) {
 		time.Sleep(10 * time.Millisecond)
 		afterOps := getMemoryStats()
 
-		server.Stop()
+		if err := server.Stop(); err != nil {
+			b.Logf("Failed to stop server: %v", err)
+		}
 
 		// Report memory metrics
 		b.ReportMetric(afterStartup.AllocMB-baseline.AllocMB, "startup_alloc_mb")
@@ -615,8 +651,12 @@ func BenchmarkMemoryUsage_SDK(b *testing.B) {
 			benchConfig.hybridConfig,
 		)
 
-		serverWrapper.RegisterTool("hybrid_search", hybridSearchHandler.HandleSDKToolCall)
-		serverWrapper.Start()
+		if err := serverWrapper.RegisterTool("hybrid_search", hybridSearchHandler.HandleSDKToolCall); err != nil {
+			b.Fatalf("Failed to register tool: %v", err)
+		}
+		if err := serverWrapper.Start(); err != nil {
+			b.Fatalf("Failed to start server wrapper: %v", err)
+		}
 
 		// Measure memory after startup
 		runtime.GC()
@@ -643,7 +683,9 @@ func BenchmarkMemoryUsage_SDK(b *testing.B) {
 			requestBody, _ := json.Marshal(request)
 			resp, err := httpClient.Post(serverURL, "application/json", bytes.NewReader(requestBody))
 			if err == nil {
-				resp.Body.Close()
+				if cerr := resp.Body.Close(); cerr != nil {
+					b.Logf("Failed to close response body: %v", cerr)
+				}
 			}
 		}
 
@@ -652,7 +694,9 @@ func BenchmarkMemoryUsage_SDK(b *testing.B) {
 		time.Sleep(10 * time.Millisecond)
 		afterOps := getMemoryStats()
 
-		serverWrapper.Stop()
+		if err := serverWrapper.Stop(); err != nil {
+			b.Logf("Failed to stop server wrapper: %v", err)
+		}
 
 		// Report memory metrics
 		b.ReportMetric(afterStartup.AllocMB-baseline.AllocMB, "startup_alloc_mb")
@@ -701,20 +745,32 @@ func TestPerformanceRequirements(t *testing.T) {
 		hybridSearchTool := mcpserver.NewHybridSearchToolAdapter(
 			benchConfig.osClient, benchConfig.embeddingClient, benchConfig.hybridConfig)
 		toolRegistry := server.GetToolRegistry()
-		toolRegistry.RegisterTool("hybrid_search", hybridSearchTool.GetToolDefinition(), hybridSearchTool.HandleToolCall)
-		server.Start()
+		if err := toolRegistry.RegisterTool("hybrid_search", hybridSearchTool.GetToolDefinition(), hybridSearchTool.HandleToolCall); err != nil {
+			t.Fatalf("Failed to register tool: %v", err)
+		}
+		if err := server.Start(); err != nil {
+			t.Fatalf("Failed to start server: %v", err)
+		}
 		customStartup := time.Since(start)
-		server.Stop()
+		if err := server.Stop(); err != nil {
+			t.Logf("Failed to stop server: %v", err)
+		}
 
 		// Test SDK server startup
 		start = time.Now()
 		mcpConfig := &types.Config{MCPServerHost: "127.0.0.1", MCPServerPort: 9601, MCPSSEEnabled: false}
 		serverWrapper, _ := mcpserver.NewServerWrapper(mcpConfig)
 		hybridHandler := mcpserver.NewHybridSearchHandler(benchConfig.osClient, benchConfig.embeddingClient, benchConfig.hybridConfig)
-		serverWrapper.RegisterTool("hybrid_search", hybridHandler.HandleSDKToolCall)
-		serverWrapper.Start()
+		if err := serverWrapper.RegisterTool("hybrid_search", hybridHandler.HandleSDKToolCall); err != nil {
+			t.Fatalf("Failed to register tool: %v", err)
+		}
+		if err := serverWrapper.Start(); err != nil {
+			t.Fatalf("Failed to start server wrapper: %v", err)
+		}
 		sdkStartup := time.Since(start)
-		serverWrapper.Stop()
+		if err := serverWrapper.Stop(); err != nil {
+			t.Logf("Failed to stop server wrapper: %v", err)
+		}
 
 		t.Logf("Custom server startup: %v", customStartup)
 		t.Logf("SDK server startup: %v", sdkStartup)

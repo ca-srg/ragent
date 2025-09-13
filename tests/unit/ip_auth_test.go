@@ -133,7 +133,9 @@ func TestIPAuthMiddleware_HTTPBehavior(t *testing.T) {
 	// Create a test handler that should only be called for allowed IPs
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		if _, err := w.Write([]byte("success")); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	wrappedHandler := middleware.Middleware(testHandler)

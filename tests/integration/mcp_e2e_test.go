@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -67,7 +68,11 @@ func (c *E2EMCPClient) CallTool(ctx context.Context, toolName string, args map[s
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close response body: %v", err)
+		}
+	}()
 
 	// Parse response
 	var mcpResponse types.MCPToolResponse
@@ -114,7 +119,11 @@ func (c *E2EMCPClient) ListTools(ctx context.Context) (*types.MCPToolResponse, *
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close response body: %v", err)
+		}
+	}()
 
 	var mcpResponse types.MCPToolResponse
 	if err := json.NewDecoder(resp.Body).Decode(&mcpResponse); err != nil {
@@ -259,7 +268,9 @@ func createE2EMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 		// Register cleanup
 		t.Cleanup(func() {
 			cancel()
-			server.Stop()
+			if err := server.Stop(); err != nil {
+				t.Logf("Failed to stop server: %v", err)
+			}
 		})
 		return server, serverURL
 	case err := <-serverError:
@@ -583,11 +594,19 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 	t.Run("Custom vs SDK Server Comparison", func(t *testing.T) {
 		// Test custom server (legacy implementation)
 		customServer, customURL := createE2EMCPServer(t, cfg, osClient, embeddingClient)
-		defer customServer.Stop()
+		defer func() {
+			if err := customServer.Stop(); err != nil {
+				t.Logf("Failed to stop custom server: %v", err)
+			}
+		}()
 
 		// Test SDK server wrapper (new implementation)
 		sdkServer, sdkURL := createSDKE2EServer(t, cfg, osClient, embeddingClient)
-		defer sdkServer.Stop()
+		defer func() {
+			if err := sdkServer.Stop(); err != nil {
+				t.Logf("Failed to stop SDK server: %v", err)
+			}
+		}()
 
 		// Create clients for both servers
 		customClient := NewE2EMCPClient(customURL)
@@ -640,7 +659,11 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 	t.Run("Backward Compatibility Validation", func(t *testing.T) {
 		// Create SDK server
 		sdkServer, sdkURL := createSDKE2EServer(t, cfg, osClient, embeddingClient)
-		defer sdkServer.Stop()
+		defer func() {
+			if err := sdkServer.Stop(); err != nil {
+				t.Logf("Failed to stop SDK server: %v", err)
+			}
+		}()
 
 		// Test with existing E2E client (simulates existing integrations)
 		existingClient := NewE2EMCPClient(sdkURL)
@@ -685,7 +708,11 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 
 	t.Run("Protocol Compliance Validation", func(t *testing.T) {
 		sdkServer, sdkURL := createSDKE2EServer(t, cfg, osClient, embeddingClient)
-		defer sdkServer.Stop()
+		defer func() {
+			if err := sdkServer.Stop(); err != nil {
+				t.Logf("Failed to stop SDK server: %v", err)
+			}
+		}()
 
 		// Test strict JSON-RPC 2.0 compliance
 		httpClient := &http.Client{Timeout: 10 * time.Second}
@@ -733,10 +760,16 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 					}
 					return // Error expected
 				}
-				defer resp.Body.Close()
+				defer func() {
+					if err := resp.Body.Close(); err != nil {
+						t.Logf("Failed to close response body: %v", err)
+					}
+				}()
 
 				var response map[string]interface{}
-				json.NewDecoder(resp.Body).Decode(&response)
+				if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+					t.Fatalf("Failed to decode response: %v", err)
+				}
 
 				hasError := response["error"] != nil
 				if test.expectError && !hasError {
@@ -755,7 +788,11 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 		start := time.Now()
 		sdkServer, sdkURL := createSDKE2EServer(t, cfg, osClient, embeddingClient)
 		startupTime := time.Since(start)
-		defer sdkServer.Stop()
+		defer func() {
+			if err := sdkServer.Stop(); err != nil {
+				t.Logf("Failed to stop SDK server: %v", err)
+			}
+		}()
 
 		if startupTime > 500*time.Millisecond {
 			t.Errorf("SDK server startup time %v exceeds 500ms requirement", startupTime)
@@ -826,7 +863,11 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 
 	t.Run("Error Handling Validation", func(t *testing.T) {
 		sdkServer, sdkURL := createSDKE2EServer(t, cfg, osClient, embeddingClient)
-		defer sdkServer.Stop()
+		defer func() {
+			if err := sdkServer.Stop(); err != nil {
+				t.Logf("Failed to stop SDK server: %v", err)
+			}
+		}()
 
 		client := NewE2EMCPClient(sdkURL)
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -950,7 +991,9 @@ func createSDKE2EServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 	case serverURL := <-serverReady:
 		t.Cleanup(func() {
 			cancel()
-			serverWrapper.Stop()
+			if err := serverWrapper.Stop(); err != nil {
+				t.Logf("Failed to stop server wrapper: %v", err)
+			}
 		})
 		return serverWrapper, serverURL
 	case err := <-serverError:
@@ -975,7 +1018,11 @@ func TestE2E_SDKMigration_Final(t *testing.T) {
 
 	// Create SDK server for final validation
 	sdkServer, sdkURL := createSDKE2EServer(t, cfg, osClient, embeddingClient)
-	defer sdkServer.Stop()
+	defer func() {
+		if err := sdkServer.Stop(); err != nil {
+			t.Logf("Failed to stop SDK server: %v", err)
+		}
+	}()
 
 	client := NewE2EMCPClient(sdkURL)
 

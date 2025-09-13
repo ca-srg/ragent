@@ -484,8 +484,8 @@ func isValidHostname(hostname string) bool {
 
 	// Check for invalid characters
 	for _, char := range hostname {
-		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') || char == '-' || char == '.') {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') && char != '-' && char != '.' {
 			return false
 		}
 	}
@@ -511,8 +511,8 @@ func isValidIndexName(name string) bool {
 
 	// Check remaining characters
 	for _, char := range name {
-		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') || char == '_' || char == '-') {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') && char != '_' && char != '-' {
 			return false
 		}
 	}
@@ -528,8 +528,8 @@ func isValidToolName(name string) bool {
 
 	// Tool names should be alphanumeric with underscores
 	for _, char := range name {
-		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') || char == '_') {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') && char != '_' {
 			return false
 		}
 	}

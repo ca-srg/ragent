@@ -140,7 +140,7 @@ func (m *UnifiedAuthMiddleware) handleEitherAuth(next http.Handler, w http.Respo
 				log.Printf("Access granted via OIDC authentication for user: %s", tokenInfo.Email)
 			}
 			// Add user info to request context
-			ctx := context.WithValue(r.Context(), "user", tokenInfo)
+			ctx := context.WithValue(r.Context(), userContextKey, tokenInfo)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
