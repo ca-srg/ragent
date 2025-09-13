@@ -4,6 +4,28 @@
 
 RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + ベクトル検索）を利用したRAG（Retrieval-Augmented Generation）システムを構築するCLIツールです。Amazon S3 VectorsとOpenSearchを活用した高精度な検索機能を提供します。
 
+## 目次
+
+- [機能](#機能)
+- [前提条件](#前提条件)
+- [必要な環境変数](#必要な環境変数)
+- [インストール](#インストール)
+- [コマンド一覧](#コマンド一覧)
+  - [vectorize - ベクトル化とS3保存](#1-vectorize---ベクトル化とs3保存)
+  - [query - セマンティック検索](#2-query---セマンティック検索)
+  - [list - ベクトル一覧表示](#3-list---ベクトル一覧表示)
+  - [chat - 対話型RAGチャット](#4-chat---対話型ragチャット)
+  - [slack-bot - Slack Bot（メンションでRAG検索）](#5-slack-bot---slack-botメンションでrag検索)
+  - [mcp-server - Claude Desktop統合用MCPサーバー（新機能）](#6-mcp-server---claude-desktop統合用mcpサーバー新機能)
+- [開発](#開発)
+- [典型的なワークフロー](#典型的なワークフロー)
+- [トラブルシューティング](#トラブルシューティング)
+- [OpenSearch RAG設定](#opensearch-rag設定)
+- [セットアップ自動化（setup.sh）](#セットアップ自動化setupsh)
+- [MCPサーバー統合](#mcpサーバー統合)
+- [ライセンス](#ライセンス)
+- [貢献](#貢献)
+
 ## 機能
 
 - **ベクトル化**: markdownファイルをAmazon Bedrockを使用してembeddingに変換

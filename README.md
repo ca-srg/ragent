@@ -4,6 +4,28 @@
 
 RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system from markdown documents using hybrid search capabilities (BM25 + vector search) with Amazon S3 Vectors and OpenSearch.
 
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Required Environment Variables](#required-environment-variables)
+- [Installation](#installation)
+- [Commands](#commands)
+  - [vectorize - Vectorization and S3 Storage](#1-vectorize---vectorization-and-s3-storage)
+  - [query - Semantic Search](#2-query---semantic-search)
+  - [list - List Vectors](#3-list---list-vectors)
+  - [chat - Interactive RAG Chat](#4-chat---interactive-rag-chat)
+  - [slack-bot - Slack Bot for RAG Search](#5-slack-bot---slack-bot-for-rag-search)
+  - [mcp-server - MCP Server for Claude Desktop Integration](#6-mcp-server---mcp-server-for-claude-desktop-integration-new)
+- [Development](#development)
+- [Typical Workflow](#typical-workflow)
+- [Troubleshooting](#troubleshooting)
+- [OpenSearch RAG Configuration](#opensearch-rag-configuration)
+- [Automated Setup (setup.sh)](#automated-setup-setupsh)
+- [License](#license)
+- [MCP Server Integration](#mcp-server-integration)
+- [Contributing](#contributing)
+
 ## Features
 
 - **Vectorization**: Convert markdown files to embeddings using Amazon Bedrock
