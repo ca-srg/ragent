@@ -90,7 +90,9 @@ func (s *FileScanner) ValidateDirectory(dirPath string) error {
 	if err != nil {
 		return fmt.Errorf("directory is not readable: %s (%w)", dirPath, err)
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("failed to close directory: %w", err)
+	}
 
 	return nil
 }

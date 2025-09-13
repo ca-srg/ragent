@@ -3,10 +3,5 @@ markdown/*.md
 .kiro
 .serena
 ragent
-# specify
-memory
-scripts
-templates
-.claude
-specs
-# end of specify
+.spec-workflow
+opencode.json

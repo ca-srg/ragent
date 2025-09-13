@@ -77,6 +77,7 @@ func TestRTMConnectionAndEventLoop(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	if !rtm.wasManaged() {
 		// not strictly required, as Start does not call ManageConnection on fake; ignore
+		t.Log("RTM not managed (expected in fake)")
 	}
 
 	// Send a message event that mentions the bot

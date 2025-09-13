@@ -12,6 +12,10 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 - **Semantic Search**: Semantic similarity search using S3 Vector Index
 - **Interactive RAG Chat**: Chat interface with context-aware responses
 - **Vector Management**: List vectors stored in S3
+- **MCP Server**: Model Context Protocol server for Claude Desktop integration
+- **OIDC Authentication**: OpenID Connect authentication with multiple providers
+- **IP-based Security**: IP address-based access control
+- **Dual Transport**: HTTP and Server-Sent Events (SSE) transport support
 
 ## Prerequisites
 
@@ -51,6 +55,23 @@ OPENSEARCH_REGION=us-east-1  # default
 # Chat Configuration
 CHAT_MODEL=anthropic.claude-3-5-sonnet-20240620-v1:0  # default
 EXCLUDE_CATEGORIES=Personal,Daily  # Categories to exclude from search
+
+# MCP Server Configuration
+MCP_SERVER_HOST=localhost
+MCP_SERVER_PORT=8080
+MCP_IP_AUTH_ENABLED=true
+MCP_ALLOWED_IPS=127.0.0.1,::1  # Comma-separated list
+
+# OIDC Authentication (optional)
+OIDC_ISSUER=https://accounts.google.com  # Your OIDC provider URL
+OIDC_CLIENT_ID=your_client_id
+OIDC_CLIENT_SECRET=your_client_secret
+
+# Slack Bot Configuration
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_RESPONSE_TIMEOUT=5s
+SLACK_MAX_RESULTS=5
+SLACK_ENABLE_THREADING=false
 ```
 
 ## Installation
@@ -190,7 +211,7 @@ RAGent chat --system "You are a helpful assistant specialized in documentation."
 - `clear`: Clear conversation history
 - `help`: Show available commands
 
-### 5. slack-bot - Slack Bot for RAG Search (New)
+### 5. slack-bot - Slack Bot for RAG Search
 
 Start a Slack Bot that listens for mentions and answers with RAG results.
 
@@ -205,6 +226,58 @@ Requirements:
  - Requires OpenSearch configuration (`OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, `OPENSEARCH_REGION`). Slack Bot does not use S3 Vector fallback.
 
 Details: see `docs/slack-bot.md`.
+
+### 6. mcp-server - MCP Server for Claude Desktop Integration (New)
+
+Start an MCP (Model Context Protocol) server that provides hybrid search capabilities to Claude Desktop and other MCP-compatible tools.
+
+```bash
+# Start with OIDC authentication only
+RAGent mcp-server --auth-method oidc
+
+# Allow either IP or OIDC authentication (recommended for development)
+RAGent mcp-server --auth-method either
+
+# Require both IP and OIDC authentication (highest security)
+RAGent mcp-server --auth-method both
+
+# IP authentication only (default)
+RAGent mcp-server --auth-method ip
+```
+
+**Authentication Methods:**
+- `ip`: Traditional IP address-based authentication only
+- `oidc`: OpenID Connect authentication only
+- `both`: Requires both IP and OIDC authentication
+- `either`: Allows either IP or OIDC authentication
+
+**Supported OIDC Providers:**
+- Google Workspace (`https://accounts.google.com`)
+- Microsoft Azure AD/Entra ID (`https://login.microsoftonline.com/{tenant}/v2.0`)
+- Okta (`https://{domain}.okta.com`)
+- Keycloak (`https://{server}/realms/{realm}`)
+- Custom OAuth2 providers
+
+**Features:**
+- JSON-RPC 2.0 compliant MCP protocol
+- Hybrid search tool: `ragent-hybrid_search`
+- Multiple authentication methods
+- Claude Desktop integration
+- SSE and HTTP transport support
+- Browser-based authentication flow
+
+**Requirements:**
+- OpenSearch configuration is required for MCP server functionality
+- For OIDC: Configure your OAuth2 application and set environment variables
+- For IP auth: Configure allowed IP addresses or ranges
+
+**Usage with Claude Desktop:**
+After authentication, add the server to Claude Desktop using the provided command:
+```bash
+claude mcp add --transport sse ragent https://your-server.example.com --header "Authorization: Bearer <JWT>"
+```
+
+Details: see `doc/mcp-server.md` and `doc/oidc-authentication.md`.
 
 ## Development
 
@@ -234,16 +307,22 @@ RAGent/
 │   ├── query.go           # query command
 │   ├── list.go            # list command
 │   ├── chat.go            # chat command
-│   ├── slack.go           # slack-bot command (new)
+│   ├── slack.go           # slack-bot command
+│   ├── mcp-server.go      # mcp-server command (new)
 │   └── vectorize.go       # vectorize command
 ├── internal/              # Internal libraries
 │   ├── config/           # Configuration management
 │   ├── embedding/        # Embedding generation
 │   ├── s3vector/         # S3 Vector integration
 │   ├── opensearch/       # OpenSearch integration
-│   └── vectorizer/       # Vectorization service
+│   ├── vectorizer/       # Vectorization service
+│   ├── slackbot/         # Slack Bot integration
+│   └── mcpserver/        # MCP Server integration (new)
 ├── markdown/             # Markdown documents (prepare before use)
 ├── export/               # Separate export tool for Kibela
+├── doc/                  # Project documentation
+│   ├── mcp-server.md     # MCP Server setup guide
+│   └── oidc-authentication.md # OIDC authentication guide
 ├── .envrc                # direnv configuration
 ├── .env                  # Environment variables file
 └── CLAUDE.md            # Claude Code configuration
@@ -267,6 +346,13 @@ RAGent/
 - `github.com/aws/aws-sdk-go-v2/service/s3`: S3 operations
 - `github.com/aws/aws-sdk-go-v2/service/s3vectors`: S3 Vector operations
 - `github.com/aws/aws-sdk-go-v2/service/bedrockruntime`: Bedrock Runtime operations
+
+### MCP Integration
+
+- `github.com/modelcontextprotocol/go-sdk`: Official MCP SDK v0.4.0
+- `github.com/coreos/go-oidc`: OpenID Connect implementation
+- JSON-RPC 2.0 protocol support
+- Multiple authentication providers
 
 ## Typical Workflow
 
@@ -307,6 +393,19 @@ RAGent/
 5. **Execute Semantic Search**
    ```bash
    RAGent query -q "content to search"
+
+6. **Start MCP Server (for Claude Desktop)**
+   ```bash
+   # Configure OIDC provider (optional)
+   export OIDC_ISSUER="https://accounts.google.com"
+   export OIDC_CLIENT_ID="your-client-id"
+
+   # Start MCP server
+   RAGent mcp-server --auth-method either
+
+   # Visit http://localhost:8080/login to authenticate
+   # Follow instructions to add to Claude Desktop
+   ```
    ```
 
 ## Troubleshooting
@@ -337,6 +436,18 @@ RAGent/
    ```
    → Verify S3 Vector Index is created
 
+5. **MCP Server authentication error**
+   ```
+   Error: IP address not allowed: 192.168.1.100
+   ```
+   → Add IP to MCP_ALLOWED_IPS or use --auth-method oidc
+
+6. **OIDC authentication error**
+   ```
+   Error: OIDC provider discovery failed
+   ```
+   → Check OIDC_ISSUER URL and network connectivity
+
 ### Debugging Methods
 
 ```bash
@@ -345,6 +456,11 @@ RAGent vectorize --dry-run
 
 # Check environment variables
 env | grep AWS
+
+# Test MCP server connectivity
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":"test"}' \
+  http://localhost:8080/mcp
 ```
 
 ## OpenSearch RAG Configuration
@@ -450,6 +566,46 @@ Notes
 ## License
 
 For license information, please refer to the LICENSE file in the repository.
+
+## MCP Server Integration
+
+### Claude Desktop Configuration
+
+After setting up the MCP server and completing authentication, add the server to your Claude Desktop configuration:
+
+```json
+{
+  "mcpServers": {
+    "ragent": {
+      "command": "curl",
+      "args": [
+        "-X", "POST",
+        "-H", "Content-Type: application/json",
+        "-H", "Authorization: Bearer YOUR_JWT_TOKEN",
+        "-d", "@-",
+        "http://localhost:8080/mcp"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+- **ragent-hybrid_search**: Execute hybrid search using BM25 and vector search
+  - Parameters: `query`, `max_results`, `bm25_weight`, `vector_weight`, `use_japanese_nlp`
+  - Returns: Structured search results with scores and references
+
+### Authentication Flow
+
+1. Start MCP server: `RAGent mcp-server --auth-method oidc`
+2. Visit authentication URL: `http://localhost:8080/login`
+3. Complete OAuth2 flow with your identity provider
+4. Copy the provided Claude Desktop configuration
+5. Add configuration to Claude Desktop settings
+
+![OIDC Authentication](doc/oidc.png)
 
 ## Contributing
 

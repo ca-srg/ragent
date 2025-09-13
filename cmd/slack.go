@@ -52,8 +52,7 @@ var slackCmd = &cobra.Command{
 			scfg.MaxResults = slackContextSize
 		}
 
-		var adapter slackbot.SearchAdapter
-		adapter = slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults)
+		adapter := slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults)
 		processor := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, adapter, &slackbot.Formatter{})
 
 		// Choose RTM vs Socket Mode

@@ -435,6 +435,46 @@ bash setup.sh
 - ポートフォワードを使う場合は、本スクリプトが Host ヘッダを VPC ドメインへ設定するため `https://localhost:9200` でも SigV4 検証が通ります。
 - `all_access` 付与は検証用の一時措置です。検証完了後は除去してください。
 
+## MCPサーバー統合
+
+### Claude Desktop設定
+
+MCPサーバーを設定し、認証を完了した後、Claude Desktop設定にサーバーを追加します:
+
+```json
+{
+  "mcpServers": {
+    "ragent": {
+      "command": "curl",
+      "args": [
+        "-X", "POST",
+        "-H", "Content-Type: application/json",
+        "-H", "Authorization: Bearer YOUR_JWT_TOKEN",
+        "-d", "@-",
+        "http://localhost:8080/mcp"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+### 利用可能MCPツール
+
+- **ragent-hybrid_search**: BM25とベクトル検索を使用したハイブリッド検索の実行
+  - パラメータ: `query`, `max_results`, `bm25_weight`, `vector_weight`, `use_japanese_nlp`
+  - 戻り値: スコアと参照情報を含む構造化された検索結果
+
+### 認証フロー
+
+1. MCPサーバーを起動: `RAGent mcp-server --auth-method oidc`
+2. 認証URLにアクセス: `http://localhost:8080/login`
+3. アイデンティティプロバイダーOAuth2フローを完了
+4. 提供されたClaude Desktop設定をコピー
+5. Claude Desktop設定に設定を追加
+
+![OIDC Authentication](doc/oidc.png)
+
 ## ライセンス
 
 このプロジェクトのライセンス情報については、リポジトリのLICENSEファイルを参照してください。
@@ -458,3 +498,55 @@ RAGent slack-bot
  - OpenSearch の設定（`OPENSEARCH_ENDPOINT`、`OPENSEARCH_INDEX`、`OPENSEARCH_REGION`）が必須です。Slack Bot では S3 Vector へのフォールバックは使用しません。
 
 詳細は `docs/slack-bot.md` を参照してください。
+
+### 6. mcp-server - Claude Desktop統合用MCPサーバー（新機能）
+
+Claude Desktopやその他のMCP対応ツールにハイブリッド検索機能を提供するMCP（Model Context Protocol）サーバーを起動します。
+
+```bash
+# OIDC認証のみで開始
+RAGent mcp-server --auth-method oidc
+
+# IP認証またはOIDC認証のいずれかを許可（開発時推奨）
+RAGent mcp-server --auth-method either
+
+# IP認証とOIDC認証の両方を要求（最高セキュリティ）
+RAGent mcp-server --auth-method both
+
+# IP認証のみ（デフォルト）
+RAGent mcp-server --auth-method ip
+```
+
+**認証方式:**
+- `ip`: 従来のIPアドレスベース認証のみ
+- `oidc`: OpenID Connect認証のみ
+- `both`: IP認証とOIDC認証の両方を要求
+- `either`: IP認証またはOIDC認証のいずれかを許可
+
+**対応OIDC プロバイダー:**
+- Google Workspace (`https://accounts.google.com`)
+- Microsoft Azure AD/Entra ID (`https://login.microsoftonline.com/{tenant}/v2.0`)
+- Okta (`https://{domain}.okta.com`)
+- Keycloak (`https://{server}/realms/{realm}`)
+- カスタムOAuth2プロバイダー
+
+**機能:**
+- JSON-RPC 2.0準拠のMCPプロトコル
+- ハイブリッド検索ツール: `ragent-hybrid_search`
+- 複数の認証方式
+- Claude Desktop統合
+- SSEおよびHTTPトランスポート対応
+- ブラウザベースの認証フロー
+
+**要件:**
+- MCPサーバー機能にはOpenSearch設定が必要
+- OIDC用: OAuth2アプリケーションの設定と環境変数の設定
+- IP認証用: 許可IPアドレスまたは範囲の設定
+
+**Claude Desktopでの使用:**
+認証後、提供されるコマンドを使用してClaude DesktopにサーバーVを追加:
+```bash
+claude mcp add --transport sse ragent https://your-server.example.com --header "Authorization: Bearer <JWT>"
+```
+
+詳細: `doc/mcp-server.md` および `doc/oidc-authentication.md` を参照してください。

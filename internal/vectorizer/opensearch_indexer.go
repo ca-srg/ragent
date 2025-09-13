@@ -163,10 +163,9 @@ func (osi *OpenSearchIndexerImpl) indexDocumentBatch(ctx context.Context, indexN
 			return osi.classifyOpenSearchError(err, fmt.Sprintf("batch_%d", offset))
 		}
 
-		if resp != nil {
-			// TODO: Parse bulk response for individual document errors when OpenSearch client API is clarified
-			// For now, assume success if no error returned
-		}
+		// TODO: Parse bulk response for individual document errors when OpenSearch client API is clarified
+		// For now, assume success if no error returned
+		_ = resp
 
 		return nil
 	}
