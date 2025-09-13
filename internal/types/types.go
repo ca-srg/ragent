@@ -117,7 +117,7 @@ type Config struct {
 	Concurrency          int           `json:"concurrency" env:"VECTORIZER_CONCURRENCY,default=10"`
 	RetryAttempts        int           `json:"retry_attempts" env:"VECTORIZER_RETRY_ATTEMPTS,default=0"`
 	RetryDelay           time.Duration `json:"retry_delay" env:"VECTORIZER_RETRY_DELAY,default=2s"`
-	ExcludeCategoriesStr string        `json:"-" env:"EXCLUDE_CATEGORIES,default=個人メモ|日報"`
+	ExcludeCategoriesStr string        `json:"-" env:"EXCLUDE_CATEGORIES,default=個人メモ,日報"`
 	ExcludeCategories    []string      `json:"exclude_categories"`
 	// OpenSearch configuration
 	OpenSearchEndpoint          string        `json:"opensearch_endpoint" env:"OPENSEARCH_ENDPOINT,required=true"`
@@ -133,6 +133,40 @@ type Config struct {
 	OpenSearchMaxConnections    int           `json:"opensearch_max_connections" env:"OPENSEARCH_MAX_CONNECTIONS,default=100"`
 	OpenSearchMaxIdleConns      int           `json:"opensearch_max_idle_conns" env:"OPENSEARCH_MAX_IDLE_CONNS,default=10"`
 	OpenSearchIdleConnTimeout   time.Duration `json:"opensearch_idle_conn_timeout" env:"OPENSEARCH_IDLE_CONN_TIMEOUT,default=90s"`
+
+	// MCP Server configuration
+	MCPServerEnabled             bool          `json:"mcp_server_enabled" env:"MCP_SERVER_ENABLED,default=false"`
+	MCPServerHost                string        `json:"mcp_server_host" env:"MCP_SERVER_HOST,default=localhost"`
+	MCPServerPort                int           `json:"mcp_server_port" env:"MCP_SERVER_PORT,default=8080"`
+	MCPServerReadTimeout         time.Duration `json:"mcp_server_read_timeout" env:"MCP_SERVER_READ_TIMEOUT,default=30s"`
+	MCPServerWriteTimeout        time.Duration `json:"mcp_server_write_timeout" env:"MCP_SERVER_WRITE_TIMEOUT,default=30s"`
+	MCPServerIdleTimeout         time.Duration `json:"mcp_server_idle_timeout" env:"MCP_SERVER_IDLE_TIMEOUT,default=120s"`
+	MCPServerMaxHeaderBytes      int           `json:"mcp_server_max_header_bytes" env:"MCP_SERVER_MAX_HEADER_BYTES,default=1048576"` // 1MB
+	MCPServerEnableAccessLogging bool          `json:"mcp_server_enable_access_logging" env:"MCP_SERVER_ENABLE_ACCESS_LOGGING,default=true"`
+	MCPServerGracefulShutdown    bool          `json:"mcp_server_graceful_shutdown" env:"MCP_SERVER_GRACEFUL_SHUTDOWN,default=true"`
+	MCPServerShutdownTimeout     time.Duration `json:"mcp_server_shutdown_timeout" env:"MCP_SERVER_SHUTDOWN_TIMEOUT,default=30s"`
+
+	// MCP IP Authentication configuration
+	MCPIPAuthEnabled       bool     `json:"mcp_ip_auth_enabled" env:"MCP_IP_AUTH_ENABLED,default=true"`
+	MCPAllowedIPsStr       string   `json:"-" env:"MCP_ALLOWED_IPS,default=127.0.0.1,::1"`
+	MCPAllowedIPs          []string `json:"mcp_allowed_ips"`
+	MCPIPAuthEnableLogging bool     `json:"mcp_ip_auth_enable_logging" env:"MCP_IP_AUTH_ENABLE_LOGGING,default=true"`
+
+	// MCP Tool configuration
+	MCPToolPrefix            string  `json:"mcp_tool_prefix" env:"MCP_TOOL_PREFIX,default="`
+	MCPHybridSearchToolName  string  `json:"mcp_hybrid_search_tool_name" env:"MCP_TOOL_NAME_HYBRID_SEARCH,default=hybrid_search"`
+	MCPDefaultSearchSize     int     `json:"mcp_default_search_size" env:"MCP_DEFAULT_SEARCH_SIZE,default=10"`
+	MCPDefaultBM25Weight     float64 `json:"mcp_default_bm25_weight" env:"MCP_DEFAULT_BM25_WEIGHT,default=0.5"`
+	MCPDefaultVectorWeight   float64 `json:"mcp_default_vector_weight" env:"MCP_DEFAULT_VECTOR_WEIGHT,default=0.5"`
+	MCPDefaultUseJapaneseNLP bool    `json:"mcp_default_use_japanese_nlp" env:"MCP_DEFAULT_USE_JAPANESE_NLP,default=true"`
+	MCPDefaultTimeoutSeconds int     `json:"mcp_default_timeout_seconds" env:"MCP_DEFAULT_TIMEOUT_SECONDS,default=30"`
+
+	// MCP SSE (Server-Sent Events) configuration
+	MCPSSEEnabled           bool          `json:"mcp_sse_enabled" env:"MCP_SSE_ENABLED,default=true"`
+	MCPSSEHeartbeatInterval time.Duration `json:"mcp_sse_heartbeat_interval" env:"MCP_SSE_HEARTBEAT_INTERVAL,default=30s"`
+	MCPSSEBufferSize        int           `json:"mcp_sse_buffer_size" env:"MCP_SSE_BUFFER_SIZE,default=100"`
+	MCPSSEMaxClients        int           `json:"mcp_sse_max_clients" env:"MCP_SSE_MAX_CLIENTS,default=1000"`
+	MCPSSEHistorySize       int           `json:"mcp_sse_history_size" env:"MCP_SSE_HISTORY_SIZE,default=50"`
 }
 
 // QueryResult represents a single result from a vector query

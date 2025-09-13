@@ -21,4 +21,5 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(queryCmd)
 	rootCmd.AddCommand(chatCmd)
+	rootCmd.AddCommand(mcpServerCmd)
 }

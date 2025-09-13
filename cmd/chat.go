@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +15,7 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/search"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
@@ -164,18 +164,36 @@ func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Generate embedding for user input to find relevant context
+	// Create and initialize hybrid search service
 	log.Printf("Searching for relevant context using hybrid mode...")
-	queryEmbedding64, err := embeddingClient.GenerateEmbedding(ctx, userInput)
+	searchService, err := search.NewHybridSearchService(cfg, embeddingClient)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate embedding: %w", err)
+		return "", fmt.Errorf("failed to create search service: %w", err)
 	}
 
-	// Use OpenSearch hybrid search only (fallback removed)
-	contextParts, references, err := searchWithHybrid(ctx, userInput, queryEmbedding64, cfg, embeddingClient)
+	if err := searchService.Initialize(ctx); err != nil {
+		return "", fmt.Errorf("failed to initialize search service: %w", err)
+	}
+
+	// Prepare search request with same parameters as original searchWithHybrid
+	searchRequest := &search.SearchRequest{
+		Query:          userInput,
+		IndexName:      getIndexNameForChat(cfg, "hybrid"),
+		ContextSize:    contextSize,
+		BM25Weight:     chatBM25Weight,
+		VectorWeight:   chatVectorWeight,
+		UseJapaneseNLP: chatUseJapaneseNLP,
+		TimeoutSeconds: 30,
+	}
+
+	// Execute search using service
+	searchResponse, err := searchService.Search(ctx, searchRequest)
 	if err != nil {
 		return "", fmt.Errorf("failed to search for context: %w", err)
 	}
+
+	contextParts := searchResponse.ContextParts
+	references := searchResponse.References
 
 	// Prepare messages with context
 	messages := make([]bedrock.ChatMessage, len(history))
@@ -260,87 +278,6 @@ func validateOpenSearch(ctx context.Context, cfg *commontypes.Config, embeddingC
 	}
 	// Quick embedding validation already done separately; return success
 	return nil
-}
-
-// searchWithHybrid performs hybrid search using OpenSearch
-func searchWithHybrid(ctx context.Context, query string, queryEmbedding []float64, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) ([]string, map[string]string, error) {
-	// Validate OpenSearch configuration
-	if cfg.OpenSearchEndpoint == "" {
-		return nil, nil, fmt.Errorf("OpenSearch endpoint not configured")
-	}
-
-	// Create OpenSearch client
-	osConfig, err := opensearch.NewConfigFromTypes(cfg)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create OpenSearch config: %w", err)
-	}
-
-	if err := osConfig.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("OpenSearch config validation failed: %w", err)
-	}
-
-	osClient, err := opensearch.NewClient(osConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create OpenSearch client: %w", err)
-	}
-
-	// Test connection
-	if err := osClient.HealthCheck(ctx); err != nil {
-		return nil, nil, fmt.Errorf("OpenSearch health check failed: %w", err)
-	}
-
-	// Create hybrid search engine
-	hybridEngine := opensearch.NewHybridSearchEngine(osClient, embeddingClient)
-
-	// Build hybrid query
-	hybridQuery := &opensearch.HybridQuery{
-		Query:          query,
-		IndexName:      getIndexNameForChat(cfg, "hybrid"),
-		Size:           contextSize,
-		BM25Weight:     chatBM25Weight,
-		VectorWeight:   chatVectorWeight,
-		FusionMethod:   opensearch.FusionMethodWeightedSum,
-		UseJapaneseNLP: chatUseJapaneseNLP,
-		TimeoutSeconds: 30,
-	}
-
-	// Execute search
-	log.Println("Executing OpenSearch hybrid search...")
-	result, err := hybridEngine.Search(ctx, hybridQuery)
-	if err != nil {
-		return nil, nil, fmt.Errorf("hybrid search failed: %w", err)
-	}
-
-	// Extract context and references from results
-	var contextParts []string
-	references := make(map[string]string)
-
-	for _, doc := range result.FusionResult.Documents {
-		// Unmarshal the source JSON
-		var source map[string]interface{}
-		if err := json.Unmarshal(doc.Source, &source); err != nil {
-			continue // Skip this document if we can't unmarshal
-		}
-
-		// Extract content
-		if content, ok := source["content"].(string); ok && content != "" {
-			contextParts = append(contextParts, content)
-		}
-
-		// Extract title and reference
-		var title, reference string
-		if t, ok := source["title"].(string); ok {
-			title = t
-		}
-		if ref, ok := source["reference"].(string); ok && ref != "" {
-			reference = ref
-		}
-		if title != "" && reference != "" {
-			references[title] = reference
-		}
-	}
-
-	return contextParts, references, nil
 }
 
 // searchWithOpenSearchOnly performs search using OpenSearch BM25 only

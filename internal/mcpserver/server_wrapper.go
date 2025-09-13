@@ -1,0 +1,382 @@
+package mcpserver
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"sync"
+	"time"
+
+	"github.com/ca-srg/ragent/internal/types"
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// ServerWrapper wraps the MCP SDK server with RAGent-specific functionality
+// Maintains API compatibility with existing MCPServer while using official SDK
+type ServerWrapper struct {
+	// Core SDK server instance
+	sdkServer  *mcp.Server
+	httpServer *http.Server
+
+	// Configuration management
+	configAdapter *ConfigAdapter
+	sdkConfig     *SDKServerConfig
+	ragentConfig  *types.Config
+
+	// RAGent-specific components (maintain existing integrations)
+	toolRegistry     *ToolRegistry
+	ipAuthMiddleware *IPAuthMiddleware
+	sseManager       *SSEManager
+
+	// Server lifecycle management
+	logger       *log.Logger
+	shutdownChan chan struct{}
+	wg           sync.WaitGroup
+	mutex        sync.RWMutex
+	isRunning    bool
+
+	// Context management
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+}
+
+// NewServerWrapper creates a new SDK-based server wrapper with RAGent extensions
+func NewServerWrapper(config *types.Config) (*ServerWrapper, error) {
+	if config == nil {
+		return nil, fmt.Errorf("configuration cannot be nil")
+	}
+
+	// Create configuration adapter
+	configAdapter := NewConfigAdapter(config)
+	sdkConfig, err := configAdapter.ToSDKConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert configuration: %w", err)
+	}
+
+	// Initialize logger
+	logger := log.New(os.Stdout, "[ServerWrapper] ", log.LstdFlags)
+
+	wrapper := &ServerWrapper{
+		configAdapter: configAdapter,
+		sdkConfig:     sdkConfig,
+		ragentConfig:  config,
+		toolRegistry:  NewToolRegistry(),
+		logger:        logger,
+		shutdownChan:  make(chan struct{}),
+	}
+
+	// Create context for server lifecycle
+	wrapper.ctx, wrapper.cancelFunc = context.WithCancel(context.Background())
+
+	// Initialize SDK server
+	if err := wrapper.initializeSDKServer(); err != nil {
+		return nil, fmt.Errorf("failed to initialize SDK server: %w", err)
+	}
+
+	// Setup SSE manager if enabled
+	if wrapper.sdkConfig.SSEEnabled {
+		wrapper.initializeSSEManager()
+	}
+
+	logger.Printf("ServerWrapper initialized successfully")
+	return wrapper, nil
+}
+
+// initializeSDKServer creates and configures the SDK server instance
+func (sw *ServerWrapper) initializeSDKServer() error {
+	// Create SDK server implementation info
+	impl := &mcp.Implementation{
+		Name:    "ragent-mcp-server",
+		Version: "1.0.0",
+	}
+
+	// Create SDK server with implementation
+	sw.sdkServer = mcp.NewServer(impl, nil)
+
+	sw.logger.Printf("SDK server initialized with implementation: %+v", impl)
+	return nil
+}
+
+// initializeSSEManager sets up the SSE manager with configuration
+func (sw *ServerWrapper) initializeSSEManager() {
+	sseConfig := &SSEManagerConfig{
+		HeartbeatInterval: sw.sdkConfig.SSEHeartbeatInterval,
+		BufferSize:        sw.sdkConfig.SSEBufferSize,
+		MaxClients:        sw.sdkConfig.SSEMaxClients,
+		HistorySize:       sw.sdkConfig.SSEHistorySize,
+	}
+
+	sw.sseManager = NewSSEManager(sseConfig, sw.logger)
+	sw.logger.Printf("SSE manager initialized")
+}
+
+// SetIPAuthMiddleware sets the IP authentication middleware
+// Maintains API compatibility with existing MCPServer
+func (sw *ServerWrapper) SetIPAuthMiddleware(middleware *IPAuthMiddleware) {
+	sw.mutex.Lock()
+	defer sw.mutex.Unlock()
+
+	sw.ipAuthMiddleware = middleware
+	sw.logger.Printf("IP authentication middleware set")
+}
+
+// GetToolRegistry returns the tool registry
+// Maintains API compatibility with existing MCPServer
+func (sw *ServerWrapper) GetToolRegistry() *ToolRegistry {
+	return sw.toolRegistry
+}
+
+// RegisterTool registers a tool with the SDK server
+func (sw *ServerWrapper) RegisterTool(name string, handler mcp.ToolHandler) error {
+	if sw.sdkServer == nil {
+		return fmt.Errorf("SDK server not initialized")
+	}
+
+	// Create basic input schema for SDK compatibility
+	basicSchema := &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"query": {
+				Type:        "string",
+				Description: "Input query or parameters",
+			},
+		},
+		Required: []string{"query"},
+	}
+
+	// Create tool definition for SDK
+	tool := &mcp.Tool{
+		Name:        name,
+		Description: "Tool for RAGent",
+		InputSchema: basicSchema,
+	}
+
+	// Register tool with SDK server using AddTool
+	sw.sdkServer.AddTool(tool, handler)
+
+	sw.logger.Printf("Tool %s registered successfully", name)
+	return nil
+}
+
+// Start starts the server with lifecycle management
+// Maintains API compatibility with existing MCPServer.Start()
+func (sw *ServerWrapper) Start() error {
+	sw.mutex.Lock()
+	defer sw.mutex.Unlock()
+
+	if sw.isRunning {
+		return fmt.Errorf("server is already running")
+	}
+
+	if sw.sdkServer == nil {
+		return fmt.Errorf("SDK server not initialized")
+	}
+
+	// Start SSE manager if enabled
+	if sw.sdkConfig.SSEEnabled && sw.sseManager != nil {
+		sw.sseManager.Start(sw.ctx)
+		sw.logger.Printf("SSE manager started")
+	}
+
+	serverAddr := sw.configAdapter.GetServerAddress()
+	sw.logger.Printf("Starting MCP server (SDK-based) on %s", serverAddr)
+
+	// Create HTTP server with SDK handler
+	mux := http.NewServeMux()
+
+	// Create SDK handler that returns our server instance
+	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return sw.sdkServer
+	}, nil)
+
+	mux.Handle("/", mcpHandler)
+
+	// Add health check endpoint
+	mux.HandleFunc("/health", sw.handleHealthCheck)
+
+	// Create HTTP server
+	server := &http.Server{
+		Addr:           serverAddr,
+		Handler:        mux,
+		ReadTimeout:    sw.sdkConfig.ReadTimeout,
+		WriteTimeout:   sw.sdkConfig.WriteTimeout,
+		IdleTimeout:    sw.sdkConfig.IdleTimeout,
+		MaxHeaderBytes: sw.sdkConfig.MaxHeaderBytes,
+	}
+
+	// Apply IP authentication middleware if enabled
+	if sw.ipAuthMiddleware != nil {
+		server.Handler = sw.ipAuthMiddleware.Middleware(server.Handler)
+		sw.logger.Printf("IP authentication middleware enabled")
+	}
+
+	// Store server reference for shutdown
+	sw.httpServer = server
+
+	// Start the HTTP server in a goroutine
+	sw.wg.Add(1)
+	go func() {
+		defer sw.wg.Done()
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			sw.logger.Printf("HTTP server error: %v", err)
+		}
+	}()
+
+	// Give the server a moment to start
+	time.Sleep(100 * time.Millisecond)
+
+	sw.isRunning = true
+	sw.logger.Printf("MCP server (SDK-based) started successfully")
+
+	if sw.sdkConfig.SSEEnabled {
+		sw.logger.Printf("SSE endpoints available via SDK server")
+	}
+
+	return nil
+}
+
+// Stop stops the server with graceful shutdown
+// Maintains API compatibility with existing MCPServer.Stop()
+func (sw *ServerWrapper) Stop() error {
+	sw.mutex.Lock()
+	defer sw.mutex.Unlock()
+
+	if !sw.isRunning {
+		return fmt.Errorf("server is not running")
+	}
+
+	sw.logger.Printf("Stopping MCP server (SDK-based)...")
+
+	// Stop HTTP server
+	if sw.httpServer != nil {
+		if sw.sdkConfig.GracefulShutdown {
+			// Create shutdown context with timeout
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), sw.sdkConfig.ShutdownTimeout)
+			defer cancel()
+
+			if err := sw.httpServer.Shutdown(shutdownCtx); err != nil {
+				sw.logger.Printf("Graceful shutdown failed: %v, forcing immediate shutdown", err)
+				sw.httpServer.Close()
+			}
+		} else {
+			// Immediate shutdown
+			sw.httpServer.Close()
+		}
+	}
+
+	// Cancel context for SDK server and other components
+	sw.cancelFunc()
+
+	// Stop SSE manager if running
+	if sw.sseManager != nil {
+		// SSE manager will stop when context is cancelled
+		sw.logger.Printf("SSE manager stopping")
+	}
+
+	// Signal shutdown and wait for goroutines
+	close(sw.shutdownChan)
+	sw.wg.Wait()
+
+	sw.isRunning = false
+	sw.logger.Printf("MCP server (SDK-based) stopped successfully")
+	return nil
+}
+
+// IsRunning returns whether the server is currently running
+// Maintains API compatibility with existing MCPServer
+func (sw *ServerWrapper) IsRunning() bool {
+	sw.mutex.RLock()
+	defer sw.mutex.RUnlock()
+	return sw.isRunning
+}
+
+// WaitForShutdown waits for the server to be shut down
+// Maintains API compatibility with existing MCPServer
+func (sw *ServerWrapper) WaitForShutdown() {
+	<-sw.shutdownChan
+}
+
+// GetConfig returns the current server configuration
+// Maintains API compatibility with existing MCPServer
+func (sw *ServerWrapper) GetConfig() *SDKServerConfig {
+	return sw.sdkConfig
+}
+
+// GetRAGentConfig returns the original RAGent configuration
+func (sw *ServerWrapper) GetRAGentConfig() *types.Config {
+	return sw.ragentConfig
+}
+
+// GetSDKServer returns the underlying SDK server instance
+// This is specific to the wrapper and not in the original MCPServer
+func (sw *ServerWrapper) GetSDKServer() *mcp.Server {
+	return sw.sdkServer
+}
+
+// SetLogger sets a custom logger
+// Maintains API compatibility with existing MCPServer
+func (sw *ServerWrapper) SetLogger(logger *log.Logger) {
+	sw.mutex.Lock()
+	defer sw.mutex.Unlock()
+
+	if logger != nil {
+		sw.logger = logger
+	}
+}
+
+// GetServerInfo returns information about the server
+// Maintains API compatibility with existing MCPServer
+func (sw *ServerWrapper) GetServerInfo() map[string]interface{} {
+	sw.mutex.RLock()
+	defer sw.mutex.RUnlock()
+
+	return map[string]interface{}{
+		"server_type":       "SDK-based",
+		"sdk_version":       "v0.4.0", // This should be dynamically determined
+		"host":              sw.sdkConfig.Host,
+		"port":              sw.sdkConfig.Port,
+		"is_running":        sw.isRunning,
+		"sse_enabled":       sw.sdkConfig.SSEEnabled,
+		"ip_auth_enabled":   sw.sdkConfig.IPAuthEnabled,
+		"graceful_shutdown": sw.sdkConfig.GracefulShutdown,
+		"tools_registered":  len(sw.toolRegistry.tools), // Assuming tools field exists
+		"configuration": map[string]interface{}{
+			"read_timeout":     sw.sdkConfig.ReadTimeout,
+			"write_timeout":    sw.sdkConfig.WriteTimeout,
+			"idle_timeout":     sw.sdkConfig.IdleTimeout,
+			"max_header_bytes": sw.sdkConfig.MaxHeaderBytes,
+		},
+	}
+}
+
+// GetServerAddress returns the full server address
+func (sw *ServerWrapper) GetServerAddress() string {
+	return sw.configAdapter.GetServerAddress()
+}
+
+// IsSecureTransport returns whether the server uses secure transport
+func (sw *ServerWrapper) IsSecureTransport() bool {
+	return sw.configAdapter.IsSecureTransport()
+}
+
+// handleHealthCheck handles health check requests
+func (sw *ServerWrapper) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	status := map[string]interface{}{
+		"status":      "healthy",
+		"server_type": "SDK-based",
+		"sdk_version": "v0.4.0",
+		"running":     sw.isRunning,
+		"address":     sw.GetServerAddress(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// Simple JSON encoding for health check
+	response := fmt.Sprintf(`{"status":"%v","server_type":"%v","sdk_version":"%v","running":%v,"address":"%v"}`,
+		status["status"], status["server_type"], status["sdk_version"], status["running"], status["address"])
+	w.Write([]byte(response))
+}
