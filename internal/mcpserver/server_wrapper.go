@@ -27,9 +27,10 @@ type ServerWrapper struct {
 	ragentConfig  *types.Config
 
 	// RAGent-specific components (maintain existing integrations)
-	toolRegistry     *ToolRegistry
-	ipAuthMiddleware *IPAuthMiddleware
-	sseManager       *SSEManager
+	toolRegistry          *ToolRegistry
+	ipAuthMiddleware      *IPAuthMiddleware
+	unifiedAuthMiddleware *UnifiedAuthMiddleware
+	sseManager            *SSEManager
 
 	// Server lifecycle management
 	logger       *log.Logger
@@ -123,6 +124,20 @@ func (sw *ServerWrapper) SetIPAuthMiddleware(middleware *IPAuthMiddleware) {
 	sw.logger.Printf("IP authentication middleware set")
 }
 
+// SetUnifiedAuthMiddleware sets the unified authentication middleware (IP/OIDC/both/either)
+// If set, this takes precedence over IP-only middleware when starting the HTTP server.
+func (sw *ServerWrapper) SetUnifiedAuthMiddleware(middleware *UnifiedAuthMiddleware) {
+	sw.mutex.Lock()
+	defer sw.mutex.Unlock()
+
+	sw.unifiedAuthMiddleware = middleware
+	if middleware != nil {
+		sw.logger.Printf("Unified authentication middleware set (method: %s)", middleware.GetAuthMethod())
+	} else {
+		sw.logger.Printf("Unified authentication middleware cleared")
+	}
+}
+
 // GetToolRegistry returns the tool registry
 // Maintains API compatibility with existing MCPServer
 func (sw *ServerWrapper) GetToolRegistry() *ToolRegistry {
@@ -187,15 +202,21 @@ func (sw *ServerWrapper) Start() error {
 	// Create HTTP server with SDK handler
 	mux := http.NewServeMux()
 
-	// Create SDK handler that returns our server instance
-	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		return sw.sdkServer
-	}, nil)
-
+	// Create handlers that return our server instance
+	baseGetServer := func(r *http.Request) *mcp.Server { return sw.sdkServer }
+	// Back-compat root handler (streamable)
+	mcpHandler := mcp.NewStreamableHTTPHandler(baseGetServer, nil)
 	mux.Handle("/", mcpHandler)
+
+	// Dual transport handler on /mcp to support both http and sse transports
+	dual := NewDualTransportHandler(baseGetServer)
+	mux.Handle("/mcp", dual)
 
 	// Add health check endpoint
 	mux.HandleFunc("/health", sw.handleHealthCheck)
+
+	// Register auth-related routes (e.g., OAuth2 callback)
+	sw.registerAuthRoutes(mux)
 
 	// Create HTTP server
 	server := &http.Server{
@@ -207,8 +228,12 @@ func (sw *ServerWrapper) Start() error {
 		MaxHeaderBytes: sw.sdkConfig.MaxHeaderBytes,
 	}
 
-	// Apply IP authentication middleware if enabled
-	if sw.ipAuthMiddleware != nil {
+	// Apply authentication middleware
+	// Prefer unified auth if configured; otherwise fall back to IP-only
+	if sw.unifiedAuthMiddleware != nil {
+		server.Handler = sw.unifiedAuthMiddleware.Middleware(server.Handler)
+		sw.logger.Printf("Unified authentication middleware enabled")
+	} else if sw.ipAuthMiddleware != nil {
 		server.Handler = sw.ipAuthMiddleware.Middleware(server.Handler)
 		sw.logger.Printf("IP authentication middleware enabled")
 	}
@@ -379,4 +404,21 @@ func (sw *ServerWrapper) handleHealthCheck(w http.ResponseWriter, r *http.Reques
 	response := fmt.Sprintf(`{"status":"%v","server_type":"%v","sdk_version":"%v","running":%v,"address":"%v"}`,
 		status["status"], status["server_type"], status["sdk_version"], status["running"], status["address"])
 	w.Write([]byte(response))
+}
+
+// registerAuthRoutes registers authentication-related HTTP routes on the server mux
+func (sw *ServerWrapper) registerAuthRoutes(mux *http.ServeMux) {
+	// Register OIDC callback handler if OIDC is configured via unified middleware
+	if sw.unifiedAuthMiddleware != nil {
+		if oidc := sw.unifiedAuthMiddleware.GetOIDCAuthMiddleware(); oidc != nil {
+			mux.HandleFunc("/callback", oidc.HandleCallback)
+			sw.logger.Printf("Registered OIDC callback route: /callback")
+			mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+				// Generate request-bound auth URL and redirect
+				authURL := oidc.GetAuthURLForRequest(r)
+				http.Redirect(w, r, authURL, http.StatusFound)
+			})
+			sw.logger.Printf("Registered OIDC login route: /login")
+		}
+	}
 }

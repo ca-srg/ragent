@@ -667,29 +667,6 @@ EnvironmentFile=/opt/ragent/.env
 WantedBy=multi-user.target
 ```
 
-### 負荷分散設定
-
-```nginx
-upstream ragent_mcp {
-    server localhost:8080;
-    server localhost:8081;
-    keepalive 32;
-}
-
-server {
-    listen 80;
-    server_name mcp.example.com;
-    
-    location /mcp {
-        proxy_pass http://ragent_mcp;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
 ## サポート
 
 ### ログレベル調整

@@ -324,7 +324,6 @@ func (m *SSEManager) sendEventHistory(client *SSEClient) {
 		case client.Channel <- event:
 		default:
 			// Skip if channel is full
-			break
 		}
 	}
 }

@@ -29,6 +29,19 @@ var (
 	mcpDefaultSearchSize   int
 	mcpDefaultBM25Weight   float64
 	mcpDefaultVectorWeight float64
+
+	// Unified authentication flags (OIDC/IP)
+	mcpAuthMethod        string
+	mcpAuthEnableLogging bool
+	oidcIssuer           string
+	oidcClientID         string
+	oidcClientSecret     string
+	oidcScopes           []string
+	oidcAuthURL          string
+	oidcTokenURL         string
+	oidcUserInfoURL      string
+	oidcJWKSURL          string
+	oidcSkipDiscovery    bool
 )
 
 var mcpServerCmd = &cobra.Command{
@@ -59,6 +72,21 @@ func init() {
 	mcpServerCmd.Flags().StringSliceVar(&mcpAllowedIPs, "allowed-ips", []string{"127.0.0.1", "::1"}, "Comma-separated list of allowed IP addresses/ranges")
 	mcpServerCmd.Flags().BoolVar(&mcpEnableIPAuth, "enable-ip-auth", true, "Enable IP-based authentication")
 	mcpServerCmd.Flags().BoolVar(&mcpEnableAccessLog, "enable-access-log", true, "Enable HTTP access logging")
+
+	// Authentication (unified) flags
+	mcpServerCmd.Flags().StringVar(&mcpAuthMethod, "auth-method", "ip", "Authentication method: ip, oidc, both, either")
+	mcpServerCmd.Flags().BoolVar(&mcpAuthEnableLogging, "auth-enable-logging", true, "Enable detailed auth logging")
+
+	// OIDC flags (used when auth-method is oidc/both/either)
+	mcpServerCmd.Flags().StringVar(&oidcIssuer, "oidc-issuer", "", "OIDC issuer URL (e.g., https://accounts.google.com)")
+	mcpServerCmd.Flags().StringVar(&oidcClientID, "oidc-client-id", "", "OIDC client ID")
+	mcpServerCmd.Flags().StringVar(&oidcClientSecret, "oidc-client-secret", "", "OIDC client secret")
+	mcpServerCmd.Flags().StringSliceVar(&oidcScopes, "oidc-scopes", []string{"openid", "profile", "email"}, "OIDC scopes")
+	mcpServerCmd.Flags().StringVar(&oidcAuthURL, "oidc-auth-url", "", "Custom authorization endpoint URL")
+	mcpServerCmd.Flags().StringVar(&oidcTokenURL, "oidc-token-url", "", "Custom token endpoint URL")
+	mcpServerCmd.Flags().StringVar(&oidcUserInfoURL, "oidc-userinfo-url", "", "Custom userinfo endpoint URL")
+	mcpServerCmd.Flags().StringVar(&oidcJWKSURL, "oidc-jwks-url", "", "Custom JWKS endpoint URL")
+	mcpServerCmd.Flags().BoolVar(&oidcSkipDiscovery, "oidc-skip-discovery", false, "Skip OIDC discovery and use only custom endpoints")
 
 	// Search configuration flags
 	mcpServerCmd.Flags().StringVar(&mcpDefaultIndexName, "default-index", "ragent-docs", "Default OpenSearch index name")
@@ -118,19 +146,129 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	}
 	server.SetLogger(logger)
 
-	// Setup IP authentication if enabled
-	if cfg.MCPIPAuthEnabled {
-		// Create IP authentication middleware adapter for SDK integration
+	// Configure authentication
+	// If auth-method is provided, prefer unified auth routing (supports ip/oidc/both/either)
+	method := mcpAuthMethod
+	if method == "" {
+		method = "ip"
+	}
+
+	// Normalize method to lowercase
+	switch method {
+	case "ip", "oidc", "both", "either":
+	default:
+		return fmt.Errorf("invalid auth-method: %s (allowed: ip|oidc|both|either)", method)
+	}
+
+	if method == "ip" && cfg.MCPIPAuthEnabled {
+		// Backward-compatible IP-only behavior
 		ipAuthAdapter, err := mcpserver.NewIPAuthMiddlewareAdapter(cfg.MCPAllowedIPs, cfg.MCPIPAuthEnableLogging)
 		if err != nil {
 			return fmt.Errorf("failed to create IP authentication middleware: %w", err)
 		}
-
-		// Set the traditional IP auth middleware for compatibility with ServerWrapper
 		server.SetIPAuthMiddleware(ipAuthAdapter.GetIPAuthMiddleware())
 		logger.Printf("IP authentication enabled for IPs: %v", cfg.MCPAllowedIPs)
+	} else if method != "ip" { // oidc/both/either
+		// Resolve OIDC values from env if not provided
+		if oidcClientID == "" {
+			oidcClientID = os.Getenv("OIDC_CLIENT_ID")
+		}
+		if oidcClientSecret == "" {
+			oidcClientSecret = os.Getenv("OIDC_CLIENT_SECRET")
+		}
+		if !oidcSkipDiscovery {
+			if oidcIssuer == "" {
+				oidcIssuer = os.Getenv("OIDC_ISSUER")
+			}
+		}
+		if oidcAuthURL == "" {
+			oidcAuthURL = os.Getenv("OIDC_AUTH_URL")
+		}
+		if oidcTokenURL == "" {
+			oidcTokenURL = os.Getenv("OIDC_TOKEN_URL")
+		}
+		if oidcUserInfoURL == "" {
+			oidcUserInfoURL = os.Getenv("OIDC_USERINFO_URL")
+		}
+		if oidcJWKSURL == "" {
+			oidcJWKSURL = os.Getenv("OIDC_JWKS_URL")
+		}
+
+		// Validate minimal OIDC requirements
+		useCustomEndpoints := oidcSkipDiscovery || (oidcAuthURL != "" && oidcTokenURL != "")
+		if useCustomEndpoints {
+			if oidcAuthURL == "" || oidcTokenURL == "" {
+				return fmt.Errorf("authorization URL and token URL are required when using custom endpoints")
+			}
+			if oidcClientID == "" {
+				return fmt.Errorf("client ID is required for %s authentication", method)
+			}
+		} else {
+			if oidcIssuer == "" || oidcClientID == "" {
+				return fmt.Errorf("OIDC issuer and client ID are required for %s authentication", method)
+			}
+		}
+
+		// Build unified auth config
+		var authMethod mcpserver.AuthMethod
+		switch method {
+		case "oidc":
+			authMethod = mcpserver.AuthMethodOIDC
+		case "both":
+			authMethod = mcpserver.AuthMethodBoth
+		case "either":
+			authMethod = mcpserver.AuthMethodEither
+		}
+
+		unifiedCfg := &mcpserver.UnifiedAuthConfig{
+			AuthMethod:    authMethod,
+			EnableLogging: mcpAuthEnableLogging,
+		}
+
+		// IP part (for both/either)
+		if authMethod == mcpserver.AuthMethodBoth || authMethod == mcpserver.AuthMethodEither {
+			unifiedCfg.IPConfig = &mcpserver.IPAuthConfig{
+				AllowedIPs:    cfg.MCPAllowedIPs,
+				EnableLogging: cfg.MCPIPAuthEnableLogging,
+			}
+		}
+
+		// OIDC part
+		unifiedCfg.OIDCConfig = &mcpserver.OIDCConfig{
+			Issuer:       oidcIssuer,
+			ClientID:     oidcClientID,
+			ClientSecret: oidcClientSecret,
+			Scopes:       oidcScopes,
+			// OAuth2 callback will use MCP_SERVER_PORT
+			CallbackPort:     cfg.MCPServerPort,
+			EnableLogging:    mcpAuthEnableLogging,
+			AuthorizationURL: oidcAuthURL,
+			TokenURL:         oidcTokenURL,
+			UserInfoURL:      oidcUserInfoURL,
+			JWKSURL:          oidcJWKSURL,
+			SkipDiscovery:    oidcSkipDiscovery,
+		}
+
+		unified, err := mcpserver.NewUnifiedAuthMiddleware(unifiedCfg)
+		if err != nil {
+			return fmt.Errorf("failed to create unified auth middleware: %w", err)
+		}
+		server.SetUnifiedAuthMiddleware(unified)
+
+		logger.Printf("Unified auth enabled (method=%s)", method)
+		if method == "oidc" || method == "both" || method == "either" {
+			if useCustomEndpoints {
+				logger.Printf("OIDC custom endpoints: auth=%s token=%s", oidcAuthURL, oidcTokenURL)
+				if oidcUserInfoURL != "" {
+					logger.Printf("OIDC userinfo=%s", oidcUserInfoURL)
+				}
+			} else {
+				logger.Printf("OIDC issuer: %s", oidcIssuer)
+			}
+			logger.Printf("OAuth2 callback port: %d", cfg.MCPServerPort)
+		}
 	} else {
-		logger.Printf("WARNING: IP authentication is disabled - server is open to all IPs")
+		logger.Printf("WARNING: No authentication middleware enabled (auth-method=%s)", method)
 	}
 
 	// Initialize OpenSearch client

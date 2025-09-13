@@ -268,13 +268,11 @@ func CreateToolCallResultWithMetadata(content string, metadata map[string]interf
 	}
 
 	// Add metadata as additional content if provided
-	if metadata != nil {
-		for key, value := range metadata {
-			result.Content = append(result.Content, types.MCPContent{
-				Type: "text",
-				Text: fmt.Sprintf("%s: %v", key, value),
-			})
-		}
+	for key, value := range metadata {
+		result.Content = append(result.Content, types.MCPContent{
+			Type: "text",
+			Text: fmt.Sprintf("%s: %v", key, value),
+		})
 	}
 
 	return result

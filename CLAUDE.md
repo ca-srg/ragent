@@ -16,7 +16,8 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
   - `query.go`: queryコマンドの実装（セマンティック検索）
   - `list.go`: listコマンドの実装（ベクトル一覧表示）
   - `chat.go`: chatコマンドの実装（対話的RAGクエリ）
-  - `slack.go`: slackコマンドの実装（Slack Bot起動） [NEW]
+  - `slack.go`: slackコマンドの実装（Slack Bot起動）
+  - `mcp-server.go`: mcp-serverコマンドの実装（MCP Server起動） [NEW]
 
 ### Internal Packages
 - **internal/vectorizer/**: ベクトル化サービス
@@ -50,11 +51,17 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
   - BM25とベクトル検索の組み合わせ
   - 日本語最適化処理
   - エラーハンドリングと設定管理
-- **internal/slackbot/**: Slack Bot統合 [NEW]
+- **internal/slackbot/**: Slack Bot統合
   - RTM WebSocket接続管理
   - メンション検出とメッセージ処理
   - RAG検索統合とレスポンス生成
   - Slack Block Kit形式でのフォーマット
+- **internal/mcpserver/**: MCP Server統合 [NEW]
+  - MCP SDK v0.4.0ベースの実装
+  - JSON-RPC 2.0準拠プロトコル
+  - OIDC認証とIPベース認証
+  - デュアルトランスポート（HTTP/SSE）
+  - ハイブリッド検索ツール提供
 
 ### Directories
 - **markdown/**: RAGシステムで使用するMarkdownドキュメントを配置（使用前に準備が必要）
@@ -83,11 +90,24 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
 ### フィルタ設定
 - `EXCLUDE_CATEGORIES`: RAG検索で除外するカテゴリ（カンマ区切り、デフォルト: "個人メモ,日報"）
 
-### Slack Bot設定 [NEW]
+### Slack Bot設定
 - `SLACK_BOT_TOKEN`: Bot User OAuth Token (xoxb-...)
 - `SLACK_RESPONSE_TIMEOUT`: レスポンスタイムアウト（デフォルト: 5s）
 - `SLACK_MAX_RESULTS`: 最大検索結果数（デフォルト: 5）
 - `SLACK_ENABLE_THREADING`: スレッド機能の有効化（デフォルト: false）
+
+### MCP Server設定 [NEW]
+- `MCP_SERVER_HOST`: サーバーホスト（デフォルト: localhost）
+- `MCP_SERVER_PORT`: サーバーポート（デフォルト: 8080）
+- `MCP_IP_AUTH_ENABLED`: IP認証の有効化（デフォルト: true）
+- `MCP_ALLOWED_IPS`: 許可IPアドレス（カンマ区切り）
+- `OIDC_ISSUER`: OIDC プロバイダーURL
+- `OIDC_CLIENT_ID`: OAuth2 クライアントID
+- `OIDC_CLIENT_SECRET`: OAuth2 クライアントシークレット
+- `OIDC_AUTH_URL`: カスタム認証エンドポイント（オプション）
+- `OIDC_TOKEN_URL`: カスタムトークンエンドポイント（オプション）
+- `OIDC_USERINFO_URL`: カスタムユーザー情報エンドポイント（オプション）
+- `OIDC_JWKS_URL`: カスタムJWKSエンドポイント（オプション）
 
 ## Development Commands
 
@@ -114,7 +134,8 @@ go run main.go vectorize                 # ベクトル化実行
 go run main.go query -q "検索クエリ"      # セマンティック検索
 go run main.go chat                      # 対話的RAGチャット
 go run main.go list                      # ベクトル一覧表示
-go run main.go slack-bot                 # Slack Bot起動 [NEW]
+go run main.go slack-bot                 # Slack Bot起動
+go run main.go mcp-server                # MCP Server起動 [NEW]
 
 # ベンダリング（禁止されている）
 # go mod vendor は使用しない
@@ -142,9 +163,13 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 # 4. ベクトル一覧表示
 ./RAGent list --prefix "docs/"
 
-# 5. Slack Bot起動 [NEW]
+# 5. Slack Bot起動
 ./RAGent slack-bot
 # Slackでの使用: @ragent-bot <質問内容>
+
+# 6. MCP Server起動 [NEW]
+./RAGent mcp-server --auth-method either
+# Claude Desktopでの使用: MCP統合によるハイブリッド検索
 ```
 
 ## Dependencies
@@ -167,8 +192,13 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 - `golang.org/x/sync`: 並行処理制御
 - `golang.org/x/time`: レート制限
 
-### Slack Integration [NEW]
+### Slack Integration
 - `github.com/slack-go/slack`: Slack API クライアント（RTM API対応）
+
+### MCP Integration [NEW]
+- `github.com/modelcontextprotocol/go-sdk`: MCP公式SDK v0.4.0
+- `github.com/coreos/go-oidc`: OpenID Connect実装
+- JSON-RPC 2.0プロトコル対応
 
 ## Configuration
 
@@ -188,12 +218,17 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 
 ## Active Specifications
 
-### slack-bot-app [NEW]
+### slack-bot-app
 Slack Bot機能を追加し、SlackでBotにメンションすることでRAG検索を実行できるようにする。RTM APIを利用し、RAGentのchatコマンドと同等の機能を提供。
 
-**Status**: planning complete
-**Branch**: `001-slack-bot-app`
-**Next Step**: `/tasks` コマンドでタスク生成
+**Status**: completed
+**Branch**: `main`
+
+### mcp-server-integration [NEW]
+MCP (Model Context Protocol) Server機能を追加し、Claude DesktopやMCP対応ツールからRAGentのハイブリッド検索機能を利用できるようにする。OIDC認証、IPベース認証、複数認証方式に対応。
+
+**Status**: completed
+**Branch**: `mcp`
 
 ### opensearch-bm25-dense-rag
 Dense@100 + BM25@200（日本語最適化）を利用してRAGの精度を向上させる。AWS の OpenSearch を利用し、OpenSearch（BM25＋k-NN）で実現する。

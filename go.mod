@@ -7,6 +7,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.31.4
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.37.2
 	github.com/aws/aws-sdk-go-v2/service/s3vectors v1.4.3
+	github.com/coreos/go-oidc/v3 v3.15.0
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/jsonschema-go v0.2.1-0.20250825175020-748c325cec76
 	github.com/modelcontextprotocol/go-sdk v0.4.0
 	github.com/netflix/go-env v0.0.0-20220526054621-78278af1949d
@@ -14,6 +16,7 @@ require (
 	github.com/slack-go/slack v0.17.3
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
+	golang.org/x/oauth2 v0.31.0
 	golang.org/x/sync v0.16.0
 	golang.org/x/time v0.12.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -33,9 +36,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.1 // indirect
 	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
+	golang.org/x/crypto v0.39.0 // indirect
 )

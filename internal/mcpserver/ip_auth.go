@@ -73,6 +73,11 @@ func NewIPAuthMiddleware(allowedIPs []string, enableLogging bool) (*IPAuthMiddle
 // Middleware returns the HTTP middleware function
 func (m *IPAuthMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Always allow OAuth2 paths to pass through (handled by OIDC layer)
+		if r.URL.Path == "/callback" || r.URL.Path == "/login" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		clientIP := m.extractClientIP(r)
 
 		if !m.isIPAllowed(clientIP) {

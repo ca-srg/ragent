@@ -20,6 +20,7 @@ type MCPServer struct {
 	server           *http.Server
 	toolRegistry     *ToolRegistry
 	ipAuthMiddleware *IPAuthMiddleware
+	authMiddleware   *UnifiedAuthMiddleware
 	sseManager       *SSEManager
 	logger           *log.Logger
 	shutdownChan     chan struct{}
@@ -113,6 +114,13 @@ func (s *MCPServer) SetIPAuthMiddleware(middleware *IPAuthMiddleware) {
 	s.ipAuthMiddleware = middleware
 }
 
+// SetUnifiedAuthMiddleware sets the unified authentication middleware
+func (s *MCPServer) SetUnifiedAuthMiddleware(middleware *UnifiedAuthMiddleware) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.authMiddleware = middleware
+}
+
 // GetToolRegistry returns the tool registry
 func (s *MCPServer) GetToolRegistry() *ToolRegistry {
 	return s.toolRegistry
@@ -135,7 +143,11 @@ func (s *MCPServer) Start() error {
 	}
 
 	// Wrap handler with middleware if available
-	if s.ipAuthMiddleware != nil {
+	// Prefer unified auth middleware if configured
+	if s.authMiddleware != nil {
+		s.server.Handler = s.authMiddleware.Middleware(s.server.Handler)
+		s.logger.Printf("Unified authentication middleware enabled with method: %s", s.authMiddleware.GetAuthMethod())
+	} else if s.ipAuthMiddleware != nil {
 		s.server.Handler = s.ipAuthMiddleware.Middleware(s.server.Handler)
 		s.logger.Printf("IP authentication middleware enabled")
 	}
