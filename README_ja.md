@@ -34,6 +34,7 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
 - **セマンティック検索**: S3 Vector Indexを使用したセマンティック類似性検索
 - **対話型RAGチャット**: コンテキスト認識応答を行うチャットインターフェース
 - **ベクトル管理**: S3に保存されたベクトルの一覧表示
+- **IPベースセキュリティ**: 許可IP制御に加え、バイパスレンジと監査ログを設定可能
 
 ## 前提条件
 
@@ -73,7 +74,20 @@ OPENSEARCH_REGION=us-east-1  # デフォルト
 # チャット設定
 CHAT_MODEL=anthropic.claude-3-5-sonnet-20240620-v1:0  # デフォルト
 EXCLUDE_CATEGORIES=個人メモ,日報  # 検索から除外するカテゴリ
+
+# MCPバイパス設定（任意）
+MCP_BYPASS_IP_RANGE=10.0.0.0/8,172.16.0.0/12  # カンマ区切りのCIDRレンジ
+MCP_BYPASS_VERBOSE_LOG=false
+MCP_BYPASS_AUDIT_LOG=true
+MCP_TRUSTED_PROXIES=192.168.1.1,10.0.0.1  # X-Forwarded-Forを信頼するプロキシ
 ```
+
+### MCPバイパス設定（任意）
+
+- `MCP_BYPASS_IP_RANGE`: 認証をスキップする信頼済みネットワークをCIDR形式でカンマ区切り指定します。
+- `MCP_BYPASS_VERBOSE_LOG`: バイパス判定の詳細ログを有効化します。ロールアウト時の検証に便利です。
+- `MCP_BYPASS_AUDIT_LOG`: バイパスされたリクエストをJSON監査ログとして出力します（デフォルト有効）。
+- `MCP_TRUSTED_PROXIES`: バイパス判定時に `X-Forwarded-For` を信頼するプロキシIPをカンマ区切りで指定します。
 
 ## インストール
 
@@ -544,6 +558,22 @@ RAGent mcp-server --auth-method ip
 - `oidc`: OpenID Connect認証のみ
 - `both`: IP認証とOIDC認証の両方を要求
 - `either`: IP認証またはOIDC認証のいずれかを許可
+
+**認証バイパス設定:**
+CI/CD環境や社内ネットワーク向けに、特定のIPレンジからのアクセスでは認証をスキップできます:
+```bash
+# 特定IPレンジをバイパス
+RAGent mcp-server --bypass-ip-range "10.0.0.0/8" --bypass-ip-range "172.16.0.0/12"
+
+# バイパスアクセスを監査ログに記録
+RAGent mcp-server --bypass-ip-range "10.10.0.0/16" --bypass-audit-log
+
+# トラブルシューティング用の詳細ログ
+RAGent mcp-server --bypass-ip-range "10.0.0.0/8" --bypass-verbose-log
+
+# 信頼できるプロキシを指定してX-Forwarded-Forを処理
+RAGent mcp-server --bypass-ip-range "10.0.0.0/8" --trusted-proxies "192.168.1.1"
+```
 
 **対応OIDC プロバイダー:**
 - Google Workspace (`https://accounts.google.com`)

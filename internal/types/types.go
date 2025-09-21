@@ -135,22 +135,29 @@ type Config struct {
 	OpenSearchIdleConnTimeout   time.Duration `json:"opensearch_idle_conn_timeout" env:"OPENSEARCH_IDLE_CONN_TIMEOUT,default=90s"`
 
 	// MCP Server configuration
-	MCPServerEnabled             bool          `json:"mcp_server_enabled" env:"MCP_SERVER_ENABLED,default=false"`
-	MCPServerHost                string        `json:"mcp_server_host" env:"MCP_SERVER_HOST,default=localhost"`
-	MCPServerPort                int           `json:"mcp_server_port" env:"MCP_SERVER_PORT,default=8080"`
-	MCPServerReadTimeout         time.Duration `json:"mcp_server_read_timeout" env:"MCP_SERVER_READ_TIMEOUT,default=30s"`
-	MCPServerWriteTimeout        time.Duration `json:"mcp_server_write_timeout" env:"MCP_SERVER_WRITE_TIMEOUT,default=30s"`
-	MCPServerIdleTimeout         time.Duration `json:"mcp_server_idle_timeout" env:"MCP_SERVER_IDLE_TIMEOUT,default=120s"`
-	MCPServerMaxHeaderBytes      int           `json:"mcp_server_max_header_bytes" env:"MCP_SERVER_MAX_HEADER_BYTES,default=1048576"` // 1MB
-	MCPServerEnableAccessLogging bool          `json:"mcp_server_enable_access_logging" env:"MCP_SERVER_ENABLE_ACCESS_LOGGING,default=true"`
-	MCPServerGracefulShutdown    bool          `json:"mcp_server_graceful_shutdown" env:"MCP_SERVER_GRACEFUL_SHUTDOWN,default=true"`
-	MCPServerShutdownTimeout     time.Duration `json:"mcp_server_shutdown_timeout" env:"MCP_SERVER_SHUTDOWN_TIMEOUT,default=30s"`
+	MCPServerEnabled          bool          `json:"mcp_server_enabled" env:"MCP_SERVER_ENABLED,default=false"`
+	MCPServerHost             string        `json:"mcp_server_host" env:"MCP_SERVER_HOST,default=localhost"`
+	MCPServerPort             int           `json:"mcp_server_port" env:"MCP_SERVER_PORT,default=8080"`
+	MCPServerReadTimeout      time.Duration `json:"mcp_server_read_timeout" env:"MCP_SERVER_READ_TIMEOUT,default=30s"`
+	MCPServerWriteTimeout     time.Duration `json:"mcp_server_write_timeout" env:"MCP_SERVER_WRITE_TIMEOUT,default=30s"`
+	MCPServerIdleTimeout      time.Duration `json:"mcp_server_idle_timeout" env:"MCP_SERVER_IDLE_TIMEOUT,default=120s"`
+	MCPServerMaxHeaderBytes   int           `json:"mcp_server_max_header_bytes" env:"MCP_SERVER_MAX_HEADER_BYTES,default=1048576"` // 1MB
+	MCPServerGracefulShutdown bool          `json:"mcp_server_graceful_shutdown" env:"MCP_SERVER_GRACEFUL_SHUTDOWN,default=true"`
+	MCPServerShutdownTimeout  time.Duration `json:"mcp_server_shutdown_timeout" env:"MCP_SERVER_SHUTDOWN_TIMEOUT,default=30s"`
 
 	// MCP IP Authentication configuration
 	MCPIPAuthEnabled       bool     `json:"mcp_ip_auth_enabled" env:"MCP_IP_AUTH_ENABLED,default=true"`
 	MCPAllowedIPsStr       string   `json:"-" env:"MCP_ALLOWED_IPS,default=127.0.0.1,::1"`
 	MCPAllowedIPs          []string `json:"mcp_allowed_ips"`
 	MCPIPAuthEnableLogging bool     `json:"mcp_ip_auth_enable_logging" env:"MCP_IP_AUTH_ENABLE_LOGGING,default=true"`
+
+	// MCP IP Bypass configuration
+	MCPBypassIPRangesStr string   `json:"-" env:"MCP_BYPASS_IP_RANGE"`
+	MCPBypassIPRanges    []string `json:"mcp_bypass_ip_ranges"`
+	MCPBypassVerboseLog  bool     `json:"mcp_bypass_verbose_log" env:"MCP_BYPASS_VERBOSE_LOG,default=false"`
+	MCPBypassAuditLog    bool     `json:"mcp_bypass_audit_log" env:"MCP_BYPASS_AUDIT_LOG,default=true"`
+	MCPTrustedProxiesStr string   `json:"-" env:"MCP_TRUSTED_PROXIES"`
+	MCPTrustedProxies    []string `json:"mcp_trusted_proxies"`
 
 	// MCP Tool configuration
 	MCPToolPrefix            string  `json:"mcp_tool_prefix" env:"MCP_TOOL_PREFIX,default="`
