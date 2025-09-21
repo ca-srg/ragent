@@ -228,7 +228,6 @@ func createE2EMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 	serverConfig := mcpserver.DefaultMCPServerConfig()
 	serverConfig.Host = "127.0.0.1"
 	serverConfig.Port = 8988 // Use fixed port for testing
-	serverConfig.EnableAccessLogging = true
 	// IP auth is handled separately, not in server config
 
 	server := mcpserver.NewMCPServer(serverConfig)
@@ -834,14 +833,13 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 
 		// Verify SDK server can be created with existing config
 		mcpConfig := &types.Config{
-			AWSS3Region:                  originalConfig.AWSS3Region,
-			OpenSearchEndpoint:           originalConfig.OpenSearchEndpoint,
-			OpenSearchRegion:             originalConfig.OpenSearchRegion,
-			MCPServerHost:                "127.0.0.1",
-			MCPServerPort:                9999, // Test port
-			MCPServerEnableAccessLogging: originalConfig.MCPServerEnableAccessLogging,
-			OpenSearchIndex:              originalConfig.OpenSearchIndex,
-			MCPSSEEnabled:                false, // Keep simple for test
+			AWSS3Region:        originalConfig.AWSS3Region,
+			OpenSearchEndpoint: originalConfig.OpenSearchEndpoint,
+			OpenSearchRegion:   originalConfig.OpenSearchRegion,
+			MCPServerHost:      "127.0.0.1",
+			MCPServerPort:      9999, // Test port
+			OpenSearchIndex:    originalConfig.OpenSearchIndex,
+			MCPSSEEnabled:      false, // Keep simple for test
 		}
 
 		serverWrapper, err := mcpserver.NewServerWrapper(mcpConfig)
@@ -931,15 +929,14 @@ func createSDKE2EServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 
 	// Create MCP server configuration for SDK server
 	mcpConfig := &types.Config{
-		AWSS3Region:                  cfg.AWSS3Region,
-		OpenSearchEndpoint:           cfg.OpenSearchEndpoint,
-		OpenSearchRegion:             cfg.OpenSearchRegion,
-		MCPServerHost:                "127.0.0.1",
-		MCPServerPort:                8990, // Different port from other tests
-		MCPServerEnableAccessLogging: true,
-		OpenSearchIndex:              cfg.OpenSearchIndex,
-		MCPSSEEnabled:                true,
-		MCPIPAuthEnabled:             false, // Disable for testing
+		AWSS3Region:        cfg.AWSS3Region,
+		OpenSearchEndpoint: cfg.OpenSearchEndpoint,
+		OpenSearchRegion:   cfg.OpenSearchRegion,
+		MCPServerHost:      "127.0.0.1",
+		MCPServerPort:      8990, // Different port from other tests
+		OpenSearchIndex:    cfg.OpenSearchIndex,
+		MCPSSEEnabled:      true,
+		MCPIPAuthEnabled:   false, // Disable for testing
 	}
 
 	// Create SDK server wrapper

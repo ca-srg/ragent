@@ -36,7 +36,7 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 - **Vector Management**: List vectors stored in S3
 - **MCP Server**: Model Context Protocol server for Claude Desktop integration
 - **OIDC Authentication**: OpenID Connect authentication with multiple providers
-- **IP-based Security**: IP address-based access control
+- **IP-based Security**: IP address-based access control with configurable bypass ranges and audit logging
 - **Dual Transport**: HTTP and Server-Sent Events (SSE) transport support
 
 ## Prerequisites
@@ -84,6 +84,12 @@ MCP_SERVER_PORT=8080
 MCP_IP_AUTH_ENABLED=true
 MCP_ALLOWED_IPS=127.0.0.1,::1  # Comma-separated list
 
+# MCP Bypass Configuration (optional)
+MCP_BYPASS_IP_RANGE=10.0.0.0/8,172.16.0.0/12  # Comma-separated CIDR ranges
+MCP_BYPASS_VERBOSE_LOG=false
+MCP_BYPASS_AUDIT_LOG=true
+MCP_TRUSTED_PROXIES=192.168.1.1,10.0.0.1  # Trusted proxy IPs for X-Forwarded-For
+
 # OIDC Authentication (optional)
 OIDC_ISSUER=https://accounts.google.com  # Your OIDC provider URL
 OIDC_CLIENT_ID=your_client_id
@@ -95,6 +101,13 @@ SLACK_RESPONSE_TIMEOUT=5s
 SLACK_MAX_RESULTS=5
 SLACK_ENABLE_THREADING=false
 ```
+
+### MCP Bypass Configuration (Optional)
+
+- `MCP_BYPASS_IP_RANGE`: Comma-separated CIDR ranges that skip authentication for trusted networks.
+- `MCP_BYPASS_VERBOSE_LOG`: Enables detailed logging for bypass decisions to aid troubleshooting.
+- `MCP_BYPASS_AUDIT_LOG`: Emits JSON audit entries for bypassed requests (enabled by default for compliance).
+- `MCP_TRUSTED_PROXIES`: Comma-separated list of proxy IPs whose `X-Forwarded-For` headers are trusted during bypass checks.
 
 ## Installation
 
@@ -272,6 +285,22 @@ RAGent mcp-server --auth-method ip
 - `oidc`: OpenID Connect authentication only
 - `both`: Requires both IP and OIDC authentication
 - `either`: Allows either IP or OIDC authentication
+
+**Bypass Authentication:**
+For CI/CD environments and internal services, you can configure bypass IP ranges that skip authentication:
+```bash
+# Bypass authentication for specific IP ranges
+RAGent mcp-server --bypass-ip-range "10.0.0.0/8" --bypass-ip-range "172.16.0.0/12"
+
+# Enable audit logging for bypass access
+RAGent mcp-server --bypass-ip-range "10.10.0.0/16" --bypass-audit-log
+
+# Verbose logging for troubleshooting
+RAGent mcp-server --bypass-ip-range "10.0.0.0/8" --bypass-verbose-log
+
+# Configure trusted proxies for X-Forwarded-For
+RAGent mcp-server --bypass-ip-range "10.0.0.0/8" --trusted-proxies "192.168.1.1"
+```
 
 **Supported OIDC Providers:**
 - Google Workspace (`https://accounts.google.com`)

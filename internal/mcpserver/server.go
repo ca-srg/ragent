@@ -38,7 +38,6 @@ type MCPServerConfig struct {
 	WriteTimeout           time.Duration
 	IdleTimeout            time.Duration
 	MaxHeaderBytes         int
-	EnableAccessLogging    bool
 	EnableGracefulShutdown bool
 	ShutdownTimeout        time.Duration
 	EnableSSE              bool
@@ -54,7 +53,6 @@ func DefaultMCPServerConfig() *MCPServerConfig {
 		WriteTimeout:           30 * time.Second,
 		IdleTimeout:            120 * time.Second,
 		MaxHeaderBytes:         1 << 20, // 1MB
-		EnableAccessLogging:    true,
 		EnableGracefulShutdown: true,
 		ShutdownTimeout:        30 * time.Second,
 		EnableSSE:              true,
@@ -218,9 +216,7 @@ func (s *MCPServer) WaitForShutdown() {
 
 // handleMCPRequest handles MCP JSON-RPC requests
 func (s *MCPServer) handleMCPRequest(w http.ResponseWriter, r *http.Request) {
-	if s.config.EnableAccessLogging {
-		s.logger.Printf("Request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-	}
+	s.logger.Printf("Request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
 
 	// Only allow POST requests for JSON-RPC
 	if r.Method != http.MethodPost {
@@ -294,9 +290,7 @@ func (s *MCPServer) handleToolsList(w http.ResponseWriter, ctx context.Context, 
 	response := types.NewMCPToolResponse(request.ID, result)
 	s.writeJSONResponse(w, response)
 
-	if s.config.EnableAccessLogging {
-		s.logger.Printf("Listed %d tools for request ID: %v", len(tools), request.ID)
-	}
+	s.logger.Printf("Listed %d tools for request ID: %v", len(tools), request.ID)
 }
 
 // handleToolCall handles the tools/call method
@@ -350,9 +344,7 @@ func (s *MCPServer) handleToolCall(w http.ResponseWriter, ctx context.Context, r
 	response := types.NewMCPToolResponse(request.ID, result)
 	s.writeJSONResponse(w, response)
 
-	if s.config.EnableAccessLogging {
-		s.logger.Printf("Executed tool '%s' for request ID: %v", params.Name, request.ID)
-	}
+	s.logger.Printf("Executed tool '%s' for request ID: %v", params.Name, request.ID)
 }
 
 // handleHealthCheck handles health check requests
@@ -403,9 +395,7 @@ func (s *MCPServer) writeErrorResponse(w http.ResponseWriter, id interface{}, co
 		}
 	}
 
-	if s.config.EnableAccessLogging {
-		s.logger.Printf("Error response: code=%d, message=%s, id=%v", code, message, id)
-	}
+	s.logger.Printf("Error response: code=%d, message=%s, id=%v", code, message, id)
 }
 
 // SetLogger sets a custom logger for the server
@@ -435,7 +425,6 @@ func (s *MCPServer) GetServerInfo() map[string]interface{} {
 			"write_timeout":     s.config.WriteTimeout.String(),
 			"idle_timeout":      s.config.IdleTimeout.String(),
 			"max_header_bytes":  s.config.MaxHeaderBytes,
-			"access_logging":    s.config.EnableAccessLogging,
 			"graceful_shutdown": s.config.EnableGracefulShutdown,
 			"shutdown_timeout":  s.config.ShutdownTimeout.String(),
 			"sse_enabled":       s.config.EnableSSE,

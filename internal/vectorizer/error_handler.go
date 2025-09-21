@@ -3,6 +3,7 @@ package vectorizer
 import (
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -102,9 +103,6 @@ type ErrorHandlingDecision struct {
 
 // NewDualBackendErrorHandler creates a new error handler
 func NewDualBackendErrorHandler(maxRetryAttempts int, retryDelay time.Duration) *DualBackendErrorHandler {
-	if maxRetryAttempts <= 0 {
-		maxRetryAttempts = 3
-	}
 	if retryDelay <= 0 {
 		retryDelay = 2 * time.Second
 	}
@@ -291,6 +289,10 @@ func (eh *DualBackendErrorHandler) isRetryableError(err error, backendType Backe
 		ErrorTypeOpenSearchConnection: true,
 		ErrorTypeAuthentication:       false, // New: authentication errors are not retryable
 		ErrorTypeS3Upload:             false, // Usually not retryable without changes
+		ErrorTypeOpenSearchMapping:    false,
+		ErrorTypeValidation:           false,
+		ErrorTypeOpenSearchIndex:      false,
+		ErrorTypeOpenSearchBulkIndex:  true,
 	}
 
 	if retryable, exists := retryableTypes[errorType]; exists {
@@ -339,8 +341,8 @@ func (eh *DualBackendErrorHandler) isRetryableError(err error, backendType Backe
 		}
 	}
 
-	// Default to not retryable for unknown errors
-	return false
+	// Default to retryable for unknown errors to allow graceful recovery attempts
+	return true
 }
 
 // determineProcessingDecision determines the overall processing decision
@@ -437,9 +439,7 @@ func (eh *DualBackendErrorHandler) calculateRetryDelay(attemptNumber int) time.D
 		return eh.retryDelay
 	}
 
-	// Exponential backoff with jitter
-	multiplier := float64(attemptNumber - 1)
-	backoffDuration := time.Duration(float64(eh.retryDelay) * (eh.backoffMultiplier * multiplier))
+	backoffDuration := time.Duration(float64(eh.retryDelay) * math.Pow(eh.backoffMultiplier, float64(attemptNumber-1)))
 
 	// Cap the maximum delay at 30 seconds
 	maxDelay := 30 * time.Second

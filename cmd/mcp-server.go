@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,7 +25,6 @@ var (
 	mcpServerPort          int
 	mcpAllowedIPs          []string
 	mcpEnableIPAuth        bool
-	mcpEnableAccessLog     bool
 	mcpDefaultIndexName    string
 	mcpDefaultSearchSize   int
 	mcpDefaultBM25Weight   float64
@@ -42,6 +42,12 @@ var (
 	oidcUserInfoURL      string
 	oidcJWKSURL          string
 	oidcSkipDiscovery    bool
+
+	// Bypass IP authentication flags
+	mcpBypassIPRanges   []string
+	mcpBypassVerboseLog bool
+	mcpBypassAuditLog   bool
+	mcpTrustedProxies   []string
 )
 
 var mcpServerCmd = &cobra.Command{
@@ -71,7 +77,6 @@ func init() {
 	mcpServerCmd.Flags().IntVar(&mcpServerPort, "port", 8080, "Server port")
 	mcpServerCmd.Flags().StringSliceVar(&mcpAllowedIPs, "allowed-ips", []string{"127.0.0.1", "::1"}, "Comma-separated list of allowed IP addresses/ranges")
 	mcpServerCmd.Flags().BoolVar(&mcpEnableIPAuth, "enable-ip-auth", true, "Enable IP-based authentication")
-	mcpServerCmd.Flags().BoolVar(&mcpEnableAccessLog, "enable-access-log", true, "Enable HTTP access logging")
 
 	// Authentication (unified) flags
 	mcpServerCmd.Flags().StringVar(&mcpAuthMethod, "auth-method", "ip", "Authentication method: ip, oidc, both, either")
@@ -93,6 +98,12 @@ func init() {
 	mcpServerCmd.Flags().IntVar(&mcpDefaultSearchSize, "default-search-size", 10, "Default number of search results")
 	mcpServerCmd.Flags().Float64Var(&mcpDefaultBM25Weight, "default-bm25-weight", 0.5, "Default BM25 weight for hybrid search")
 	mcpServerCmd.Flags().Float64Var(&mcpDefaultVectorWeight, "default-vector-weight", 0.5, "Default vector weight for hybrid search")
+
+	// Bypass IP authentication flags
+	mcpServerCmd.Flags().StringSliceVar(&mcpBypassIPRanges, "bypass-ip-range", []string{}, "Comma-separated list of IP ranges to bypass authentication (CIDR format)")
+	mcpServerCmd.Flags().BoolVar(&mcpBypassVerboseLog, "bypass-verbose-log", false, "Enable verbose logging for bypass authentication")
+	mcpServerCmd.Flags().BoolVar(&mcpBypassAuditLog, "bypass-audit-log", true, "Enable audit logging for bypass authentication")
+	mcpServerCmd.Flags().StringSliceVar(&mcpTrustedProxies, "trusted-proxies", []string{}, "Comma-separated list of trusted proxy IPs for X-Forwarded-For processing")
 }
 
 func runMCPServer(cmd *cobra.Command, args []string) error {
@@ -115,9 +126,6 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("enable-ip-auth") {
 		cfg.MCPIPAuthEnabled = mcpEnableIPAuth
 	}
-	if cmd.Flags().Changed("enable-access-log") {
-		cfg.MCPServerEnableAccessLogging = mcpEnableAccessLog
-	}
 	if cmd.Flags().Changed("default-index") {
 		cfg.OpenSearchIndex = mcpDefaultIndexName
 	}
@@ -129,6 +137,19 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	}
 	if cmd.Flags().Changed("default-vector-weight") {
 		cfg.MCPDefaultVectorWeight = mcpDefaultVectorWeight
+	}
+	// Override bypass configuration with command line flags if provided
+	if cmd.Flags().Changed("bypass-ip-range") {
+		cfg.MCPBypassIPRanges = mcpBypassIPRanges
+	}
+	if cmd.Flags().Changed("bypass-verbose-log") {
+		cfg.MCPBypassVerboseLog = mcpBypassVerboseLog
+	}
+	if cmd.Flags().Changed("bypass-audit-log") {
+		cfg.MCPBypassAuditLog = mcpBypassAuditLog
+	}
+	if cmd.Flags().Changed("trusted-proxies") {
+		cfg.MCPTrustedProxies = mcpTrustedProxies
 	}
 
 	// Validate OpenSearch configuration (required for MCP server)
@@ -223,6 +244,27 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 		unifiedCfg := &mcpserver.UnifiedAuthConfig{
 			AuthMethod:    authMethod,
 			EnableLogging: mcpAuthEnableLogging,
+		}
+
+		// Add bypass configuration if provided
+		if len(cfg.MCPBypassIPRanges) > 0 {
+			// Validate all CIDR formats before proceeding
+			for _, cidr := range cfg.MCPBypassIPRanges {
+				if _, _, err := net.ParseCIDR(cidr); err != nil {
+					// Try parsing as single IP (will be converted to CIDR internally)
+					if ip := net.ParseIP(cidr); ip == nil {
+						logger.Printf("Warning: Invalid CIDR format for bypass IP range: %s", cidr)
+					}
+				}
+			}
+
+			unifiedCfg.BypassConfig = &mcpserver.BypassIPConfig{
+				BypassIPRanges: cfg.MCPBypassIPRanges,
+				VerboseLogging: cfg.MCPBypassVerboseLog,
+				AuditLogging:   cfg.MCPBypassAuditLog,
+				TrustedProxies: cfg.MCPTrustedProxies,
+			}
+			logger.Printf("Bypass IP authentication configured with %d ranges", len(cfg.MCPBypassIPRanges))
 		}
 
 		// IP part (for both/either)

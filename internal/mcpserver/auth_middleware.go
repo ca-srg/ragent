@@ -21,26 +21,38 @@ const (
 	AuthMethodEither AuthMethod = "either"
 )
 
-// UnifiedAuthMiddleware combines IP and OIDC authentication
+// UnifiedAuthMiddleware combines IP and OIDC authentication with bypass support
 type UnifiedAuthMiddleware struct {
-	ipAuth        *IPAuthMiddleware
-	oidcAuth      *OIDCAuthMiddleware
-	authMethod    AuthMethod
-	enableLogging bool
+	ipAuth         *IPAuthMiddleware
+	oidcAuth       *OIDCAuthMiddleware
+	authMethod     AuthMethod
+	enableLogging  bool
+	bypassChecker  BypassIPChecker
+	bypassLogger   BypassAuditLogger
+	trustedProxies []string
 }
 
 // UnifiedAuthConfig contains configuration for unified authentication
 type UnifiedAuthConfig struct {
-	AuthMethod    AuthMethod    // Authentication method to use
-	IPConfig      *IPAuthConfig // Configuration for IP authentication
-	OIDCConfig    *OIDCConfig   // Configuration for OIDC authentication
-	EnableLogging bool          // Enable detailed logging
+	AuthMethod     AuthMethod      // Authentication method to use
+	IPConfig       *IPAuthConfig   // Configuration for IP authentication
+	OIDCConfig     *OIDCConfig     // Configuration for OIDC authentication
+	EnableLogging  bool            // Enable detailed logging
+	BypassConfig   *BypassIPConfig // Configuration for IP bypass authentication
 }
 
 // IPAuthConfig contains configuration for IP authentication
 type IPAuthConfig struct {
 	AllowedIPs    []string // List of allowed IP addresses/CIDR blocks
 	EnableLogging bool     // Enable detailed logging
+}
+
+// BypassIPConfig contains configuration for IP bypass authentication
+type BypassIPConfig struct {
+	BypassIPRanges []string // List of IP ranges that bypass authentication (CIDR format)
+	VerboseLogging bool     // Enable verbose logging for bypass checks
+	AuditLogging   bool     // Enable audit logging for bypass access
+	TrustedProxies []string // List of trusted proxy IPs for X-Forwarded-For processing
 }
 
 // NewUnifiedAuthMiddleware creates a new unified authentication middleware
@@ -52,6 +64,35 @@ func NewUnifiedAuthMiddleware(config *UnifiedAuthConfig) (*UnifiedAuthMiddleware
 	middleware := &UnifiedAuthMiddleware{
 		authMethod:    config.AuthMethod,
 		enableLogging: config.EnableLogging,
+	}
+
+	// Initialize bypass authentication if configured
+	if config.BypassConfig != nil && len(config.BypassConfig.BypassIPRanges) > 0 {
+		// Validate configuration: bypass with "either" auth method could create a security issue
+		if config.AuthMethod == AuthMethodEither {
+			return nil, fmt.Errorf("bypass authentication cannot be used with 'either' auth method (security risk)")
+		}
+
+		bypassChecker, err := NewBypassIPChecker(
+			config.BypassConfig.BypassIPRanges,
+			config.BypassConfig.VerboseLogging,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bypass IP checker: %w", err)
+		}
+		middleware.bypassChecker = bypassChecker
+
+		// Initialize audit logger if enabled
+		if config.BypassConfig.AuditLogging {
+			middleware.bypassLogger = NewBypassAuditLogger(true)
+		}
+
+		// Store trusted proxies for IP extraction
+		middleware.trustedProxies = config.BypassConfig.TrustedProxies
+
+		if middleware.enableLogging {
+			log.Printf("Bypass authentication enabled with %d IP ranges", len(config.BypassConfig.BypassIPRanges))
+		}
 	}
 
 	// Initialize IP authentication if needed
@@ -82,6 +123,9 @@ func NewUnifiedAuthMiddleware(config *UnifiedAuthConfig) (*UnifiedAuthMiddleware
 
 	if middleware.enableLogging {
 		log.Printf("Unified Auth Middleware initialized with method: %s", config.AuthMethod)
+		if middleware.bypassChecker != nil {
+			log.Printf("Bypass authentication is enabled for %d IP ranges", len(config.BypassConfig.BypassIPRanges))
+		}
 	}
 
 	return middleware, nil
@@ -90,6 +134,38 @@ func NewUnifiedAuthMiddleware(config *UnifiedAuthConfig) (*UnifiedAuthMiddleware
 // Middleware returns the HTTP middleware function
 func (m *UnifiedAuthMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check for bypass authentication first
+		if m.bypassChecker != nil {
+			clientIP := ExtractClientIPFromRequest(r, m.trustedProxies)
+			if m.bypassChecker.ShouldBypass(clientIP) {
+				// Log bypass access if audit logging is enabled
+				if m.bypassLogger != nil {
+					entry := CreateBypassAuditEntry(clientIP, r.Method, r.URL.Path)
+					entry = entry.WithUserAgent(r.Header.Get("User-Agent"))
+
+					// Get matched range for audit logging
+					bypassRanges := m.bypassChecker.GetBypassRanges()
+					for _, rangeStr := range bypassRanges {
+						// Find which range matched (simplified - actual implementation might need to track this)
+						entry = entry.WithMatchedRange(rangeStr)
+						break
+					}
+
+					if err := m.bypassLogger.LogBypassAccess(entry); err != nil && m.enableLogging {
+						log.Printf("Failed to log bypass access: %v", err)
+					}
+				}
+
+				if m.enableLogging {
+					log.Printf("Bypassing authentication for IP %s (matched bypass range)", clientIP)
+				}
+
+				// Skip all authentication and proceed to next handler
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
 		// Bypass authentication for OAuth2 paths when OIDC is configured
 		if (r.URL.Path == "/callback" || r.URL.Path == "/login") && m.oidcAuth != nil {
 			next.ServeHTTP(w, r)

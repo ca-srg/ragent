@@ -158,10 +158,9 @@ func BenchmarkServerStartup_SDK(b *testing.B) {
 
 		// Create SDK server configuration
 		mcpConfig := &types.Config{
-			MCPServerHost:                "127.0.0.1",
-			MCPServerPort:                9100 + i, // Use different ports to avoid conflicts
-			MCPServerEnableAccessLogging: false,    // Disable logging for cleaner benchmarks
-			MCPSSEEnabled:                false,    // Disable SSE for simpler startup
+			MCPServerHost: "127.0.0.1",
+			MCPServerPort: 9100 + i, // Use different ports to avoid conflicts
+			MCPSSEEnabled: false,    // Disable SSE for simpler startup
 		}
 
 		// Create SDK server wrapper
@@ -294,10 +293,9 @@ func BenchmarkToolCall_SDK(b *testing.B) {
 
 	// Setup SDK server
 	mcpConfig := &types.Config{
-		MCPServerHost:                "127.0.0.1",
-		MCPServerPort:                9201,
-		MCPServerEnableAccessLogging: false,
-		MCPSSEEnabled:                false,
+		MCPServerHost: "127.0.0.1",
+		MCPServerPort: 9201,
+		MCPSSEEnabled: false,
 	}
 
 	serverWrapper, err := mcpserver.NewServerWrapper(mcpConfig)
@@ -464,10 +462,9 @@ func BenchmarkConcurrentToolCalls_SDK(b *testing.B) {
 
 	// Setup SDK server
 	mcpConfig := &types.Config{
-		MCPServerHost:                "127.0.0.1",
-		MCPServerPort:                9301,
-		MCPServerEnableAccessLogging: false,
-		MCPSSEEnabled:                false,
+		MCPServerHost: "127.0.0.1",
+		MCPServerPort: 9301,
+		MCPSSEEnabled: false,
 	}
 
 	serverWrapper, err := mcpserver.NewServerWrapper(mcpConfig)
@@ -638,10 +635,9 @@ func BenchmarkMemoryUsage_SDK(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Create and start SDK server
 		mcpConfig := &types.Config{
-			MCPServerHost:                "127.0.0.1",
-			MCPServerPort:                9500 + i,
-			MCPServerEnableAccessLogging: false,
-			MCPSSEEnabled:                false,
+			MCPServerHost: "127.0.0.1",
+			MCPServerPort: 9500 + i,
+			MCPSSEEnabled: false,
 		}
 
 		serverWrapper, _ := mcpserver.NewServerWrapper(mcpConfig)

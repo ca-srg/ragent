@@ -166,9 +166,9 @@ MCP_SERVER_READ_TIMEOUT=30s
 MCP_SERVER_WRITE_TIMEOUT=30s
 MCP_SERVER_IDLE_TIMEOUT=120s
 MCP_SERVER_MAX_HEADER_BYTES=1048576
-MCP_SERVER_ENABLE_ACCESS_LOGGING=true
 MCP_SERVER_GRACEFUL_SHUTDOWN=true
 MCP_SERVER_SHUTDOWN_TIMEOUT=30s
+# アクセスログは常時有効で、HTTPメソッドとIP情報を自動で出力します
 
 # SDK専用設定（v2.0以降）
 MCP_SDK_VERSION=v0.4.0              # SDKバージョン（情報表示用）
@@ -201,7 +201,6 @@ MCP_SDK_LOG_PROTOCOL_ERRORS=true    # プロトコルエラーの詳細ログ
   --port 8080 \
   --enable-ip-auth \
   --allowed-ips "1.1.1.1,1.1.1.2,1.1.1.3" \
-  --enable-access-log
 
 # 開発環境設定（セキュリティ緩和）
 ./ragent mcp-server \

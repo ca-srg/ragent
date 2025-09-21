@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -218,24 +220,27 @@ func (sw *ServerWrapper) Start() error {
 	// Register auth-related routes (e.g., OAuth2 callback)
 	sw.registerAuthRoutes(mux)
 
+	// Build handler chain with authentication
+	var handler http.Handler = mux
+	if sw.unifiedAuthMiddleware != nil {
+		handler = sw.unifiedAuthMiddleware.Middleware(handler)
+		sw.logger.Printf("Unified authentication middleware enabled")
+	} else if sw.ipAuthMiddleware != nil {
+		handler = sw.ipAuthMiddleware.Middleware(handler)
+		sw.logger.Printf("IP authentication middleware enabled")
+	}
+
+	// Always-on access logging
+	handler = sw.loggingMiddleware(handler)
+
 	// Create HTTP server
 	server := &http.Server{
 		Addr:           serverAddr,
-		Handler:        mux,
+		Handler:        handler,
 		ReadTimeout:    sw.sdkConfig.ReadTimeout,
 		WriteTimeout:   sw.sdkConfig.WriteTimeout,
 		IdleTimeout:    sw.sdkConfig.IdleTimeout,
 		MaxHeaderBytes: sw.sdkConfig.MaxHeaderBytes,
-	}
-
-	// Apply authentication middleware
-	// Prefer unified auth if configured; otherwise fall back to IP-only
-	if sw.unifiedAuthMiddleware != nil {
-		server.Handler = sw.unifiedAuthMiddleware.Middleware(server.Handler)
-		sw.logger.Printf("Unified authentication middleware enabled")
-	} else if sw.ipAuthMiddleware != nil {
-		server.Handler = sw.ipAuthMiddleware.Middleware(server.Handler)
-		sw.logger.Printf("IP authentication middleware enabled")
 	}
 
 	// Store server reference for shutdown
@@ -410,6 +415,72 @@ func (sw *ServerWrapper) handleHealthCheck(w http.ResponseWriter, r *http.Reques
 	if _, err := w.Write([]byte(response)); err != nil {
 		sw.logger.Printf("Failed to write response: %v", err)
 	}
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	status int
+	size   int64
+}
+
+func newLoggingResponseWriter(w http.ResponseWriter) *loggingResponseWriter {
+	return &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.status = code
+	lrw.ResponseWriter.WriteHeader(code)
+}
+
+func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
+	n, err := lrw.ResponseWriter.Write(b)
+	lrw.size += int64(n)
+	return n, err
+}
+
+func (sw *ServerWrapper) loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		lrw := newLoggingResponseWriter(w)
+		next.ServeHTTP(lrw, r)
+
+		forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
+		clientIP := sw.extractClientIP(r)
+		sw.logger.Printf(
+			"Request: %s %s status=%d bytes=%d duration=%s remote=%s client_ip=%s forwarded=%s user_agent=%q",
+			r.Method,
+			r.URL.Path,
+			lrw.status,
+			lrw.size,
+			time.Since(start),
+			r.RemoteAddr,
+			clientIP,
+			forwarded,
+			r.Header.Get("User-Agent"),
+		)
+	})
+}
+
+func (sw *ServerWrapper) extractClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 {
+			candidate := strings.TrimSpace(parts[0])
+			if candidate != "" {
+				return candidate
+			}
+		}
+	}
+
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
 }
 
 // registerAuthRoutes registers authentication-related HTTP routes on the server mux

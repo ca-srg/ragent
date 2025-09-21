@@ -39,6 +39,28 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Parse MCPBypassIPRanges from comma-separated string
+	if config.MCPBypassIPRangesStr != "" {
+		ranges := strings.Split(config.MCPBypassIPRangesStr, ",")
+		config.MCPBypassIPRanges = make([]string, 0, len(ranges))
+		for _, r := range ranges {
+			if trimmed := strings.TrimSpace(r); trimmed != "" {
+				config.MCPBypassIPRanges = append(config.MCPBypassIPRanges, trimmed)
+			}
+		}
+	}
+
+	// Parse MCPTrustedProxies from comma-separated string
+	if config.MCPTrustedProxiesStr != "" {
+		proxies := strings.Split(config.MCPTrustedProxiesStr, ",")
+		config.MCPTrustedProxies = make([]string, 0, len(proxies))
+		for _, p := range proxies {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				config.MCPTrustedProxies = append(config.MCPTrustedProxies, trimmed)
+			}
+		}
+	}
+
 	if err := validateConfig(&config); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}

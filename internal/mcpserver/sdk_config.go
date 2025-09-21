@@ -12,15 +12,14 @@ import (
 // This adapter bridges RAGent's configuration with SDK requirements
 type SDKServerConfig struct {
 	// Server configuration
-	Host                string        `json:"host"`
-	Port                int           `json:"port"`
-	ReadTimeout         time.Duration `json:"read_timeout"`
-	WriteTimeout        time.Duration `json:"write_timeout"`
-	IdleTimeout         time.Duration `json:"idle_timeout"`
-	MaxHeaderBytes      int           `json:"max_header_bytes"`
-	GracefulShutdown    bool          `json:"graceful_shutdown"`
-	ShutdownTimeout     time.Duration `json:"shutdown_timeout"`
-	EnableAccessLogging bool          `json:"enable_access_logging"`
+	Host             string        `json:"host"`
+	Port             int           `json:"port"`
+	ReadTimeout      time.Duration `json:"read_timeout"`
+	WriteTimeout     time.Duration `json:"write_timeout"`
+	IdleTimeout      time.Duration `json:"idle_timeout"`
+	MaxHeaderBytes   int           `json:"max_header_bytes"`
+	GracefulShutdown bool          `json:"graceful_shutdown"`
+	ShutdownTimeout  time.Duration `json:"shutdown_timeout"`
 
 	// Authentication configuration
 	IPAuthEnabled       bool     `json:"ip_auth_enabled"`
@@ -70,15 +69,14 @@ func (ca *ConfigAdapter) ToSDKConfig() (*SDKServerConfig, error) {
 
 	sdkConfig := &SDKServerConfig{
 		// Server configuration mapping
-		Host:                ca.config.MCPServerHost,
-		Port:                ca.config.MCPServerPort,
-		ReadTimeout:         ca.config.MCPServerReadTimeout,
-		WriteTimeout:        ca.config.MCPServerWriteTimeout,
-		IdleTimeout:         ca.config.MCPServerIdleTimeout,
-		MaxHeaderBytes:      ca.config.MCPServerMaxHeaderBytes,
-		GracefulShutdown:    ca.config.MCPServerGracefulShutdown,
-		ShutdownTimeout:     ca.config.MCPServerShutdownTimeout,
-		EnableAccessLogging: ca.config.MCPServerEnableAccessLogging,
+		Host:             ca.config.MCPServerHost,
+		Port:             ca.config.MCPServerPort,
+		ReadTimeout:      ca.config.MCPServerReadTimeout,
+		WriteTimeout:     ca.config.MCPServerWriteTimeout,
+		IdleTimeout:      ca.config.MCPServerIdleTimeout,
+		MaxHeaderBytes:   ca.config.MCPServerMaxHeaderBytes,
+		GracefulShutdown: ca.config.MCPServerGracefulShutdown,
+		ShutdownTimeout:  ca.config.MCPServerShutdownTimeout,
 
 		// Authentication configuration mapping
 		IPAuthEnabled:       ca.config.MCPIPAuthEnabled,

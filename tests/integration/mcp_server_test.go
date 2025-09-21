@@ -43,7 +43,6 @@ func createTestMCPServer(t testing.TB) (*mcpserver.MCPServer, *mcpserver.HybridS
 	serverConfig := mcpserver.DefaultMCPServerConfig()
 	serverConfig.Host = "127.0.0.1"
 	serverConfig.Port = 8890 // Fixed test port to simplify HTTP requests
-	serverConfig.EnableAccessLogging = true
 
 	server := mcpserver.NewMCPServer(serverConfig)
 

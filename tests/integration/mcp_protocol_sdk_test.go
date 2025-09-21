@@ -237,11 +237,10 @@ func createSDKMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 		OpenSearchRegion:   cfg.OpenSearchRegion,
 		OpenSearchIndex:    cfg.OpenSearchIndex,
 		// Set test-specific MCP server settings
-		MCPServerHost:                "127.0.0.1",
-		MCPServerPort:                8989, // Different from E2E test port
-		MCPServerEnableAccessLogging: true,
-		MCPAllowedIPs:                []string{},
-		MCPSSEEnabled:                true,
+		MCPServerHost: "127.0.0.1",
+		MCPServerPort: 8989, // Different from E2E test port
+		MCPAllowedIPs: []string{},
+		MCPSSEEnabled: true,
 	}
 
 	// Create SDK server wrapper
