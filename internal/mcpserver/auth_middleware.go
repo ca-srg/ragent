@@ -138,8 +138,9 @@ func (m *UnifiedAuthMiddleware) Middleware(next http.Handler) http.Handler {
 		if m.bypassChecker != nil {
 			clientIP := ExtractClientIPFromRequest(r, m.trustedProxies)
 			if m.bypassChecker.ShouldBypass(clientIP) {
+				shouldLog := r.URL.Path != "/health"
 				// Log bypass access if audit logging is enabled
-				if m.bypassLogger != nil {
+				if shouldLog && m.bypassLogger != nil {
 					entry := CreateBypassAuditEntry(clientIP, r.Method, r.URL.Path)
 					entry = entry.WithUserAgent(r.Header.Get("User-Agent"))
 
@@ -156,7 +157,7 @@ func (m *UnifiedAuthMiddleware) Middleware(next http.Handler) http.Handler {
 					}
 				}
 
-				if m.enableLogging {
+				if shouldLog && m.enableLogging {
 					log.Printf("Bypassing authentication for IP %s (matched bypass range)", clientIP)
 				}
 
