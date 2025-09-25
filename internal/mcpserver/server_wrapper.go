@@ -206,13 +206,14 @@ func (sw *ServerWrapper) Start() error {
 
 	// Create handlers that return our server instance
 	baseGetServer := func(r *http.Request) *mcp.Server { return sw.sdkServer }
-	// Back-compat root handler (streamable)
-	mcpHandler := mcp.NewStreamableHTTPHandler(baseGetServer, nil)
-	mux.Handle("/", mcpHandler)
+	// Streamable HTTP transport for legacy clients
+	streamable := mcp.NewStreamableHTTPHandler(baseGetServer, nil)
+	mux.Handle("/", streamable)
+	mux.Handle("/mcp", streamable)
 
-	// Dual transport handler on /mcp to support both http and sse transports
-	dual := NewDualTransportHandler(baseGetServer)
-	mux.Handle("/mcp", dual)
+	// Dedicated SSE transport on /sse
+	sseHandler := mcp.NewSSEHandler(baseGetServer)
+	mux.Handle("/sse", sseHandler)
 
 	// Add health check endpoint
 	mux.HandleFunc("/health", sw.handleHealthCheck)
@@ -262,7 +263,7 @@ func (sw *ServerWrapper) Start() error {
 	sw.logger.Printf("MCP server (SDK-based) started successfully")
 
 	if sw.sdkConfig.SSEEnabled {
-		sw.logger.Printf("SSE endpoints available via SDK server")
+		sw.logger.Printf("SSE endpoint available at /sse")
 	}
 
 	return nil
@@ -440,6 +441,11 @@ func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
 
 func (sw *ServerWrapper) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		start := time.Now()
 		lrw := newLoggingResponseWriter(w)
 		next.ServeHTTP(lrw, r)

@@ -14,15 +14,15 @@ type BypassAuditLogger interface {
 
 // BypassAuditEntry represents an audit log entry for bypass authentication
 type BypassAuditEntry struct {
-	Timestamp    time.Time `json:"timestamp"`
-	IP           string    `json:"ip"`
-	Method       string    `json:"method"`
-	Path         string    `json:"path"`
-	MatchedRange string    `json:"matched_range,omitempty"`
-	Success      bool      `json:"success"`
-	UserAgent    string    `json:"user_agent,omitempty"`
+	Timestamp    time.Time         `json:"timestamp"`
+	IP           string            `json:"ip"`
+	Method       string            `json:"method"`
+	Path         string            `json:"path"`
+	MatchedRange string            `json:"matched_range,omitempty"`
+	Success      bool              `json:"success"`
+	UserAgent    string            `json:"user_agent,omitempty"`
 	Headers      map[string]string `json:"headers,omitempty"`
-	Message      string    `json:"message,omitempty"`
+	Message      string            `json:"message,omitempty"`
 }
 
 // BypassAuditLoggerImpl implements the BypassAuditLogger interface
@@ -101,10 +101,10 @@ func (e BypassAuditEntry) WithHeaders(headers map[string]string) BypassAuditEntr
 	// Filter out sensitive headers
 	filteredHeaders := make(map[string]string)
 	sensitiveHeaders := map[string]bool{
-		"Authorization":     true,
-		"Cookie":           true,
-		"X-Api-Key":        true,
-		"X-Auth-Token":     true,
+		"Authorization": true,
+		"Cookie":        true,
+		"X-Api-Key":     true,
+		"X-Auth-Token":  true,
 	}
 
 	for key, value := range headers {

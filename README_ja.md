@@ -495,6 +495,8 @@ MCPサーバーを設定し、認証を完了した後、Claude Desktop設定に
 }
 ```
 
+SSE クライアント（例: `claude mcp add --transport sse ...`）は `/mcp` ではなく専用の `/sse` エンドポイントを指定してください。
+
 ### 利用可能MCPツール
 
 - **ragent-hybrid_search**: BM25とベクトル検索を使用したハイブリッド検索の実行
@@ -598,7 +600,7 @@ RAGent mcp-server --bypass-ip-range "10.0.0.0/8" --trusted-proxies "192.168.1.1"
 **Claude Desktopでの使用:**
 認証後、提供されるコマンドを使用してClaude DesktopにサーバーVを追加:
 ```bash
-claude mcp add --transport sse ragent https://your-server.example.com --header "Authorization: Bearer <JWT>"
+claude mcp add --transport sse ragent https://your-server.example.com/sse --header "Authorization: Bearer <JWT>"
 ```
 
 詳細: `doc/mcp-server.md` および `doc/oidc-authentication.md` を参照してください。
