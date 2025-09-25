@@ -232,6 +232,8 @@ MCP_SDK_LOG_PROTOCOL_ERRORS=true    # プロトコルエラーの詳細ログ
 }
 ```
 
+SSE ベースの MCP クライアントを追加する場合は `https://.../sse` を指定し、`claude mcp add --transport sse` のように `/mcp` ではなく専用エンドポイントを利用してください。
+
 ### プログラム統合例
 
 ```python

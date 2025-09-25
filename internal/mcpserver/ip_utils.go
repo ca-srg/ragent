@@ -10,7 +10,10 @@ import (
 
 // ExtractClientIP extracts the client IP from the HTTP request
 // It supports X-Forwarded-For and X-Real-IP headers with trusted proxy validation
-func ExtractClientIP(r interface{ Header(string) string; RemoteAddr() string }, trustedProxies []string) string {
+func ExtractClientIP(r interface {
+	Header(string) string
+	RemoteAddr() string
+}, trustedProxies []string) string {
 	// Helper function to check if an IP is in trusted proxies list
 	isTrustedProxy := func(ip string) bool {
 		if len(trustedProxies) == 0 {

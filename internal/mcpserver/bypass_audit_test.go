@@ -28,7 +28,7 @@ func TestNewBypassAuditLogger(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := NewBypassAuditLogger(tt.enabled)
 			if logger == nil {
-				t.Error("NewBypassAuditLogger() returned nil")
+				t.Fatal("NewBypassAuditLogger() returned nil")
 			}
 			if logger.enabled != tt.enabled {
 				t.Errorf("NewBypassAuditLogger() enabled = %v, want %v", logger.enabled, tt.enabled)
@@ -343,9 +343,9 @@ func TestBypassAuditEntry_WithHeaders(t *testing.T) {
 		"X-Request-ID":  "test-123",
 		"Content-Type":  "application/json",
 		"Authorization": "Bearer secret-token", // Should be filtered
-		"Cookie":        "session=abc",        // Should be filtered
-		"X-Api-Key":     "secret-key",        // Should be filtered
-		"X-Auth-Token":  "auth-token",        // Should be filtered
+		"Cookie":        "session=abc",         // Should be filtered
+		"X-Api-Key":     "secret-key",          // Should be filtered
+		"X-Auth-Token":  "auth-token",          // Should be filtered
 	}
 
 	newEntry := entry.WithHeaders(headers)

@@ -33,12 +33,12 @@ type cacheEntry struct {
 
 // lruCache implements a simple LRU cache for bypass results
 type lruCache struct {
-	mu       sync.RWMutex
-	maxSize  int
-	ttl      time.Duration
-	cache    map[string]*list.Element
-	lruList  *list.List
-	enabled  bool
+	mu      sync.RWMutex
+	maxSize int
+	ttl     time.Duration
+	cache   map[string]*list.Element
+	lruList *list.List
+	enabled bool
 }
 
 // lruCacheItem represents an item in the LRU list

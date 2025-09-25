@@ -325,7 +325,7 @@ RAGent mcp-server --bypass-ip-range "10.0.0.0/8" --trusted-proxies "192.168.1.1"
 **Usage with Claude Desktop:**
 After authentication, add the server to Claude Desktop using the provided command:
 ```bash
-claude mcp add --transport sse ragent https://your-server.example.com --header "Authorization: Bearer <JWT>"
+claude mcp add --transport sse ragent https://your-server.example.com/sse --header "Authorization: Bearer <JWT>"
 ```
 
 Details: see `doc/mcp-server.md` and `doc/oidc-authentication.md`.
@@ -641,6 +641,8 @@ After setting up the MCP server and completing authentication, add the server to
   }
 }
 ```
+
+SSE clients (e.g., `claude mcp add --transport sse ...`) must target the dedicated `/sse` endpoint instead of `/mcp`.
 
 ### Available MCP Tools
 

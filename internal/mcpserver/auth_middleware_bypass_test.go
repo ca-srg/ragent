@@ -10,17 +10,19 @@ import (
 // testSuccessHandler is a simple handler for testing that always returns OK
 func testSuccessHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	if _, err := w.Write([]byte("OK")); err != nil {
+		panic(err)
+	}
 }
 
 func TestUnifiedAuthMiddleware_BypassIP(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         *UnifiedAuthConfig
-		clientIP       string
-		xForwardedFor  string
-		expectAllowed  bool
-		expectBypass   bool
+		name          string
+		config        *UnifiedAuthConfig
+		clientIP      string
+		xForwardedFor string
+		expectAllowed bool
+		expectBypass  bool
 	}{
 		{
 			name: "bypass IP allowed - direct connection",
@@ -95,7 +97,7 @@ func TestUnifiedAuthMiddleware_BypassIP(t *testing.T) {
 			},
 			clientIP:      "127.0.0.1",
 			xForwardedFor: "10.0.0.50",
-			expectAllowed: true, // IPAuth will still trust X-Forwarded-For
+			expectAllowed: true,  // IPAuth will still trust X-Forwarded-For
 			expectBypass:  false, // Bypass won't trust untrusted proxy
 		},
 		{
@@ -292,9 +294,9 @@ func TestUnifiedAuthMiddleware_BypassWithNormalAuth(t *testing.T) {
 
 	// Test cases
 	tests := []struct {
-		name          string
-		clientIP      string
-		expectStatus  int
+		name         string
+		clientIP     string
+		expectStatus int
 	}{
 		{
 			name:         "bypass IP - allowed without auth",

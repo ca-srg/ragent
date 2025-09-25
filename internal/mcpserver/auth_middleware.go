@@ -34,11 +34,11 @@ type UnifiedAuthMiddleware struct {
 
 // UnifiedAuthConfig contains configuration for unified authentication
 type UnifiedAuthConfig struct {
-	AuthMethod     AuthMethod      // Authentication method to use
-	IPConfig       *IPAuthConfig   // Configuration for IP authentication
-	OIDCConfig     *OIDCConfig     // Configuration for OIDC authentication
-	EnableLogging  bool            // Enable detailed logging
-	BypassConfig   *BypassIPConfig // Configuration for IP bypass authentication
+	AuthMethod    AuthMethod      // Authentication method to use
+	IPConfig      *IPAuthConfig   // Configuration for IP authentication
+	OIDCConfig    *OIDCConfig     // Configuration for OIDC authentication
+	EnableLogging bool            // Enable detailed logging
+	BypassConfig  *BypassIPConfig // Configuration for IP bypass authentication
 }
 
 // IPAuthConfig contains configuration for IP authentication

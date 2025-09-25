@@ -176,12 +176,12 @@ Visit `http://<server-host>[:${MCP_SERVER_PORT}]/login` to start authentication.
 
 ### Transports
 
-The server supports both HTTP and SSE transports on the same endpoint path `/mcp`:
+The server exposes dedicated endpoints for each transport:
 
 - HTTP: `claude mcp add --transport http private-api https://your-server.example.com/mcp --header "Authorization: Bearer <JWT>"`
-- SSE:  `claude mcp add --transport sse  private-api https://your-server.example.com/mcp --header "Authorization: Bearer <JWT>"`
+- SSE:  `claude mcp add --transport sse  private-api https://your-server.example.com/sse --header "Authorization: Bearer <JWT>"`
 
-SSE uses a hanging GET to `/mcp` with `Accept: text/event-stream`, and POSTs to `/mcp?sessionid=...`.
+SSE uses a hanging GET to `/sse` with `Accept: text/event-stream`, and POSTs to `/sse?sessionid=...`.
 5. **Token Exchange**: The authorization code is exchanged for ID and access tokens
 6. **Token Validation**: The ID token is validated and stored
 7. **Authenticated Access**: Subsequent requests include the token for authentication

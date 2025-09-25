@@ -479,8 +479,12 @@ func TestBypassIPCheckerImpl_ConcurrentAccess(t *testing.T) {
 		go func(n int) {
 			cidr := fmt.Sprintf("192.168.%d.0/24", n)
 			for j := 0; j < 50; j++ {
-				checker.AddBypassRange(cidr)
-				checker.RemoveBypassRange(cidr)
+				if err := checker.AddBypassRange(cidr); err != nil {
+					t.Errorf("AddBypassRange(%s) error: %v", cidr, err)
+				}
+				if err := checker.RemoveBypassRange(cidr); err != nil {
+					t.Errorf("RemoveBypassRange(%s) error: %v", cidr, err)
+				}
 			}
 			done <- true
 		}(i)
