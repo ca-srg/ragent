@@ -648,7 +648,7 @@ SSE clients (e.g., `claude mcp add --transport sse ...`) must target the dedicat
 
 - **ragent-hybrid_search**: Execute hybrid search using BM25 and vector search
   - Parameters: `query`, `max_results`, `bm25_weight`, `vector_weight`, `use_japanese_nlp`
-  - Returns: Structured search results with scores and references
+  - Returns: Structured search results with fused scores (hybrid BM25/vector) and references
 
 ### Authentication Flow
 

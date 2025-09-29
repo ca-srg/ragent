@@ -99,7 +99,7 @@ type HybridSearchResultItem struct {
 	ID        string                 `json:"id"`
 	Title     string                 `json:"title"`
 	Content   string                 `json:"content"`
-	Score     float64                `json:"score"`
+	Score     float64                `json:"score"`  // Fused score after hybrid result combination
 	Source    string                 `json:"source"` // "s3vector", "opensearch", "hybrid"
 	Path      string                 `json:"path"`   // File path
 	Category  string                 `json:"category,omitempty"`
