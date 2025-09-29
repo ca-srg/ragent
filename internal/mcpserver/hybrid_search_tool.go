@@ -343,7 +343,7 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridS
 
 		item := types.HybridSearchResultItem{
 			ID:     doc.ID,
-			Score:  doc.Score,
+			Score:  doc.FusedScore,
 			Source: request.SearchMode,
 		}
 
