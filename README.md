@@ -373,7 +373,10 @@ RAGent/
 ├── export/               # Separate export tool for Kibela
 ├── doc/                  # Project documentation
 │   ├── mcp-server.md     # MCP Server setup guide
-│   └── oidc-authentication.md # OIDC authentication guide
+│   ├── oidc-authentication.md # OIDC authentication guide
+│   ├── filter-configuration.md # Filter configuration guide
+│   ├── s3-vector.md      # S3 Vector integration notes
+│   └── score.md          # RAGスコアの基礎解説
 ├── .envrc                # direnv configuration
 ├── .env                  # Environment variables file
 └── CLAUDE.md            # Claude Code configuration
@@ -649,6 +652,7 @@ SSE clients (e.g., `claude mcp add --transport sse ...`) must target the dedicat
 - **ragent-hybrid_search**: Execute hybrid search using BM25 and vector search
   - Parameters: `query`, `max_results`, `bm25_weight`, `vector_weight`, `use_japanese_nlp`
   - Returns: Structured search results with fused scores (hybrid BM25/vector) and references
+  - Score reference: see [doc/score.md](doc/score.md) for how the fused score is calculated and interpreted
 
 ### Authentication Flow
 
