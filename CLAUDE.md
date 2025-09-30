@@ -131,6 +131,8 @@ go vet ./...
 # 各コマンドの実行例
 go run main.go vectorize --dry-run       # ベクトル化（ドライラン）
 go run main.go vectorize                 # ベクトル化実行
+go run main.go vectorize --follow        # フォローモード（30分間隔）
+go run main.go vectorize --follow --interval 15m # カスタム間隔のフォローモード
 go run main.go query -q "検索クエリ"      # セマンティック検索
 go run main.go chat                      # 対話的RAGチャット
 go run main.go list                      # ベクトル一覧表示
@@ -139,6 +141,9 @@ go run main.go mcp-server                # MCP Server起動 [NEW]
 
 # ベンダリング（禁止されている）
 # go mod vendor は使用しない
+
+# ドキュメント更新時の原則
+# README.md と README_ja.md の両方を必ず更新する
 ```
 
 ## Prerequisites
@@ -150,6 +155,13 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 ```bash
 # 1. ベクトル化とS3保存
 ./RAGent vectorize --directory ./markdown --concurrency 10
+
+# 1a. フォローモードで継続的にベクトル化（30分間隔）
+./RAGent vectorize --follow
+
+# 1b. フォローモードで15分間隔に設定
+./RAGent vectorize --follow --interval 15m
+# ※ `--follow` は `--dry-run` および `--clear` と併用不可
 
 # 2. セマンティック検索（ハイブリッドモード）
 ./RAGent query -q "機械学習のアルゴリズム" --top-k 5 --search-mode hybrid
