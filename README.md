@@ -437,7 +437,15 @@ RAGent/
    
    # Execute actual vectorization
    RAGent vectorize
+
+   # Continuously vectorize using follow mode (default 30m interval)
+   RAGent vectorize --follow
+
+   # Customize the follow mode interval (e.g., every 15 minutes)
+   RAGent vectorize --follow --interval 15m
    ```
+
+   > Note: `--follow` cannot be combined with `--dry-run` or `--clear`.
 
 4. **Check Vector Data**
    ```bash

@@ -317,7 +317,15 @@ RAGent/
    
    # 実際のベクトル化実行
    RAGent vectorize
+
+   # フォローモードで継続的にベクトル化（デフォルト30分間隔）
+   RAGent vectorize --follow
+
+   # フォローモードの間隔をカスタマイズ（例: 15分間隔）
+   RAGent vectorize --follow --interval 15m
    ```
+
+   > メモ: `--follow` は `--dry-run` および `--clear` と併用できません。
 
 4. **ベクトルデータの確認**
    ```bash

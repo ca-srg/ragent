@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -21,13 +24,25 @@ import (
 	"github.com/ca-srg/ragent/internal/vectorizer"
 )
 
+const (
+	defaultFollowInterval = "30m"
+	minFollowInterval     = 5 * time.Minute
+)
+
 var (
 	directory           string
 	dryRun              bool
 	concurrency         int
 	clearVectors        bool
 	openSearchIndexName string
+
+	followMode             bool
+	followInterval         string
+	followIntervalDuration time.Duration
+	followModeProcessing   atomic.Bool
 )
+
+var vectorizationRunner = executeVectorizationOnce
 
 var vectorizeCmd = &cobra.Command{
 	Use:   "vectorize",
@@ -48,147 +63,250 @@ func init() {
 	vectorizeCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be processed without making API calls")
 	vectorizeCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0, "Number of concurrent operations (0 = use config default)")
 	vectorizeCmd.Flags().BoolVar(&clearVectors, "clear", false, "Delete all existing vectors before processing new ones")
+	vectorizeCmd.Flags().BoolVarP(&followMode, "follow", "f", false, "Continuously vectorize at a fixed interval")
+	vectorizeCmd.Flags().StringVar(&followInterval, "interval", defaultFollowInterval, "Interval between vectorization runs in follow mode (e.g. 30m, 1h)")
 }
 
 func runVectorize(cmd *cobra.Command, args []string) error {
 	log.Println("Starting vectorization process...")
 
-	// Validate OpenSearch flags
 	if err := validateOpenSearchFlags(); err != nil {
 		return fmt.Errorf("flag validation failed: %w", err)
 	}
 
-	// Load configuration
+	if err := validateFollowModeFlags(cmd); err != nil {
+		return fmt.Errorf("follow mode flag validation failed: %w", err)
+	}
+
 	cfg, err := appconfig.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Override concurrency if specified via flag
 	if concurrency > 0 {
 		cfg.Concurrency = concurrency
 	}
 
-	// Validate directory exists
-	if _, err := os.Stat(directory); os.IsNotExist(err) {
-		return fmt.Errorf("directory does not exist: %s", directory)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
-	// Handle --clear flag to delete existing vectors and/or OpenSearch index
+	if followMode {
+		return runFollowMode(ctx, cfg)
+	}
+
+	result, err := vectorizationRunner(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	if result != nil {
+		printResults(result, dryRun)
+	}
+
+	return nil
+}
+
+func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.ProcessingResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if _, err := os.Stat(directory); os.IsNotExist(err) {
+		return nil, fmt.Errorf("directory does not exist: %s", directory)
+	}
+
 	if clearVectors && !dryRun {
 		if !confirmDeletePrompt(openSearchIndexName) {
 			fmt.Println("Operation cancelled by user.")
-			return nil
+			return nil, nil
 		}
 
-		// Delete from S3 Vector
-		{
-			// Create S3 Vector client for deletion
-			s3Config := &s3vector.S3Config{
-				VectorBucketName: cfg.AWSS3VectorBucket,
-				IndexName:        cfg.AWSS3VectorIndex,
-				Region:           cfg.AWSS3Region,
-			}
-			s3Client, err := s3vector.NewS3VectorService(s3Config)
-			if err != nil {
-				return fmt.Errorf("failed to create S3 client for deletion: %w", err)
-			}
-
-			log.Printf("S3 Vector index name: %s", cfg.AWSS3VectorIndex)
-			log.Printf("S3 Vector bucket name: %s", cfg.AWSS3VectorBucket)
-			log.Println("Deleting all existing vectors from S3 Vector index...")
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-
-			deletedCount, err := s3Client.DeleteAllVectors(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to delete existing vectors: %w", err)
-			}
-
-			log.Printf("Successfully deleted %d vectors from S3 Vector index (%s) in bucket (%s)", deletedCount, cfg.AWSS3VectorIndex, cfg.AWSS3VectorBucket)
+		s3Config := &s3vector.S3Config{
+			VectorBucketName: cfg.AWSS3VectorBucket,
+			IndexName:        cfg.AWSS3VectorIndex,
+			Region:           cfg.AWSS3Region,
+		}
+		s3Client, err := s3vector.NewS3VectorService(s3Config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create S3 client for deletion: %w", err)
 		}
 
-		// Delete OpenSearch index
-		{
-			log.Printf("Deleting OpenSearch index: %s", openSearchIndexName)
+		log.Printf("S3 Vector index name: %s", cfg.AWSS3VectorIndex)
+		log.Printf("S3 Vector bucket name: %s", cfg.AWSS3VectorBucket)
+		log.Println("Deleting all existing vectors from S3 Vector index...")
+		timedCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
 
-			// Create a temporary service to get OpenSearch indexer
-			tempService, err := createVectorizerService(cfg)
-			if err != nil {
-				return fmt.Errorf("failed to create service for OpenSearch deletion: %w", err)
-			}
+		deletedCount, err := s3Client.DeleteAllVectors(timedCtx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete existing vectors: %w", err)
+		}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			defer cancel()
+		log.Printf("Successfully deleted %d vectors from S3 Vector index (%s) in bucket (%s)", deletedCount, cfg.AWSS3VectorIndex, cfg.AWSS3VectorBucket)
 
-			// Use the service's OpenSearch indexer to delete the index
-			if tempService != nil {
-				// We need to access the indexer through the service
-				// For now, we'll create the indexer directly
-				serviceFactory := vectorizer.NewServiceFactory(cfg)
-				if serviceFactory != nil {
-					indexerFactory := vectorizer.NewIndexerFactory(cfg)
-					if indexerFactory.IsOpenSearchEnabled() {
-						indexer, err := indexerFactory.CreateOpenSearchIndexer(openSearchIndexName, 1024)
-						if err != nil {
-							log.Printf("Warning: Failed to create OpenSearch indexer for deletion: %v", err)
+		log.Printf("Deleting OpenSearch index: %s", openSearchIndexName)
+		tempService, err := createVectorizerService(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create service for OpenSearch deletion: %w", err)
+		}
+
+		deleteCtx, deleteCancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer deleteCancel()
+
+		if tempService != nil {
+			serviceFactory := vectorizer.NewServiceFactory(cfg)
+			if serviceFactory != nil {
+				indexerFactory := vectorizer.NewIndexerFactory(cfg)
+				if indexerFactory.IsOpenSearchEnabled() {
+					indexer, err := indexerFactory.CreateOpenSearchIndexer(openSearchIndexName, 1024)
+					if err != nil {
+						log.Printf("Warning: Failed to create OpenSearch indexer for deletion: %v", err)
+					} else {
+						if err := indexer.DeleteIndex(deleteCtx, openSearchIndexName); err != nil {
+							log.Printf("Warning: Failed to delete OpenSearch index: %v", err)
 						} else {
-							err = indexer.DeleteIndex(ctx, openSearchIndexName)
-							if err != nil {
-								log.Printf("Warning: Failed to delete OpenSearch index: %v", err)
+							log.Printf("Successfully deleted OpenSearch index: %s", openSearchIndexName)
+							log.Printf("Recreating OpenSearch index: %s", openSearchIndexName)
+							if err := indexer.CreateIndex(deleteCtx, openSearchIndexName, 1024); err != nil {
+								log.Printf("Warning: Failed to recreate OpenSearch index: %v", err)
 							} else {
-								log.Printf("Successfully deleted OpenSearch index: %s", openSearchIndexName)
-
-								// Recreate the empty index
-								log.Printf("Recreating OpenSearch index: %s", openSearchIndexName)
-								err = indexer.CreateIndex(ctx, openSearchIndexName, 1024)
-								if err != nil {
-									log.Printf("Warning: Failed to recreate OpenSearch index: %v", err)
-								} else {
-									log.Printf("Successfully recreated OpenSearch index: %s", openSearchIndexName)
-								}
+								log.Printf("Successfully recreated OpenSearch index: %s", openSearchIndexName)
 							}
 						}
 					}
 				}
 			}
 		}
-		return nil // Exit after clearing vectors and recreating OpenSearch index, don't proceed with vectorization
-	} else if clearVectors && dryRun {
+
+		return nil, nil
+	}
+
+	if clearVectors && dryRun {
 		log.Printf("DRY RUN: Would delete and recreate OpenSearch index: %s", openSearchIndexName)
 		log.Println("DRY RUN: Would delete all existing vectors from S3 Vector index")
-		return nil // Exit after dry-run clear, don't proceed with vectorization
+		return nil, nil
 	}
 
-	// Create service with concrete implementations
 	service, err := createVectorizerService(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create vectorizer service: %w", err)
+		return nil, fmt.Errorf("failed to create vectorizer service: %w", err)
 	}
 
-	// Validate configuration and connections (skip in dry-run mode)
 	if !dryRun {
 		log.Println("Validating configuration and service connections...")
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		validationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
-		if err := service.ValidateConfiguration(ctx); err != nil {
-			return fmt.Errorf("configuration validation failed: %w", err)
+		if err := service.ValidateConfiguration(validationCtx); err != nil {
+			return nil, fmt.Errorf("configuration validation failed: %w", err)
 		}
 		log.Println("Configuration validation successful")
 	}
 
-	// Process markdown files
-	ctx := context.Background()
 	result, err := service.VectorizeMarkdownFiles(ctx, directory, dryRun)
 	if err != nil {
-		return fmt.Errorf("vectorization failed: %w", err)
+		return nil, fmt.Errorf("vectorization failed: %w", err)
 	}
 
-	// Print results
-	printResults(result, dryRun)
+	return result, nil
+}
 
-	return nil
+func startFollowProcessing() bool {
+	return followModeProcessing.CompareAndSwap(false, true)
+}
+
+func finishFollowProcessing() {
+	followModeProcessing.Store(false)
+}
+
+func setupSignalHandler(parent context.Context) (context.Context, context.CancelFunc) {
+	baseCtx := parent
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+
+	signalCtx, stop := signal.NotifyContext(baseCtx, syscall.SIGINT, syscall.SIGTERM)
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		select {
+		case <-signalChan:
+			log.Println("[Follow Mode] Shutdown signal received. Waiting for current vectorization to complete...")
+			stop()
+		case <-signalCtx.Done():
+		}
+		signal.Stop(signalChan)
+		close(signalChan)
+	}()
+
+	return signalCtx, stop
+}
+
+func runFollowCycle(ctx context.Context, cfg *types.Config) (*types.ProcessingResult, error) {
+	if !startFollowProcessing() {
+		log.Println("[Follow Mode] Previous vectorization still running. Skipping this cycle.")
+		return nil, nil
+	}
+
+	defer finishFollowProcessing()
+
+	log.Println("[Follow Mode] Starting vectorization cycle...")
+
+	result, err := vectorizationRunner(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if result != nil {
+		printResults(result, dryRun)
+	}
+
+	return result, nil
+}
+
+func runFollowMode(ctx context.Context, cfg *types.Config) error {
+	followCtx, cancel := setupSignalHandler(ctx)
+	defer cancel()
+
+	interval := followIntervalDuration
+	if interval <= 0 {
+		interval = 30 * time.Minute
+	}
+
+	log.Printf("Follow mode enabled. Interval: %s. Press Ctrl+C to stop.", interval)
+
+	result, err := runFollowCycle(followCtx, cfg)
+	if err != nil {
+		log.Printf("[Follow Mode] Vectorization cycle failed: %v", err)
+	} else if result != nil {
+		nextRun := time.Now().Add(interval)
+		log.Printf("[Follow Mode] Completed. Processed %d files. Next run at: %s", result.ProcessedFiles, nextRun.Format(time.RFC3339))
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-followCtx.Done():
+			log.Println("[Follow Mode] Shutdown complete.")
+			return nil
+		case <-ticker.C:
+			result, err := runFollowCycle(followCtx, cfg)
+			if err != nil {
+				log.Printf("[Follow Mode] Vectorization cycle failed: %v", err)
+				continue
+			}
+
+			if result != nil {
+				nextRun := time.Now().Add(interval)
+				log.Printf("[Follow Mode] Completed. Processed %d files. Next run at: %s", result.ProcessedFiles, nextRun.Format(time.RFC3339))
+			}
+		}
+	}
 }
 
 // createVectorizerService creates a vectorizer service with concrete implementations
@@ -380,6 +498,43 @@ func confirmDeletePrompt(indexName string) bool {
 
 	input = strings.TrimSpace(strings.ToLower(input))
 	return input == "y" || input == "yes"
+}
+
+// validateFollowModeFlags ensures follow mode related flags are used with valid combinations.
+func validateFollowModeFlags(cmd *cobra.Command) error {
+	if !followMode {
+		flag := cmd.Flags().Lookup("interval")
+		if flag != nil && flag.Changed {
+			return fmt.Errorf("--interval flag requires --follow")
+		}
+		followIntervalDuration = 0
+		return nil
+	}
+
+	if dryRun {
+		return fmt.Errorf("--follow cannot be used with --dry-run")
+	}
+
+	if clearVectors {
+		return fmt.Errorf("--follow cannot be used with --clear")
+	}
+
+	intervalValue := followInterval
+	if intervalValue == "" {
+		intervalValue = defaultFollowInterval
+	}
+
+	duration, err := time.ParseDuration(intervalValue)
+	if err != nil {
+		return fmt.Errorf("invalid interval: %w", err)
+	}
+
+	if duration < minFollowInterval {
+		return fmt.Errorf("interval must be at least %s, got: %s", minFollowInterval, duration)
+	}
+
+	followIntervalDuration = duration
+	return nil
 }
 
 // validateOpenSearchFlags validates OpenSearch related requirements
