@@ -168,6 +168,33 @@ RAGent query -q "authentication" --filter '{"type":"security"}' --json
 RAGent query -q "database optimization" --top-k 20
 ```
 
+#### URL対応検索
+
+RAGent はクエリ内の HTTP/HTTPS URL を検出し、まず `reference` フィールドに対する完全一致の term query を実行します。
+
+- URL が検出され一致した場合は `search_method` が `"url_exact_match"` となり、URL に紐づく結果のみを即座に返します。
+- term query が失敗またはヒットゼロの場合はハイブリッド検索 (`"hybrid_search"`) にフォールバックし、`fallback_reason` に理由 (`term_query_error` / `term_query_no_results`) を記録します。
+- CLI の `--json` 出力、Slack Bot、MCP ツールのレスポンスには `search_method`, `url_detected`, `fallback_reason` が含まれ、検索経路を確認できます。
+
+```bash
+RAGent query --json -q "https://example.com/doc のタイトルを教えて"
+```
+
+JSON レスポンス例:
+
+```json
+{
+  "search_method": "url_exact_match",
+  "url_detected": true,
+  "fallback_reason": "",
+  "results": [
+    { "title": "Example Doc", "reference": "https://example.com/doc" }
+  ]
+}
+```
+
+URL が見つからない場合や一致しなかった場合は `search_method` が `"hybrid_search"` になり、通常の BM25 + ベクトル融合結果が返されます。
+
 ### 3. list - ベクトル一覧表示
 
 S3 Vector Indexに保存されているベクトルの一覧を表示します。

@@ -1,12 +1,15 @@
 package opensearch
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -200,6 +203,148 @@ func (c *Client) ExecuteWithRetry(ctx context.Context, operation RetryableOperat
 
 	return fmt.Errorf("%s operation failed after %d attempts, last error: %w",
 		operationName, c.config.MaxRetries+1, lastErr)
+}
+
+func (c *Client) SearchTermQuery(ctx context.Context, indexName string, query *TermQuery) (*TermQueryResponse, error) {
+	if query == nil {
+		return nil, NewSearchError("validation", "query cannot be nil")
+	}
+	if query.Field == "" {
+		return nil, NewSearchError("validation", "field cannot be empty")
+	}
+	if len(query.Values) == 0 {
+		return nil, NewSearchError("validation", "values cannot be empty")
+	}
+
+	normalized := TermQuery{
+		Field: query.Field,
+		Size:  query.Size,
+		From:  query.From,
+	}
+
+	seen := make(map[string]struct{}, len(query.Values))
+	for _, value := range query.Values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized.Values = append(normalized.Values, trimmed)
+	}
+
+	if len(normalized.Values) == 0 {
+		return nil, NewSearchError("validation", "no valid values provided")
+	}
+
+	if normalized.Size <= 0 {
+		normalized.Size = 10
+	}
+	if normalized.Size > 100 {
+		normalized.Size = 100
+	}
+	if normalized.From < 0 {
+		normalized.From = 0
+	}
+
+	operationCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	startTime := time.Now()
+	var result *TermQueryResponse
+
+	operation := func() error {
+		if err := c.WaitForRateLimit(operationCtx); err != nil {
+			return fmt.Errorf("rate limit error: %w", err)
+		}
+
+		body := BuildTermQueryBody(&normalized)
+		bodyJSON, err := json.Marshal(body)
+		if err != nil {
+			return NewSearchError("validation", fmt.Sprintf("failed to marshal term query body: %v", err))
+		}
+
+		req := &opensearchapi.SearchReq{
+			Indices: []string{indexName},
+			Body:    bytes.NewReader(bodyJSON),
+		}
+
+		searchResp, err := c.client.Search(operationCtx, req)
+		if err != nil {
+			return ClassifyConnectionError(err)
+		}
+		if searchResp == nil {
+			return NewSearchError("response", "received nil response from OpenSearch")
+		}
+
+		response := BuildTermQueryResponse(searchResp)
+		if response == nil {
+			return NewSearchError("response", "failed to parse term query response")
+		}
+
+		result = response
+		return nil
+	}
+
+	err := c.ExecuteWithRetry(operationCtx, operation, "SearchTermQuery")
+
+	duration := time.Since(startTime)
+	c.RecordRequest(duration, err == nil)
+
+	if err == nil && result != nil {
+		log.Printf("Term query completed in %v, field=%s, hits=%d", duration, normalized.Field, result.TotalHits)
+	}
+
+	return result, err
+}
+
+func BuildTermQueryBody(query *TermQuery) map[string]interface{} {
+	if query == nil {
+		return map[string]interface{}{}
+	}
+
+	body := map[string]interface{}{
+		"size": query.Size,
+		"query": map[string]interface{}{
+			"terms": map[string]interface{}{
+				query.Field: query.Values,
+			},
+		},
+	}
+
+	if query.From > 0 {
+		body["from"] = query.From
+	} else {
+		body["from"] = 0
+	}
+
+	return body
+}
+
+func BuildTermQueryResponse(searchResp *opensearchapi.SearchResp) *TermQueryResponse {
+	if searchResp == nil {
+		return nil
+	}
+
+	response := &TermQueryResponse{
+		Took:      searchResp.Took,
+		TimedOut:  searchResp.Timeout,
+		TotalHits: int(searchResp.Hits.Total.Value),
+		Results:   make([]TermQueryResult, len(searchResp.Hits.Hits)),
+	}
+
+	for i, hit := range searchResp.Hits.Hits {
+		response.Results[i] = TermQueryResult{
+			Index:  hit.Index,
+			ID:     hit.ID,
+			Score:  float64(hit.Score),
+			Source: hit.Source,
+		}
+	}
+
+	return response
 }
 
 // PerformanceMetrics holds performance statistics

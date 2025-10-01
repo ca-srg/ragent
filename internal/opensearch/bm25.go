@@ -49,6 +49,7 @@ type BM25Query struct {
 	Filters            map[string]string `json:"filters,omitempty"`
 	Size               int               `json:"size,omitempty"`
 	From               int               `json:"from,omitempty"`
+	BoostPhrases       []string          `json:"boost_phrases,omitempty"`
 }
 
 func (c *Client) SearchBM25(ctx context.Context, indexName string, query *BM25Query) (*BM25SearchResponse, error) {
@@ -144,20 +145,42 @@ func (c *Client) SearchBM25(ctx context.Context, indexName string, query *BM25Qu
 	return result, err
 }
 
+const (
+	phraseMatchBoost    = 5.0
+	criticalPhraseBoost = 8.0
+)
+
 func (c *Client) buildBM25SearchBody(query *BM25Query) map[string]interface{} {
+	matchClause := c.buildMatchQuery(query)
+
+	mustClauses := []map[string]interface{}{matchClause}
+	if criticalClause := c.buildCriticalPhraseMustClause(query); criticalClause != nil {
+		mustClauses = append(mustClauses, criticalClause)
+	}
+
 	body := map[string]interface{}{
 		"size": query.Size,
 		"from": query.From,
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{
-				"must": []map[string]interface{}{
-					c.buildMatchQuery(query),
-				},
+				"must": mustClauses,
 			},
 		},
 		"sort": []map[string]interface{}{
 			{"_score": map[string]string{"order": "desc"}},
 		},
+	}
+
+	boolQuery := body["query"].(map[string]interface{})["bool"].(map[string]interface{})
+	shouldClauses := make([]map[string]interface{}, 0)
+	if phraseClause := c.buildMatchPhraseQuery(query); phraseClause != nil {
+		shouldClauses = append(shouldClauses, phraseClause)
+	}
+	if boostClauses := c.buildBoostPhraseClauses(query); len(boostClauses) > 0 {
+		shouldClauses = append(shouldClauses, boostClauses...)
+	}
+	if len(shouldClauses) > 0 {
+		boolQuery["should"] = shouldClauses
 	}
 
 	if len(query.Filters) > 0 {
@@ -169,7 +192,7 @@ func (c *Client) buildBM25SearchBody(query *BM25Query) map[string]interface{} {
 				},
 			})
 		}
-		body["query"].(map[string]interface{})["bool"].(map[string]interface{})["filter"] = filters
+		boolQuery["filter"] = filters
 	}
 
 	return body
@@ -223,6 +246,126 @@ func (c *Client) buildMatchQuery(query *BM25Query) map[string]interface{} {
 	}
 
 	return multiMatchQuery
+}
+
+func (c *Client) buildMatchPhraseQuery(query *BM25Query) map[string]interface{} {
+	if query == nil || query.Query == "" {
+		return nil
+	}
+
+	if len(query.Fields) == 0 {
+		return nil
+	}
+
+	if len(query.Fields) == 1 {
+		return map[string]interface{}{
+			"match_phrase": map[string]interface{}{
+				query.Fields[0]: map[string]interface{}{
+					"query": query.Query,
+					"boost": phraseMatchBoost,
+				},
+			},
+		}
+	}
+
+	return map[string]interface{}{
+		"multi_match": map[string]interface{}{
+			"query":  query.Query,
+			"fields": query.Fields,
+			"type":   "phrase",
+			"boost":  phraseMatchBoost,
+		},
+	}
+}
+
+func (c *Client) buildBoostPhraseClauses(query *BM25Query) []map[string]interface{} {
+	if query == nil || len(query.BoostPhrases) == 0 {
+		return nil
+	}
+
+	if len(query.Fields) == 0 {
+		return nil
+	}
+
+	clauses := make([]map[string]interface{}, 0, len(query.BoostPhrases))
+	for _, phrase := range query.BoostPhrases {
+		trimmed := strings.TrimSpace(phrase)
+		if trimmed == "" {
+			continue
+		}
+
+		if len(query.Fields) == 1 {
+			clauses = append(clauses, map[string]interface{}{
+				"match_phrase": map[string]interface{}{
+					query.Fields[0]: map[string]interface{}{
+						"query": trimmed,
+						"boost": criticalPhraseBoost,
+					},
+				},
+			})
+			continue
+		}
+
+		clauses = append(clauses, map[string]interface{}{
+			"multi_match": map[string]interface{}{
+				"query":  trimmed,
+				"fields": query.Fields,
+				"type":   "phrase",
+				"boost":  criticalPhraseBoost,
+			},
+		})
+	}
+
+	return clauses
+}
+
+func (c *Client) buildCriticalPhraseMustClause(query *BM25Query) map[string]interface{} {
+	if query == nil || len(query.BoostPhrases) == 0 {
+		return nil
+	}
+
+	if len(query.Fields) == 0 {
+		return nil
+	}
+
+	should := make([]map[string]interface{}, 0, len(query.BoostPhrases))
+	for _, phrase := range query.BoostPhrases {
+		trimmed := strings.TrimSpace(phrase)
+		if trimmed == "" {
+			continue
+		}
+
+		if len(query.Fields) == 1 {
+			should = append(should, map[string]interface{}{
+				"match_phrase": map[string]interface{}{
+					query.Fields[0]: map[string]interface{}{
+						"query": trimmed,
+						"slop":  0,
+					},
+				},
+			})
+			continue
+		}
+
+		should = append(should, map[string]interface{}{
+			"multi_match": map[string]interface{}{
+				"query":  trimmed,
+				"fields": query.Fields,
+				"type":   "phrase",
+			},
+		})
+	}
+
+	if len(should) == 0 {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"bool": map[string]interface{}{
+			"should":               should,
+			"minimum_should_match": 1,
+		},
+	}
 }
 
 func (c *Client) CreateBM25Index(ctx context.Context, indexName string, k1, b float64) error {

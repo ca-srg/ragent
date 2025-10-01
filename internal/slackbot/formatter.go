@@ -24,12 +24,22 @@ func (f *Formatter) BuildUsage(tip string) slack.MsgOption {
 func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.MsgOption {
 	// If we have a generated response (chat-style), use that format
 	if result.GeneratedResponse != "" {
-		return f.BuildChatResponse(query, result.GeneratedResponse, result.Total, result.Elapsed)
+		return f.BuildChatResponse(query, result.GeneratedResponse, result.Total, result.Elapsed, result.SearchMethod, result.FallbackReason)
 	}
 
 	// Otherwise, use the traditional search result format
 	header := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, fmt.Sprintf("検索結果: %s", truncate(query, 60)), false, false))
-	intro := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%d 件 / %.0f ms", result.Total, result.Elapsed.Seconds()*1000), false, false))
+	metaParts := []string{
+		fmt.Sprintf("%d 件", result.Total),
+		fmt.Sprintf("%.0f ms", result.Elapsed.Seconds()*1000),
+	}
+	if result.SearchMethod != "" {
+		metaParts = append(metaParts, fmt.Sprintf("モード: %s", result.SearchMethod))
+	}
+	if result.FallbackReason != "" {
+		metaParts = append(metaParts, fmt.Sprintf("フォールバック: %s", result.FallbackReason))
+	}
+	intro := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, strings.Join(metaParts, " / "), false, false))
 
 	blocks := []slack.Block{header, intro}
 	for i, item := range result.Items {
@@ -65,12 +75,22 @@ func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.
 }
 
 // BuildChatResponse formats LLM-generated response into blocks
-func (f *Formatter) BuildChatResponse(query string, response string, total int, elapsed time.Duration) slack.MsgOption {
+func (f *Formatter) BuildChatResponse(query string, response string, total int, elapsed time.Duration, method string, fallback string) slack.MsgOption {
 	// Header with query
 	header := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, fmt.Sprintf("質問: %s", truncate(query, 60)), false, false))
 
-	// Context info (number of documents found and time taken)
-	intro := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%d 件の参考文献から生成 / %.0f ms", total, elapsed.Seconds()*1000), false, false))
+	// Context info including search method
+	metaParts := []string{
+		fmt.Sprintf("%d 件の参考文献から生成", total),
+		fmt.Sprintf("%.0f ms", elapsed.Seconds()*1000),
+	}
+	if method != "" {
+		metaParts = append(metaParts, fmt.Sprintf("モード: %s", method))
+	}
+	if fallback != "" {
+		metaParts = append(metaParts, fmt.Sprintf("フォールバック: %s", fallback))
+	}
+	intro := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, strings.Join(metaParts, " / "), false, false))
 
 	// Main response in sections (split if needed for Slack's character limits)
 	blocks := []slack.Block{header, intro}
@@ -153,6 +173,9 @@ type SearchResult struct {
 	Total             int
 	Elapsed           time.Duration
 	GeneratedResponse string // LLM generated response (for chat-style responses)
+	SearchMethod      string
+	URLDetected       bool
+	FallbackReason    string
 }
 
 type SearchItem struct {

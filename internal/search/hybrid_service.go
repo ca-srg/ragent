@@ -39,6 +39,7 @@ type SearchResponse struct {
 	TotalResults int               `json:"total_results"`
 	SearchTime   string            `json:"search_time"`
 	IndexUsed    string            `json:"index_used"`
+	SearchMethod string            `json:"search_method"`
 }
 
 // NewHybridSearchService creates a new hybrid search service
@@ -146,6 +147,7 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 		TotalResults: result.FusionResult.TotalHits,
 		SearchTime:   result.ExecutionTime.String(),
 		IndexUsed:    request.IndexName,
+		SearchMethod: result.SearchMethod,
 	}
 
 	for _, doc := range result.FusionResult.Documents {

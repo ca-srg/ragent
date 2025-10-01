@@ -87,11 +87,14 @@ type HybridSearchRequest struct {
 
 // HybridSearchResponse represents the hybrid search tool response
 type HybridSearchResponse struct {
-	Query      string                   `json:"query"`
-	Total      int                      `json:"total"`
-	SearchMode string                   `json:"search_mode"`
-	Results    []HybridSearchResultItem `json:"results"`
-	Metadata   *HybridSearchMetadata    `json:"metadata,omitempty"`
+	Query          string                   `json:"query"`
+	Total          int                      `json:"total"`
+	SearchMode     string                   `json:"search_mode"`
+	SearchMethod   string                   `json:"search_method"`
+	URLDetected    bool                     `json:"url_detected,omitempty"`
+	FallbackReason string                   `json:"fallback_reason,omitempty"`
+	Results        []HybridSearchResultItem `json:"results"`
+	Metadata       *HybridSearchMetadata    `json:"metadata,omitempty"`
 }
 
 // HybridSearchResultItem represents a single search result

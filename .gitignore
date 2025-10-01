@@ -5,3 +5,4 @@ markdown/*.md
 ragent
 .spec-workflow
 opencode.json
+doc/debug.md
