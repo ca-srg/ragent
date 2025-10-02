@@ -188,6 +188,33 @@ RAGent query -q "authentication" --filter '{"type":"security"}' --json
 RAGent query -q "database optimization" --top-k 20
 ```
 
+#### URL-Aware Search
+
+RAGent inspects each query for HTTP/HTTPS URLs. When a URL is present, it first performs an exact term query on the `reference` field before running the usual hybrid search pipeline.
+
+- Successful URL matches return immediately with `search_method` set to `"url_exact_match"` and include the URL-only results.
+- If the term query fails or returns no hits, the engine falls back to the hybrid search flow and records the fallback reason (`term_query_error` or `term_query_no_results`).
+- CLI `--json` output, Slack bot responses, and MCP tool results expose `search_method`, `url_detected`, and `fallback_reason` so callers can inspect how the result was produced.
+
+```bash
+RAGent query --json -q "https://example.com/doc のタイトルを教えて"
+```
+
+Example JSON response fragment:
+
+```json
+{
+  "search_method": "url_exact_match",
+  "url_detected": true,
+  "fallback_reason": "",
+  "results": [
+    { "title": "Example Doc", "reference": "https://example.com/doc" }
+  ]
+}
+```
+
+If a URL is not detected or the exact match misses, `search_method` falls back to `"hybrid_search"` with the usual fused BM25/vector results.
+
 ### 3. list - List Vectors
 
 Display a list of vectors stored in S3 Vector Index.

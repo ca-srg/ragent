@@ -7,16 +7,20 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
+type SearchClient interface {
+	opensearch.SearchClient
+	HealthCheck(ctx context.Context) error
+}
+
 // HybridSearchToolAdapter adapts existing hybrid search functionality to MCP tool interface
 type HybridSearchToolAdapter struct {
-	osClient        *opensearch.Client
-	embeddingClient *bedrock.BedrockClient
+	searchClient    SearchClient
+	embeddingClient opensearch.EmbeddingClient
 	hybridEngine    *opensearch.HybridSearchEngine
 	defaultConfig   *HybridSearchConfig
 	logger          *log.Logger
@@ -34,7 +38,7 @@ type HybridSearchConfig struct {
 }
 
 // NewHybridSearchToolAdapter creates a new hybrid search tool adapter
-func NewHybridSearchToolAdapter(osClient *opensearch.Client, embeddingClient *bedrock.BedrockClient, config *HybridSearchConfig) *HybridSearchToolAdapter {
+func NewHybridSearchToolAdapter(searchClient SearchClient, embeddingClient opensearch.EmbeddingClient, config *HybridSearchConfig) *HybridSearchToolAdapter {
 	if config == nil {
 		config = &HybridSearchConfig{
 			DefaultIndexName:      "ragent-docs",
@@ -47,10 +51,10 @@ func NewHybridSearchToolAdapter(osClient *opensearch.Client, embeddingClient *be
 		}
 	}
 
-	hybridEngine := opensearch.NewHybridSearchEngine(osClient, embeddingClient)
+	hybridEngine := opensearch.NewHybridSearchEngine(searchClient, embeddingClient)
 
 	return &HybridSearchToolAdapter{
-		osClient:        osClient,
+		searchClient:    searchClient,
 		embeddingClient: embeddingClient,
 		hybridEngine:    hybridEngine,
 		defaultConfig:   config,
@@ -154,7 +158,7 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 	}
 
 	// Test OpenSearch connection
-	if err := hsta.osClient.HealthCheck(ctx); err != nil {
+	if err := hsta.searchClient.HealthCheck(ctx); err != nil {
 		errorMsg := fmt.Sprintf("OpenSearch connection failed: %v", err)
 		hsta.logger.Printf("Health check failed: %v", err)
 		return CreateToolCallErrorResult(errorMsg), fmt.Errorf("%s", errorMsg)
@@ -328,10 +332,13 @@ func (hsta *HybridSearchToolAdapter) buildHybridQuery(request *types.HybridSearc
 // convertToMCPResponse converts HybridSearchResult to MCP response format
 func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridSearchRequest, result *opensearch.HybridSearchResult) *types.HybridSearchResponse {
 	response := &types.HybridSearchResponse{
-		Query:      request.Query,
-		Total:      result.FusionResult.TotalHits,
-		SearchMode: request.SearchMode,
-		Results:    make([]types.HybridSearchResultItem, 0, len(result.FusionResult.Documents)),
+		Query:          request.Query,
+		Total:          result.FusionResult.TotalHits,
+		SearchMode:     request.SearchMode,
+		SearchMethod:   result.SearchMethod,
+		URLDetected:    result.URLDetected,
+		FallbackReason: result.FallbackReason,
+		Results:        make([]types.HybridSearchResultItem, 0, len(result.FusionResult.Documents)),
 	}
 
 	// Convert documents to result items

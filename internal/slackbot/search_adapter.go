@@ -146,5 +146,8 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string) *SearchR
 		GeneratedResponse: generatedResponse,
 		Total:             len(res.FusionResult.Documents),
 		Elapsed:           time.Since(start),
+		SearchMethod:      res.SearchMethod,
+		URLDetected:       res.URLDetected,
+		FallbackReason:    res.FallbackReason,
 	}
 }

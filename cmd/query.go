@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
@@ -15,6 +16,17 @@ import (
 	"github.com/ca-srg/ragent/internal/opensearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
+
+type QuerySearchClient interface {
+	opensearch.SearchClient
+	HealthCheck(ctx context.Context) error
+}
+
+type appConfigLoader func() (*commontypes.Config, error)
+type awsConfigLoader func(ctx context.Context, optFns ...func(*config.LoadOptions) error) (aws.Config, error)
+type bedrockClientFactory func(aws.Config, string) opensearch.EmbeddingClient
+type openSearchClientFactory func(*opensearch.Config) (QuerySearchClient, error)
+type hybridEngineFactory func(opensearch.SearchClient, opensearch.EmbeddingClient) *opensearch.HybridSearchEngine
 
 var (
 	queryText      string
@@ -28,6 +40,18 @@ var (
 	fusionMethod   string
 	useJapaneseNLP bool
 	timeout        int
+)
+
+var (
+	loadAppConfig      appConfigLoader      = appconfig.Load
+	loadAWSConfig      awsConfigLoader      = config.LoadDefaultConfig
+	newEmbeddingClient bedrockClientFactory = func(cfg aws.Config, modelID string) opensearch.EmbeddingClient {
+		return bedrock.NewBedrockClient(cfg, modelID)
+	}
+	newOpenSearchClient openSearchClientFactory = func(cfg *opensearch.Config) (QuerySearchClient, error) {
+		return opensearch.NewClient(cfg)
+	}
+	newHybridEngine hybridEngineFactory = opensearch.NewHybridSearchEngine
 )
 
 var queryCmd = &cobra.Command{
@@ -79,7 +103,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	log.Printf("Starting %s search for: %s", searchMode, queryText)
 
 	// Load configuration
-	cfg, err := appconfig.Load()
+	cfg, err := loadAppConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
@@ -89,13 +113,13 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Load AWS configuration
-	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.AWSS3Region))
+	awsConfig, err := loadAWSConfig(ctx, config.WithRegion(cfg.AWSS3Region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
 	// Create embedding client
-	embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
+	embeddingClient := newEmbeddingClient(awsConfig, "amazon.titan-embed-text-v2:0")
 
 	// Execute search based on mode
 	switch searchMode {
@@ -108,7 +132,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func runHybridSearch(ctx context.Context, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) error {
+func runHybridSearch(ctx context.Context, cfg *commontypes.Config, embeddingClient opensearch.EmbeddingClient) error {
 	// OpenSearch hybrid search with S3 Vector
 	osResult, osErr := attemptOpenSearchHybrid(ctx, cfg, embeddingClient)
 	if osErr != nil {
@@ -117,7 +141,7 @@ func runHybridSearch(ctx context.Context, cfg *commontypes.Config, embeddingClie
 	return outputHybridResults(osResult, "hybrid")
 }
 
-func runOpenSearchOnly(ctx context.Context, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) error {
+func runOpenSearchOnly(ctx context.Context, cfg *commontypes.Config, embeddingClient opensearch.EmbeddingClient) error {
 	osResult, err := attemptOpenSearchHybrid(ctx, cfg, embeddingClient)
 	if err != nil {
 		return fmt.Errorf("OpenSearch search failed: %w", err)
@@ -125,7 +149,7 @@ func runOpenSearchOnly(ctx context.Context, cfg *commontypes.Config, embeddingCl
 	return outputHybridResults(osResult, "opensearch")
 }
 
-func attemptOpenSearchHybrid(ctx context.Context, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) (*opensearch.HybridSearchResult, error) {
+func attemptOpenSearchHybrid(ctx context.Context, cfg *commontypes.Config, embeddingClient opensearch.EmbeddingClient) (*opensearch.HybridSearchResult, error) {
 	// Validate OpenSearch configuration
 	if cfg.OpenSearchEndpoint == "" {
 		return nil, fmt.Errorf("OpenSearch endpoint not configured")
@@ -141,7 +165,7 @@ func attemptOpenSearchHybrid(ctx context.Context, cfg *commontypes.Config, embed
 		return nil, fmt.Errorf("OpenSearch config validation failed: %w", err)
 	}
 
-	osClient, err := opensearch.NewClient(osConfig)
+	osClient, err := newOpenSearchClient(osConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OpenSearch client: %w", err)
 	}
@@ -152,7 +176,7 @@ func attemptOpenSearchHybrid(ctx context.Context, cfg *commontypes.Config, embed
 	}
 
 	// Create hybrid search engine
-	hybridEngine := opensearch.NewHybridSearchEngine(osClient, embeddingClient)
+	hybridEngine := newHybridEngine(osClient, embeddingClient)
 
 	// Build hybrid query
 	hybridQuery := &opensearch.HybridQuery{

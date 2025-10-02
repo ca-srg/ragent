@@ -5,9 +5,9 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "mdrag",
-	Short: "mdRAG - RAG system builder for Markdown documents",
-	Long: `mdRAG is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
+	Use:   "ragent",
+	Short: "RAGent - RAG system builder for Markdown documents",
+	Long: `RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 from Markdown documents using hybrid search capabilities (BM25 + vector search) 
 with Amazon S3 Vectors and OpenSearch.`,
 }
