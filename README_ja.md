@@ -1,5 +1,5 @@
 # RAGent - Markdownドキュメント用RAGシステム構築ツール
-
+鬼海
 **[English README](README.md)**
 
 RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + ベクトル検索）を利用したRAG（Retrieval-Augmented Generation）システムを構築するCLIツールです。Amazon S3 VectorsとOpenSearchを活用した高精度な検索機能を提供します。
