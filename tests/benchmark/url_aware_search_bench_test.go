@@ -233,11 +233,3 @@ func benchNewVectorResponse(ids ...string) *opensearch.VectorSearchResponse {
 	}
 	return resp
 }
-
-func (s *benchStubSearchClient) waitForRateLimit(ctx context.Context) error {
-	return nil
-}
-
-func (s *benchStubSearchClient) recordRequest(duration time.Duration, success bool) {
-	s.RecordRequest(duration, success)
-}

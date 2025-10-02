@@ -171,7 +171,7 @@ func captureCommandOutput(run func() error) (string, error) {
 	os.Stdout = w
 
 	err := run()
-	w.Close()
+	_ = w.Close()
 	os.Stdout = origStdout
 
 	var buf bytes.Buffer
