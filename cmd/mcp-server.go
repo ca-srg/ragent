@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
 	appcfg "github.com/ca-srg/ragent/internal/config"
@@ -367,13 +370,25 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 		toolName = cfg.MCPToolPrefix + toolName
 	}
 
-	// Register tool with SDK server through ServerWrapper
-	err = server.RegisterTool(toolName, toolHandlerFunc)
-	if err != nil {
+	// Build enriched tool definition for MCP clients
+	baseDefinition := hybridSearchHandler.GetSDKToolDefinition()
+	detailedTool := buildHybridSearchToolDefinition(baseDefinition, toolName, hybridSearchConfig)
+
+	// Register tool with SDK server through ServerWrapper using the enriched definition
+	if err := server.RegisterCustomTool(detailedTool, toolHandlerFunc); err != nil {
 		return fmt.Errorf("failed to register hybrid search tool: %w", err)
 	}
 
-	logger.Printf("Registered tool '%s' with SDK server", toolName)
+	documentedParams := 0
+	if detailedTool != nil && detailedTool.InputSchema != nil && detailedTool.InputSchema.Properties != nil {
+		documentedParams = len(detailedTool.InputSchema.Properties)
+	}
+
+	logger.Printf(
+		"Registered tool '%s' with SDK server (documented parameters=%d)",
+		toolName,
+		documentedParams,
+	)
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -410,4 +425,181 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 
 	logger.Printf("MCP server (SDK-based) stopped successfully")
 	return nil
+}
+
+func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *mcpserver.HybridSearchConfig) *mcp.Tool {
+	if defaults == nil {
+		defaults = &mcpserver.HybridSearchConfig{
+			DefaultIndexName:      "ragent-docs",
+			DefaultSize:           10,
+			DefaultBM25Weight:     0.5,
+			DefaultVectorWeight:   0.5,
+			DefaultFusionMethod:   "weighted_sum",
+			DefaultUseJapaneseNLP: true,
+			DefaultTimeoutSeconds: 30,
+		}
+	}
+
+	var toolCopy mcp.Tool
+	if base != nil {
+		toolCopy = *base
+	}
+	toolCopy.Name = toolName
+
+	toolCopy.Description = fmt.Sprintf(
+		"ハイブリッド検索ツール。RAGent の OpenSearch (BM25) と Titan ベクトル検索を組み合わせ、最大 %d 件の候補を融合スコアで返します。日本語・英語いずれの自然文クエリにも対応し、手順書・設計資料・ナレッジノートを横断的に調べる用途を想定しています。レスポンスは JSON テキストで、各ドキュメントのタイトル/抜粋/スコア/パス/メタデータ (任意) を含みます。\n\nEnglish: Run hybrid retrieval across the Markdown knowledge base by blending BM25 and Titan embeddings on Amazon OpenSearch. Returns up to %d ranked documents with fused scores plus optional metadata.",
+		defaults.DefaultSize,
+		defaults.DefaultSize,
+	)
+
+	var schema *jsonschema.Schema
+	if base != nil && base.InputSchema != nil {
+		schema = base.InputSchema.CloneSchemas()
+	} else {
+		schema = &jsonschema.Schema{}
+	}
+
+	schema.Type = "object"
+	schema.Title = "Hybrid Search Parameters / ハイブリッド検索パラメータ"
+	schema.Description = "ハイブリッド検索ツールに渡すことができるパラメータ一覧です。最低限 `query` を指定し、必要に応じて件数・フィルタ・重み付けを調整してください。"
+	schema.Required = []string{"query"}
+
+	if schema.Properties == nil {
+		schema.Properties = make(map[string]*jsonschema.Schema)
+	}
+
+	ensureProperty := func(key, typeName string) *jsonschema.Schema {
+		prop, ok := schema.Properties[key]
+		if ok && prop != nil {
+			prop = prop.CloneSchemas()
+		} else {
+			prop = &jsonschema.Schema{}
+		}
+		if typeName != "" {
+			prop.Type = typeName
+			prop.Types = nil
+		}
+		schema.Properties[key] = prop
+		return prop
+	}
+
+	toRaw := func(v any) json.RawMessage {
+		data, err := json.Marshal(v)
+		if err != nil {
+			return nil
+		}
+		return data
+	}
+
+	queryProp := ensureProperty("query", "string")
+	queryProp.Title = "Query / クエリ"
+	queryProp.Description = "検索対象の質問やキーワードを自然文で入力します。短いキーワードよりも、欲しい情報や前提条件を含めた文章の方が精度が上がります。"
+	minQueryLen := 1
+	queryProp.MinLength = &minQueryLen
+	queryProp.Examples = []any{
+		"S3 Vector インデックスをローテーションする手順",
+		"What does the runbook recommend for recovering failing hybrid search nodes?",
+	}
+
+	topKProp := ensureProperty("top_k", "integer")
+	topKProp.Title = "Top K Results"
+	topKProp.Description = fmt.Sprintf("返却件数を指定します。1〜100 の範囲で設定でき、デフォルトは %d 件です。", defaults.DefaultSize)
+	minTopK := float64(1)
+	maxTopK := float64(100)
+	topKProp.Minimum = &minTopK
+	topKProp.Maximum = &maxTopK
+	topKProp.Default = toRaw(defaults.DefaultSize)
+	topKProp.Examples = []any{5, defaults.DefaultSize, 20}
+
+	filtersProp := ensureProperty("filters", "object")
+	filtersProp.Title = "Metadata Filters"
+	filtersProp.Description = "ドキュメントのメタデータに対する完全一致フィルタです。キーには `category`、`tags`、`path` などのフィールド名を指定し、値には期待する文字列を設定します。ログイン不要な公開ノートに絞りたい場合などに利用します。"
+	filtersProp.AdditionalProperties = &jsonschema.Schema{
+		Type:        "string",
+		Description: "フィルタする値。完全一致で比較されます。ワイルドカードは未サポートです。",
+	}
+	filtersProp.Examples = []any{
+		map[string]any{"category": "Runbook"},
+		map[string]any{"scope": "Production", "tags": "oncall"},
+	}
+
+	searchModeProp := ensureProperty("search_mode", "string")
+	searchModeProp.Title = "Search Mode"
+	searchModeProp.Description = "実行する検索モードを選択します。`hybrid` は BM25 とベクトル検索の融合、`bm25` はキーワード優先、`vector` は意味検索優先です。"
+	searchModeProp.Enum = []any{"hybrid", "bm25", "vector"}
+	searchModeProp.Default = toRaw("hybrid")
+	searchModeProp.Examples = []any{"hybrid", "bm25"}
+
+	bm25WeightProp := ensureProperty("bm25_weight", "number")
+	bm25WeightProp.Title = "BM25 Weight"
+	bm25WeightProp.Description = "BM25 (キーワード一致) スコアの比重を 0〜1 の範囲で調整します。値を高くするとキーワード一致を優先します。"
+	minWeight := float64(0)
+	maxWeight := float64(1)
+	bm25WeightProp.Minimum = &minWeight
+	bm25WeightProp.Maximum = &maxWeight
+	bm25WeightProp.Default = toRaw(defaults.DefaultBM25Weight)
+	bm25WeightProp.Examples = []any{0.3, defaults.DefaultBM25Weight, 0.7}
+
+	vectorWeightProp := ensureProperty("vector_weight", "number")
+	vectorWeightProp.Title = "Vector Weight"
+	vectorWeightProp.Description = "ベクトル (意味) スコアの比重を 0〜1 の範囲で調整します。BM25 weight との合計が 1 に近いバランスになるようにしてください。"
+	vectorWeightProp.Minimum = &minWeight
+	vectorWeightProp.Maximum = &maxWeight
+	vectorWeightProp.Default = toRaw(defaults.DefaultVectorWeight)
+	vectorWeightProp.Examples = []any{0.5, defaults.DefaultVectorWeight, 0.8}
+
+	minScoreProp := ensureProperty("min_score", "number")
+	minScoreProp.Title = "Minimum Score"
+	minScoreProp.Description = "この値よりスコアが低い結果を除外します。ノイズの多いクエリで精度を絞り込みたいときに利用します。"
+	minScoreProp.Minimum = &minWeight
+	minScoreProp.Default = toRaw(0.0)
+	minScoreProp.Examples = []any{0.0, 0.35}
+
+	includeMetadataProp := ensureProperty("include_metadata", "boolean")
+	includeMetadataProp.Title = "Include Metadata"
+	includeMetadataProp.Description = "`true` にするとレスポンスに `metadata` フィールドが追加され、各ドキュメントの生メタデータを確認できます。LLM へのフォローアップ生成時に便利です。"
+	includeMetadataProp.Default = toRaw(false)
+	includeMetadataProp.Examples = []any{true}
+
+	fusionMethodProp := ensureProperty("fusion_method", "string")
+	fusionMethodProp.Title = "Fusion Method"
+	fusionMethodProp.Description = "BM25 とベクトル結果の統合方法です。現在は `weighted_sum` のみが実装されており、その他の値を指定した場合も加重和で処理されます。"
+	fusionMethodProp.Enum = []any{"weighted_sum", "rrf"}
+	fusionMethodProp.Default = toRaw(defaults.DefaultFusionMethod)
+
+	nlpProp := ensureProperty("use_japanese_nlp", "boolean")
+	nlpProp.Title = "Use Japanese NLP"
+	nlpProp.Description = "日本語の形態素解析を有効にするかどうか。現在はサーバー設定に従って動作し、明示的に変更するオプションはプレビュー扱いです。"
+	nlpProp.Default = toRaw(defaults.DefaultUseJapaneseNLP)
+
+	schema.Properties["query"] = queryProp
+	schema.Properties["top_k"] = topKProp
+	schema.Properties["filters"] = filtersProp
+	schema.Properties["search_mode"] = searchModeProp
+	schema.Properties["bm25_weight"] = bm25WeightProp
+	schema.Properties["vector_weight"] = vectorWeightProp
+	schema.Properties["min_score"] = minScoreProp
+	schema.Properties["include_metadata"] = includeMetadataProp
+	schema.Properties["fusion_method"] = fusionMethodProp
+	schema.Properties["use_japanese_nlp"] = nlpProp
+
+	schema.Examples = []any{
+		map[string]any{
+			"query":            "障害復旧のフローをまとめた runbook を探したい",
+			"top_k":            8,
+			"filters":          map[string]any{"category": "Runbook"},
+			"bm25_weight":      defaults.DefaultBM25Weight,
+			"vector_weight":    defaults.DefaultVectorWeight,
+			"include_metadata": true,
+		},
+		map[string]any{
+			"query":       "Explain the monitoring setup for the embedding pipeline",
+			"search_mode": "vector",
+			"min_score":   0.25,
+			"filters":     map[string]any{"tags": "observability"},
+		},
+	}
+
+	toolCopy.InputSchema = schema
+	return &toolCopy
 }
