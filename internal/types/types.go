@@ -117,7 +117,7 @@ type Config struct {
 	Concurrency          int           `json:"concurrency" env:"VECTORIZER_CONCURRENCY,default=10"`
 	RetryAttempts        int           `json:"retry_attempts" env:"VECTORIZER_RETRY_ATTEMPTS,default=0"`
 	RetryDelay           time.Duration `json:"retry_delay" env:"VECTORIZER_RETRY_DELAY,default=2s"`
-	ExcludeCategoriesStr string        `json:"-" env:"EXCLUDE_CATEGORIES,default=個人メモ,日報"`
+	ExcludeCategoriesStr string        `json:"-" env:"EXCLUDE_CATEGORIES,default=日報"`
 	ExcludeCategories    []string      `json:"exclude_categories"`
 	// OpenSearch configuration
 	OpenSearchEndpoint          string        `json:"opensearch_endpoint" env:"OPENSEARCH_ENDPOINT,required=true"`

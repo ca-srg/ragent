@@ -148,11 +148,11 @@ func (sw *ServerWrapper) GetToolRegistry() *ToolRegistry {
 
 // RegisterTool registers a tool with the SDK server
 func (sw *ServerWrapper) RegisterTool(name string, handler mcp.ToolHandler) error {
-	if sw.sdkServer == nil {
-		return fmt.Errorf("SDK server not initialized")
+	if name == "" {
+		return fmt.Errorf("tool name cannot be empty")
 	}
 
-	// Create basic input schema for SDK compatibility
+	// Create minimal schema when no custom definition is supplied.
 	basicSchema := &jsonschema.Schema{
 		Type: "object",
 		Properties: map[string]*jsonschema.Schema{
@@ -164,17 +164,57 @@ func (sw *ServerWrapper) RegisterTool(name string, handler mcp.ToolHandler) erro
 		Required: []string{"query"},
 	}
 
-	// Create tool definition for SDK
 	tool := &mcp.Tool{
 		Name:        name,
 		Description: "Tool for RAGent",
 		InputSchema: basicSchema,
 	}
 
-	// Register tool with SDK server using AddTool
-	sw.sdkServer.AddTool(tool, handler)
+	return sw.RegisterCustomTool(tool, handler)
+}
 
-	sw.logger.Printf("Tool %s registered successfully", name)
+// RegisterCustomTool registers a tool with an explicit SDK tool definition.
+func (sw *ServerWrapper) RegisterCustomTool(tool *mcp.Tool, handler mcp.ToolHandler) error {
+	if sw.sdkServer == nil {
+		return fmt.Errorf("SDK server not initialized")
+	}
+	if tool == nil {
+		return fmt.Errorf("tool definition cannot be nil")
+	}
+	if handler == nil {
+		return fmt.Errorf("tool handler cannot be nil")
+	}
+	if tool.Name == "" {
+		return fmt.Errorf("tool name cannot be empty")
+	}
+
+	// Clone schema to avoid shared mutations and guarantee an object type default.
+	var schema *jsonschema.Schema
+	if tool.InputSchema != nil {
+		schema = tool.InputSchema.CloneSchemas()
+		if schema.Type == "" && len(schema.Types) == 0 {
+			schema.Type = "object"
+		}
+	} else {
+		schema = &jsonschema.Schema{Type: "object"}
+	}
+
+	toolCopy := *tool
+	toolCopy.InputSchema = schema
+
+	sw.sdkServer.AddTool(&toolCopy, handler)
+
+	propertyCount := 0
+	if toolCopy.InputSchema != nil && toolCopy.InputSchema.Properties != nil {
+		propertyCount = len(toolCopy.InputSchema.Properties)
+	}
+
+	sw.logger.Printf(
+		"Tool %s registered successfully (description=%d chars, parameters=%d)",
+		toolCopy.Name,
+		len(toolCopy.Description),
+		propertyCount,
+	)
 	return nil
 }
 
