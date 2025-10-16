@@ -129,7 +129,7 @@ func (hse *HybridSearchEngine) Search(ctx context.Context, query *HybridQuery) (
 			log.Printf("URL detected in query: %v", detectionResult.URLs)
 			urlDetected = true
 			termQuery := &TermQuery{
-				Field:  "reference",
+				Field:  "reference.keyword",
 				Values: detectionResult.URLs,
 				Size:   query.Size,
 			}
@@ -137,7 +137,7 @@ func (hse *HybridSearchEngine) Search(ctx context.Context, query *HybridQuery) (
 				termQuery.Size = len(detectionResult.URLs)
 			}
 
-			log.Printf("Executing term query on 'reference' field for %d URL(s)", len(detectionResult.URLs))
+			log.Printf("Executing term query on 'reference.keyword' field for %d URL(s)", len(detectionResult.URLs))
 			termStart := time.Now()
 			termResponse, err := hse.client.SearchTermQuery(ctx, query.IndexName, termQuery)
 			termQueryDuration = time.Since(termStart)

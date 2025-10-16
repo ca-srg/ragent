@@ -113,6 +113,15 @@ func TestQueryCommandURLAwareSearch(t *testing.T) {
 			expectedURLDetected: true,
 		},
 		{
+			name:  "url exact match with angle brackets",
+			query: "Kibela にある <https://example.com/doc> の内容を教えて",
+			configureStub: func(client *stubSearchClient) {
+				client.termResponses["https://example.com/doc"] = newTermResponseStub("doc-url-bracket")
+			},
+			expectedMethod:      "url_exact_match",
+			expectedURLDetected: true,
+		},
+		{
 			name:  "hybrid fallback without url",
 			query: "機械学習について教えて",
 			configureStub: func(client *stubSearchClient) {

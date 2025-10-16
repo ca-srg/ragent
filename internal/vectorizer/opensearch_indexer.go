@@ -626,8 +626,14 @@ func (osi *OpenSearchIndexerImpl) CreateVectorIndexWithJapanese(ctx context.Cont
 						},
 					},
 					"reference": map[string]interface{}{
-						"type":     "text",
-						"analyzer": "kuromoji",
+						"type": "keyword",
+						"fields": map[string]interface{}{
+							"text": map[string]interface{}{
+								"type":            "text",
+								"analyzer":        "kuromoji",
+								"search_analyzer": "kuromoji_search",
+							},
+						},
 					},
 					"source": map[string]interface{}{
 						"type": "keyword",

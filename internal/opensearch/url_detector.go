@@ -44,11 +44,15 @@ func (d *defaultURLDetector) DetectURLs(query string) *URLDetectionResult {
 
 	seen := make(map[string]struct{}, len(matches))
 	for _, url := range matches {
-		if _, ok := seen[url]; ok {
+		normalized := normalizeURLToken(url)
+		if normalized == "" {
 			continue
 		}
-		seen[url] = struct{}{}
-		result.URLs = append(result.URLs, url)
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result.URLs = append(result.URLs, normalized)
 	}
 
 	if len(result.URLs) > 0 {
@@ -56,4 +60,28 @@ func (d *defaultURLDetector) DetectURLs(query string) *URLDetectionResult {
 	}
 
 	return result
+}
+
+func normalizeURLToken(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+
+	const trimChars = "<>[](){}「」『』（）｢｣、。,.!?:;\"'`"
+
+	// Remove leading and trailing delimiters commonly added by renderers or users.
+	normalized := strings.Trim(trimmed, trimChars)
+
+	if normalized == "" {
+		return ""
+	}
+
+	// Ensure the token still looks like an HTTP(S) URL after trimming.
+	lower := strings.ToLower(normalized)
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return ""
+	}
+
+	return normalized
 }
