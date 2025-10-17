@@ -174,6 +174,15 @@ type Config struct {
 	MCPSSEBufferSize        int           `json:"mcp_sse_buffer_size" env:"MCP_SSE_BUFFER_SIZE,default=100"`
 	MCPSSEMaxClients        int           `json:"mcp_sse_max_clients" env:"MCP_SSE_MAX_CLIENTS,default=1000"`
 	MCPSSEHistorySize       int           `json:"mcp_sse_history_size" env:"MCP_SSE_HISTORY_SIZE,default=50"`
+
+	// Observability (OpenTelemetry) configuration
+	OTelEnabled              bool    `json:"otel_enabled" env:"OTEL_ENABLED,default=false"`
+	OTelServiceName          string  `json:"otel_service_name" env:"OTEL_SERVICE_NAME,default=ragent"`
+	OTelExporterOTLPEndpoint string  `json:"otel_exporter_otlp_endpoint" env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+	OTelExporterOTLPProtocol string  `json:"otel_exporter_otlp_protocol" env:"OTEL_EXPORTER_OTLP_PROTOCOL,default=http/protobuf"`
+	OTelResourceAttributes   string  `json:"otel_resource_attributes" env:"OTEL_RESOURCE_ATTRIBUTES"`
+	OTelTracesSampler        string  `json:"otel_traces_sampler" env:"OTEL_TRACES_SAMPLER,default=always_on"`
+	OTelTracesSamplerArg     float64 `json:"otel_traces_sampler_arg" env:"OTEL_TRACES_SAMPLER_ARG,default=1.0"`
 }
 
 // QueryResult represents a single result from a vector query

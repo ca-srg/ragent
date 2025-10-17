@@ -19,6 +19,7 @@ import (
 	appcfg "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/mcpserver"
+	"github.com/ca-srg/ragent/internal/observability"
 	"github.com/ca-srg/ragent/internal/opensearch"
 )
 
@@ -116,6 +117,8 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	logger := log.New(os.Stdout, "[MCP Server] ", log.LstdFlags)
+
 	// Override configuration with command line flags if provided
 	if cmd.Flags().Changed("host") {
 		cfg.MCPServerHost = mcpServerHost
@@ -160,7 +163,17 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("OpenSearch is required for MCP server: set OPENSEARCH_ENDPOINT and related settings")
 	}
 
-	logger := log.New(os.Stdout, "[MCP Server] ", log.LstdFlags)
+	shutdown, obsErr := observability.Init(cfg)
+	if obsErr != nil {
+		logger.Printf("observability initialization error: %v", obsErr)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdown(shutdownCtx); err != nil {
+			logger.Printf("observability shutdown error: %v", err)
+		}
+	}()
 
 	// Create SDK-based server wrapper using RAGent configuration
 	// The ServerWrapper will handle configuration conversion internally

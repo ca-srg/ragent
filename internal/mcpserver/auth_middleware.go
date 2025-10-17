@@ -199,12 +199,14 @@ func (m *UnifiedAuthMiddleware) Middleware(next http.Handler) http.Handler {
 // handleEitherAuth handles the case where either IP or OIDC authentication is acceptable
 func (m *UnifiedAuthMiddleware) handleEitherAuth(next http.Handler, w http.ResponseWriter, r *http.Request) {
 	// First try IP authentication
-	clientIP := m.ipAuth.extractClientIP(r)
+	clientIP := extractClientIPFromRequest(r)
 	if m.ipAuth.IsIPAllowed(clientIP) {
 		if m.enableLogging {
 			log.Printf("Access granted via IP authentication for IP: %s", clientIP)
 		}
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), clientIPContextKey, clientIP)
+		ctx = context.WithValue(ctx, authMethodContextKey, string(AuthMethodIP))
+		next.ServeHTTP(w, r.WithContext(ctx))
 		return
 	}
 
@@ -218,6 +220,10 @@ func (m *UnifiedAuthMiddleware) handleEitherAuth(next http.Handler, w http.Respo
 			}
 			// Add user info to request context
 			ctx := context.WithValue(r.Context(), userContextKey, tokenInfo)
+			ctx = context.WithValue(ctx, authMethodContextKey, string(AuthMethodOIDC))
+			if clientIP != "" {
+				ctx = context.WithValue(ctx, clientIPContextKey, clientIP)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}

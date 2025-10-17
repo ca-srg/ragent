@@ -105,6 +105,13 @@ func validateConfig(config *Config) error {
 		}
 	}
 
+	// Validate OpenTelemetry configuration if enabled
+	if config.OTelEnabled {
+		if err := validateOTelConfig(config); err != nil {
+			return fmt.Errorf("OpenTelemetry configuration validation failed: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -191,6 +198,60 @@ func validateOpenSearchConfig(config *Config) error {
 
 	if config.OpenSearchIdleConnTimeout <= 0 {
 		return fmt.Errorf("OPENSEARCH_IDLE_CONN_TIMEOUT must be greater than 0")
+	}
+
+	return nil
+}
+
+// validateOTelConfig validates OpenTelemetry-specific configuration.
+func validateOTelConfig(config *Config) error {
+	if strings.TrimSpace(config.OTelServiceName) == "" {
+		return fmt.Errorf("OTEL_SERVICE_NAME cannot be empty when OTEL_ENABLED is true")
+	}
+
+	if strings.TrimSpace(config.OTelExporterOTLPEndpoint) == "" {
+		return fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT cannot be empty when OTEL_ENABLED is true")
+	}
+
+	switch config.OTelExporterOTLPProtocol {
+	case "http/protobuf":
+		if !strings.HasPrefix(config.OTelExporterOTLPEndpoint, "http://") &&
+			!strings.HasPrefix(config.OTelExporterOTLPEndpoint, "https://") {
+			return fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT must include http or https scheme when using http/protobuf protocol")
+		}
+
+		parsedURL, err := url.Parse(config.OTelExporterOTLPEndpoint)
+		if err != nil {
+			return fmt.Errorf("invalid OTEL_EXPORTER_OTLP_ENDPOINT: %w", err)
+		}
+		if parsedURL.Host == "" {
+			return fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT must include a host when using http/protobuf protocol")
+		}
+	case "grpc":
+		// gRPC transport allows host:port without scheme, ensure minimal validation.
+		if strings.Contains(config.OTelExporterOTLPEndpoint, "://") {
+			parsedURL, err := url.Parse(config.OTelExporterOTLPEndpoint)
+			if err != nil {
+				return fmt.Errorf("invalid OTEL_EXPORTER_OTLP_ENDPOINT for grpc protocol: %w", err)
+			}
+			if parsedURL.Host == "" {
+				return fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT must include a host when scheme is provided for grpc protocol")
+			}
+		} else if !strings.Contains(config.OTelExporterOTLPEndpoint, ":") {
+			return fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT should include host:port when using grpc protocol")
+		}
+	default:
+		return fmt.Errorf("OTEL_EXPORTER_OTLP_PROTOCOL must be either http/protobuf or grpc")
+	}
+
+	if config.OTelTracesSamplerArg < 0 {
+		return fmt.Errorf("OTEL_TRACES_SAMPLER_ARG must be non-negative")
+	}
+
+	if strings.EqualFold(config.OTelTracesSampler, "traceidratio") {
+		if config.OTelTracesSamplerArg <= 0 || config.OTelTracesSamplerArg > 1 {
+			return fmt.Errorf("OTEL_TRACES_SAMPLER_ARG must be between 0 and 1 when OTEL_TRACES_SAMPLER is traceidratio")
+		}
 	}
 
 	return nil

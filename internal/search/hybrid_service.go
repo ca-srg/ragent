@@ -5,10 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
+	"strings"
 
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/ca-srg/ragent/internal/types"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // HybridSearchService provides reusable hybrid search functionality
@@ -19,6 +25,8 @@ type HybridSearchService struct {
 	hybridEngine    *opensearch.HybridSearchEngine
 	logger          *log.Logger
 }
+
+var searchTracer = otel.Tracer("ragent/search")
 
 // SearchRequest represents a search request with all parameters
 type SearchRequest struct {
@@ -96,16 +104,28 @@ func (s *HybridSearchService) Initialize(ctx context.Context) error {
 
 // Search performs hybrid search with the given parameters
 func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest) (*SearchResponse, error) {
+	ctx, span := searchTracer.Start(ctx, "search.hybrid")
+	defer span.End()
+
 	if s.hybridEngine == nil {
-		return nil, fmt.Errorf("service not initialized - call Initialize() first")
+		err := fmt.Errorf("service not initialized - call Initialize() first")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "service_not_initialized")
+		return nil, err
 	}
 
 	if request == nil {
-		return nil, fmt.Errorf("search request cannot be nil")
+		err := fmt.Errorf("search request cannot be nil")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "invalid_request")
+		return nil, err
 	}
 
 	if request.Query == "" {
-		return nil, fmt.Errorf("search query cannot be empty")
+		err := fmt.Errorf("search query cannot be empty")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "invalid_query")
+		return nil, err
 	}
 
 	// Set default values if not provided
@@ -133,10 +153,24 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 		Filters:        request.Filters,
 	}
 
+	span.SetAttributes(
+		attribute.String("search.query", truncateQueryAttribute(request.Query)),
+		attribute.String("search.index", request.IndexName),
+		attribute.Int("search.context_size", request.ContextSize),
+		attribute.Float64("search.bm25_weight", request.BM25Weight),
+		attribute.Float64("search.vector_weight", request.VectorWeight),
+		attribute.Int("search.timeout_seconds", request.TimeoutSeconds),
+	)
+	if len(request.Filters) > 0 {
+		span.SetAttributes(attribute.String("search.filters", formatFilters(request.Filters)))
+	}
+
 	// Execute search
 	s.logger.Printf("Executing hybrid search: query='%s', index='%s'", request.Query, request.IndexName)
 	result, err := s.hybridEngine.Search(ctx, hybridQuery)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "hybrid_search_failed")
 		return nil, fmt.Errorf("hybrid search failed: %w", err)
 	}
 
@@ -155,6 +189,7 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 		var source map[string]interface{}
 		if err := json.Unmarshal(doc.Source, &source); err != nil {
 			s.logger.Printf("Failed to unmarshal document source: %v", err)
+			span.RecordError(err, trace.WithAttributes(attribute.String("search.document.id", doc.ID)))
 			continue // Skip this document if we can't unmarshal
 		}
 
@@ -177,6 +212,20 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 	}
 
 	s.logger.Printf("Search completed: found %d results in %s", len(response.ContextParts), result.ExecutionTime)
+
+	span.SetAttributes(
+		attribute.Int("search.results.total_hits", result.FusionResult.TotalHits),
+		attribute.Int("search.results.returned", len(response.ContextParts)),
+		attribute.String("search.method", result.SearchMethod),
+		attribute.Float64("search.execution_ms", float64(result.ExecutionTime.Milliseconds())),
+	)
+	if result.FallbackReason != "" {
+		span.SetAttributes(attribute.String("search.fallback_reason", result.FallbackReason))
+	}
+	if result.URLDetected {
+		span.SetAttributes(attribute.Bool("search.url_detected", true))
+	}
+	span.SetStatus(codes.Ok, "search_completed")
 	return response, nil
 }
 
@@ -213,6 +262,28 @@ func (s *HybridSearchService) Close() error {
 		s.logger.Printf("Hybrid search service closed")
 	}
 	return nil
+}
+
+func truncateQueryAttribute(query string) string {
+	const maxAttributeLength = 120
+	trimmed := strings.TrimSpace(query)
+	if len([]rune(trimmed)) <= maxAttributeLength {
+		return trimmed
+	}
+	runes := []rune(trimmed)
+	return string(runes[:maxAttributeLength]) + "…"
+}
+
+func formatFilters(filters map[string]string) string {
+	if len(filters) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(filters))
+	for key, value := range filters {
+		parts = append(parts, fmt.Sprintf("%s=%s", key, value))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
 }
 
 // SetLogger sets a custom logger for the service
