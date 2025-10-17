@@ -252,8 +252,16 @@ func (m *OIDCAuthMiddleware) Middleware(next http.Handler) http.Handler {
 			log.Printf("Authentication successful for user: %s", tokenInfo.Email)
 		}
 
-		// Add user info to request context
+		// Add user info and auth metadata to request context
 		ctx := context.WithValue(r.Context(), userContextKey, tokenInfo)
+		method := string(AuthMethodOIDC)
+		if existing, ok := r.Context().Value(authMethodContextKey).(string); ok && existing == string(AuthMethodIP) {
+			method = string(AuthMethodBoth)
+		}
+		ctx = context.WithValue(ctx, authMethodContextKey, method)
+		if clientIP := extractClientIPFromRequest(r); clientIP != "" {
+			ctx = context.WithValue(ctx, clientIPContextKey, clientIP)
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

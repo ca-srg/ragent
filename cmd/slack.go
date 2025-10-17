@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/slack-go/slack"
 	"github.com/spf13/cobra"
 
 	appcfg "github.com/ca-srg/ragent/internal/config"
+	"github.com/ca-srg/ragent/internal/observability"
 	"github.com/ca-srg/ragent/internal/slackbot"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
@@ -27,12 +29,26 @@ var slackCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
+
+		logger := log.New(os.Stdout, "slack-bot ", log.LstdFlags)
+
+		shutdown, obsErr := observability.Init(cfg)
+		if obsErr != nil {
+			logger.Printf("observability initialization error: %v", obsErr)
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdown(shutdownCtx); err != nil {
+				logger.Printf("observability shutdown error: %v", err)
+			}
+		}()
+
 		// Load slack config
 		scfg, err := appcfg.LoadSlack()
 		if err != nil {
 			return fmt.Errorf("failed to load slack config: %w", err)
 		}
-		logger := log.New(os.Stdout, "slack-bot ", log.LstdFlags)
 
 		// Slack client
 		// For Socket Mode, the app-level token must be supplied to the client options

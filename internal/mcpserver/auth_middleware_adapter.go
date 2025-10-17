@@ -95,7 +95,7 @@ func (adapter *IPAuthMiddlewareAdapter) extractClientIPFromContext(ctx context.C
 	}
 
 	// Try to get client IP directly from context (if transport provides it)
-	if clientIP, ok := ctx.Value("client_ip").(string); ok {
+	if clientIP, ok := ctx.Value(clientIPContextKey).(string); ok {
 		return clientIP
 	}
 

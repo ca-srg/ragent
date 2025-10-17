@@ -102,6 +102,15 @@ SLACK_MAX_RESULTS=5
 SLACK_ENABLE_THREADING=false
 SLACK_THREAD_CONTEXT_ENABLED=true
 SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
+
+# OpenTelemetry Configuration (optional)
+OTEL_ENABLED=false
+OTEL_SERVICE_NAME=ragent
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_RESOURCE_ATTRIBUTES=service.namespace=ragent,environment=dev
+OTEL_TRACES_SAMPLER=always_on
+OTEL_TRACES_SAMPLER_ARG=1.0
 ```
 
 ### MCP Bypass Configuration (Optional)
@@ -110,6 +119,94 @@ SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
 - `MCP_BYPASS_VERBOSE_LOG`: Enables detailed logging for bypass decisions to aid troubleshooting.
 - `MCP_BYPASS_AUDIT_LOG`: Emits JSON audit entries for bypassed requests (enabled by default for compliance).
 - `MCP_TRUSTED_PROXIES`: Comma-separated list of proxy IPs whose `X-Forwarded-For` headers are trusted during bypass checks.
+
+## OpenTelemetry Observability
+
+RAGent exposes distributed traces and usage metrics through the OpenTelemetry (OTel) Go SDK. Traces are emitted for Slack Bot message handling, MCP tool calls, and the shared hybrid search service, while counters and histograms capture request rates, error rates, and response times.
+
+### Enable OTel
+
+Set the following environment variables (see `.env.example` for defaults):
+
+- `OTEL_ENABLED`: `true` to enable tracing and metrics (defaults to `false`).
+- `OTEL_SERVICE_NAME`: Logical service name (`ragent` by default).
+- `OTEL_RESOURCE_ATTRIBUTES`: Comma-separated `key=value` pairs such as `service.namespace=ragent,environment=dev`.
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint URL (including scheme).
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: `http/protobuf` (default) or `grpc`.
+- `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG`: Configure sampling strategy (`always_on`, `traceidratio`, etc.).
+
+When `OTEL_ENABLED=false`, RAGent registers no-op providers and carries no runtime overhead.
+
+### Example: Jaeger (local development)
+
+```bash
+# 1. Start Jaeger all-in-one
+docker run --rm -it -p 4318:4318 -p 16686:16686 jaegertracing/all-in-one:1.58
+
+# 2. Enable OTel before running RAGent
+export OTEL_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+# 3. Run the Slack bot (or any other command)
+go run main.go slack-bot
+# Visit http://localhost:16686 to explore spans
+```
+
+### Example: Prometheus via OpenTelemetry Collector
+
+Use the OTel Collector to convert OTLP metrics into Prometheus format:
+
+```yaml
+# collector.yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:9464
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [prometheus]
+```
+
+```bash
+otelcol --config collector.yaml
+export OTEL_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+go run main.go mcp-server
+# Scrape metrics at http://localhost:9464/metrics
+```
+
+### Example: AWS X-Ray with ADOT Collector
+
+```bash
+# 1. Run the AWS Distro for OpenTelemetry collector
+docker run --rm -it -p 4317:4317 public.ecr.aws/aws-observability/aws-otel-collector:latest
+
+# 2. Configure RAGent to send spans over gRPC
+export OTEL_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export OTEL_TRACES_SAMPLER=traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.2
+```
+
+### Metrics & Span Names
+
+- **Spans**
+  - `slackbot.process_message`
+  - `mcpserver.hybrid_search`
+  - `search.hybrid`
+- **Metrics**
+  - `ragent.slack.requests.total`, `ragent.slack.errors.total`, `ragent.slack.response_time`
+  - `ragent.mcp.requests.total`, `ragent.mcp.errors.total`, `ragent.mcp.response_time`
+
+Attach additional attributes such as channel type, authentication method, tool name, and result totals for fine-grained analysis.
 
 ## Installation
 

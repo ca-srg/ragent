@@ -83,6 +83,15 @@ SLACK_ENABLE_THREADING=false
 SLACK_THREAD_CONTEXT_ENABLED=true
 SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
 
+# OpenTelemetry設定（任意）
+OTEL_ENABLED=false
+OTEL_SERVICE_NAME=ragent
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_RESOURCE_ATTRIBUTES=service.namespace=ragent,environment=dev
+OTEL_TRACES_SAMPLER=always_on
+OTEL_TRACES_SAMPLER_ARG=1.0
+
 # MCPバイパス設定（任意）
 MCP_BYPASS_IP_RANGE=10.0.0.0/8,172.16.0.0/12  # カンマ区切りのCIDRレンジ
 MCP_BYPASS_VERBOSE_LOG=false
@@ -96,6 +105,89 @@ MCP_TRUSTED_PROXIES=192.168.1.1,10.0.0.1  # X-Forwarded-Forを信頼するプロ
 - `MCP_BYPASS_VERBOSE_LOG`: バイパス判定の詳細ログを有効化します。ロールアウト時の検証に便利です。
 - `MCP_BYPASS_AUDIT_LOG`: バイパスされたリクエストをJSON監査ログとして出力します（デフォルト有効）。
 - `MCP_TRUSTED_PROXIES`: バイパス判定時に `X-Forwarded-For` を信頼するプロキシIPをカンマ区切りで指定します。
+
+## OpenTelemetryによる可観測性
+
+RAGentはOpenTelemetry (OTel) Go SDK を利用してトレースとメトリクスを公開します。Slack Botのメッセージ処理、MCPツール呼び出し、ハイブリッド検索処理にスパンが付与され、リクエスト数・エラー数・レスポンス時間のメトリクスが収集されます。
+
+### 有効化方法
+
+以下の環境変数を設定します（`.env.example` 参照）：
+
+- `OTEL_ENABLED`: `true` で有効化（デフォルト `false`）
+- `OTEL_SERVICE_NAME`: サービス名（デフォルト `ragent`）
+- `OTEL_RESOURCE_ATTRIBUTES`: `service.namespace=ragent,environment=dev` のような `key=value` 形式
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLPエンドポイントURL（スキームを含む）
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: `http/protobuf`（デフォルト）または `grpc`
+- `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG`: サンプリング設定（`always_on`, `traceidratio` など）
+
+※ `OTEL_ENABLED=false` の場合、Tracer/Meterはnoopとなりオーバーヘッドは発生しません。
+
+### Jaeger 連携例（ローカル）
+
+```bash
+# 1. Jaeger (all-in-one) を起動
+docker run --rm -it -p 4318:4318 -p 16686:16686 jaegertracing/all-in-one:1.58
+
+# 2. RAGent を実行するターミナルで環境変数をセット
+export OTEL_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+# 3. Slack Bot などを実行
+go run main.go slack-bot
+# http://localhost:16686 でトレースを確認
+```
+
+### Prometheus + OpenTelemetry Collector 連携例
+
+```yaml
+# collector.yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:9464
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [prometheus]
+```
+
+```bash
+otelcol --config collector.yaml
+export OTEL_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+go run main.go mcp-server
+# http://localhost:9464/metrics をPrometheusでスクレイプ
+```
+
+### AWS X-Ray + ADOT Collector 連携例
+
+```bash
+docker run --rm -it -p 4317:4317 public.ecr.aws/aws-observability/aws-otel-collector:latest
+export OTEL_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export OTEL_TRACES_SAMPLER=traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.2
+```
+
+### 収集されるメトリクス／スパン
+
+- **スパン**
+  - `slackbot.process_message`
+  - `mcpserver.hybrid_search`
+  - `search.hybrid`
+- **メトリクス**
+  - `ragent.slack.requests.total`, `ragent.slack.errors.total`, `ragent.slack.response_time`
+  - `ragent.mcp.requests.total`, `ragent.mcp.errors.total`, `ragent.mcp.response_time`
+
+チャネル種別、認証方式、ツール名、検索結果件数などが属性として付与されるため、ダッシュボードで簡単にフィルタリングできます。
 
 ## インストール
 

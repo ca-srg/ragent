@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -78,7 +79,7 @@ func (m *IPAuthMiddleware) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		clientIP := m.extractClientIP(r)
+		clientIP := extractClientIPFromRequest(r)
 
 		if !m.isIPAllowed(clientIP) {
 			if m.enableLogging {
@@ -99,12 +100,18 @@ func (m *IPAuthMiddleware) Middleware(next http.Handler) http.Handler {
 				clientIP, r.URL.Path, r.Method)
 		}
 
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), clientIPContextKey, clientIP)
+		ctx = context.WithValue(ctx, authMethodContextKey, string(AuthMethodIP))
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 // extractClientIP extracts the real client IP from the HTTP request
 func (m *IPAuthMiddleware) extractClientIP(r *http.Request) string {
+	return extractClientIPFromRequest(r)
+}
+
+func extractClientIPFromRequest(r *http.Request) string {
 	// Check X-Forwarded-For header first (for proxy/load balancer scenarios)
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		// X-Forwarded-For can contain multiple IPs, use the first one
@@ -129,6 +136,7 @@ func (m *IPAuthMiddleware) extractClientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return ip
+
 }
 
 // isIPAllowed checks if the given IP is in the allowed list
