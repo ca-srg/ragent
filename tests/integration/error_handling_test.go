@@ -15,7 +15,7 @@ func (f *failingSearch) Search(ctx context.Context, q string) *slackbot.SearchRe
 }
 
 func TestProcessorHandlesEmptyQuery(t *testing.T) {
-	p := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, &failingSearch{}, &slackbot.Formatter{})
+	p := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, &failingSearch{}, &slackbot.Formatter{}, nil)
 	r := p.ProcessMessage(context.Background(), "UBOT", &slack.MessageEvent{Msg: slack.Msg{Text: "<@UBOT>    ", Channel: "C", User: "U"}})
 	if r == nil {
 		t.Fatalf("expected usage hint reply for empty query")

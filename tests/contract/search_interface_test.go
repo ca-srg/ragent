@@ -17,7 +17,7 @@ func (s *spyingSearch) Search(ctx context.Context, q string) *slackbot.SearchRes
 
 func TestSearchInterfaceIsCalledWithExtractedQuery(t *testing.T) {
 	spy := &spyingSearch{}
-	proc := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, spy, &slackbot.Formatter{})
+	proc := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, spy, &slackbot.Formatter{}, nil)
 	ev := &slack.MessageEvent{Msg: slack.Msg{Text: "<@UBOT> 予定の確認", Channel: "C1", User: "U1"}}
 	_ = proc.ProcessMessage(context.Background(), "UBOT", ev)
 	if spy.got != "予定の確認" {

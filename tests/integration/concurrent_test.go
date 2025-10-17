@@ -16,7 +16,7 @@ func (n *nullSearch) Search(ctx context.Context, q string) *slackbot.SearchResul
 }
 
 func TestProcessorHandlesConcurrentMentions(t *testing.T) {
-	p := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, &nullSearch{}, &slackbot.Formatter{})
+	p := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, &nullSearch{}, &slackbot.Formatter{}, nil)
 	var wg sync.WaitGroup
 	n := 10
 	for i := 0; i < n; i++ {

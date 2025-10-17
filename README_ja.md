@@ -75,6 +75,14 @@ OPENSEARCH_REGION=us-east-1  # デフォルト
 CHAT_MODEL=anthropic.claude-3-5-sonnet-20240620-v1:0  # デフォルト
 EXCLUDE_CATEGORIES=個人メモ,日報  # 検索から除外するカテゴリ
 
+# Slack Bot設定
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_RESPONSE_TIMEOUT=5s
+SLACK_MAX_RESULTS=5
+SLACK_ENABLE_THREADING=false
+SLACK_THREAD_CONTEXT_ENABLED=true
+SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
+
 # MCPバイパス設定（任意）
 MCP_BYPASS_IP_RANGE=10.0.0.0/8,172.16.0.0/12  # カンマ区切りのCIDRレンジ
 MCP_BYPASS_VERBOSE_LOG=false
@@ -567,8 +575,9 @@ RAGent slack-bot
 - `SLACK_BOT_TOKEN` を設定（`.env.example` 参照）。
 - Bot を対象チャンネルへ招待。
 - スレッド返信を有効化する場合は `SLACK_ENABLE_THREADING=true`。
+- スレッドコンテキスト機能を使う場合は `SLACK_THREAD_CONTEXT_ENABLED=true`（デフォルト）を維持し、履歴の取得件数は `SLACK_THREAD_CONTEXT_MAX_MESSAGES`（デフォルト10件）で調整。
 - レート制限は `SLACK_RATE_USER_PER_MINUTE`/`SLACK_RATE_CHANNEL_PER_MINUTE`/`SLACK_RATE_GLOBAL_PER_MINUTE` で調整。
- - OpenSearch の設定（`OPENSEARCH_ENDPOINT`、`OPENSEARCH_INDEX`、`OPENSEARCH_REGION`）が必須です。Slack Bot では S3 Vector へのフォールバックは使用しません。
+- OpenSearch の設定（`OPENSEARCH_ENDPOINT`、`OPENSEARCH_INDEX`、`OPENSEARCH_REGION`）が必須です。Slack Bot では S3 Vector へのフォールバックは使用しません。
 
 詳細は `docs/slack-bot.md` を参照してください。
 
