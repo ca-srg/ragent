@@ -26,6 +26,7 @@ type SlackClient interface {
 	AuthTest() (*slack.AuthTestResponse, error)
 	NewRTM(options ...slack.RTMOption) *slack.RTM
 	PostMessage(channelID string, options ...slack.MsgOption) (string, string, error)
+	GetConversationReplies(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error)
 }
 
 // Bot encapsulates RTM handling and message processing

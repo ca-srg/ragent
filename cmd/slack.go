@@ -53,7 +53,8 @@ var slackCmd = &cobra.Command{
 		}
 
 		adapter := slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults)
-		processor := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, adapter, &slackbot.Formatter{})
+		threadBuilder := slackbot.NewThreadContextBuilder(client, scfg, logger)
+		processor := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, adapter, &slackbot.Formatter{}, threadBuilder)
 
 		// Choose RTM vs Socket Mode
 		ctx, cancel := context.WithCancel(context.Background())

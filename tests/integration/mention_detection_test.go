@@ -16,7 +16,7 @@ func (f *fakeSearch) Search(ctx context.Context, q string) *slackbot.SearchResul
 }
 
 func TestProcessorDetectsMentionAndBuildsReply(t *testing.T) {
-	p := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, &fakeSearch{}, &slackbot.Formatter{})
+	p := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, &fakeSearch{}, &slackbot.Formatter{}, nil)
 	ev := &slack.MessageEvent{Msg: slack.Msg{Text: "<@UBOT> 使い方教えて", Channel: "C123", User: "U42"}}
 	r := p.ProcessMessage(context.Background(), "UBOT", ev)
 	if r == nil {

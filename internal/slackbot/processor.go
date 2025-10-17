@@ -2,6 +2,7 @@ package slackbot
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"github.com/slack-go/slack"
@@ -9,14 +10,21 @@ import (
 
 // Processor orchestrates detection, extraction, search, and formatting
 type Processor struct {
-	detector  *MentionDetector
-	extractor *QueryExtractor
-	search    SearchAdapter
-	format    *Formatter
+	detector      *MentionDetector
+	extractor     *QueryExtractor
+	search        SearchAdapter
+	format        *Formatter
+	threadBuilder *ThreadContextBuilder
 }
 
-func NewProcessor(detector *MentionDetector, extractor *QueryExtractor, search SearchAdapter, formatter *Formatter) *Processor {
-	return &Processor{detector: detector, extractor: extractor, search: search, format: formatter}
+func NewProcessor(detector *MentionDetector, extractor *QueryExtractor, search SearchAdapter, formatter *Formatter, threadBuilder *ThreadContextBuilder) *Processor {
+	return &Processor{
+		detector:      detector,
+		extractor:     extractor,
+		search:        search,
+		format:        formatter,
+		threadBuilder: threadBuilder,
+	}
 }
 
 // IsMentionOrDM reports whether the message targets the bot or is a DM
@@ -60,8 +68,19 @@ func (p *Processor) ProcessMessage(ctx context.Context, botUserID string, msg *s
 		return &Reply{Channel: msg.Channel, MsgOptions: []slack.MsgOption{opts}}
 	}
 
+	searchQuery := query
+	if p.threadBuilder != nil {
+		enhancedQuery, err := p.threadBuilder.Build(ctx, msg.Channel, msg.ThreadTimestamp, query)
+		if err != nil {
+			log.Printf("thread_context_build_error channel=%s thread_ts=%s err=%v", msg.Channel, msg.ThreadTimestamp, err)
+		}
+		if strings.TrimSpace(enhancedQuery) != "" {
+			searchQuery = enhancedQuery
+		}
+	}
+
 	// Perform search
-	result := p.search.Search(ctx, query)
+	result := p.search.Search(ctx, searchQuery)
 	// Format
 	opts := p.format.BuildSearchResult(query, result)
 	return &Reply{Channel: msg.Channel, MsgOptions: []slack.MsgOption{opts}}

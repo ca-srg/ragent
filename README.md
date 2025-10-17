@@ -100,6 +100,8 @@ SLACK_BOT_TOKEN=xoxb-your-bot-token
 SLACK_RESPONSE_TIMEOUT=5s
 SLACK_MAX_RESULTS=5
 SLACK_ENABLE_THREADING=false
+SLACK_THREAD_CONTEXT_ENABLED=true
+SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
 ```
 
 ### MCP Bypass Configuration (Optional)
@@ -285,7 +287,8 @@ Requirements:
 - Set `SLACK_BOT_TOKEN` in your environment (see `.env.example`).
 - Invite the bot user to the target Slack channel.
 - Optionally enable threading with `SLACK_ENABLE_THREADING=true`.
- - Requires OpenSearch configuration (`OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, `OPENSEARCH_REGION`). Slack Bot does not use S3 Vector fallback.
+- Thread context: enable contextual search with `SLACK_THREAD_CONTEXT_ENABLED=true` (default) and control history depth via `SLACK_THREAD_CONTEXT_MAX_MESSAGES` (default `10` messages).
+- Requires OpenSearch configuration (`OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, `OPENSEARCH_REGION`). Slack Bot does not use S3 Vector fallback.
 
 Details: see `docs/slack-bot.md`.
 

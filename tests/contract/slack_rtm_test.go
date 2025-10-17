@@ -49,6 +49,9 @@ func (f *fakeClient) PostMessage(channelID string, options ...slack.MsgOption) (
 	f.posts++
 	return "C", "TS", nil
 }
+func (f *fakeClient) GetConversationReplies(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error) {
+	return nil, false, "", nil
+}
 
 // fakeSearch satisfies SearchAdapter
 type fakeSearch struct{}
@@ -60,7 +63,7 @@ func (f *fakeSearch) Search(ctx context.Context, q string) *slackbot.SearchResul
 func TestRTMConnectionAndEventLoop(t *testing.T) {
 	rtm := newFakeRTM()
 	fc := &fakeClient{}
-	proc := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, &fakeSearch{}, &slackbot.Formatter{})
+	proc := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, &fakeSearch{}, &slackbot.Formatter{}, nil)
 	bot := slackbot.NewBotWithRTM(fc, rtm, proc, nil, "UBOT")
 
 	ctx, cancel := context.WithCancel(context.Background())

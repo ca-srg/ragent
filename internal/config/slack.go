@@ -16,6 +16,9 @@ type SlackConfig struct {
 	ResponseTimeout time.Duration `env:"SLACK_RESPONSE_TIMEOUT,default=5s"`
 	MaxResults      int           `env:"SLACK_MAX_RESULTS,default=5"`
 	EnableThreading bool          `env:"SLACK_ENABLE_THREADING,default=true"`
+	// Thread context settings
+	ThreadContextEnabled     bool `env:"SLACK_THREAD_CONTEXT_ENABLED,default=true"`
+	ThreadContextMaxMessages int  `env:"SLACK_THREAD_CONTEXT_MAX_MESSAGES,default=10"`
 	// Rate limits per minute
 	RateUserPerMinute    int `env:"SLACK_RATE_USER_PER_MINUTE,default=10"`
 	RateChannelPerMinute int `env:"SLACK_RATE_CHANNEL_PER_MINUTE,default=30"`
@@ -35,6 +38,9 @@ func LoadSlack() (*SlackConfig, error) {
 	}
 	if cfg.MaxResults <= 0 {
 		cfg.MaxResults = 5
+	}
+	if cfg.ThreadContextMaxMessages <= 0 {
+		cfg.ThreadContextMaxMessages = 10
 	}
 	return &cfg, nil
 }

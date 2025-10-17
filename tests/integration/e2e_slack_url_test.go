@@ -91,7 +91,7 @@ func TestSlackProcessorIncludesSearchMethod(t *testing.T) {
 	for _, tc := range tcases {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter := &stubSlackSearch{result: tc.searchResult}
-			processor := slackbot.NewProcessor(detector, extractor, adapter, formatter)
+			processor := slackbot.NewProcessor(detector, extractor, adapter, formatter, nil)
 
 			msg := &slack.MessageEvent{Msg: slack.Msg{Text: fmt.Sprintf("<@%s> %s", botID, tc.message), Channel: "C111", User: "U222"}}
 			reply := processor.ProcessMessage(context.Background(), botID, msg)
