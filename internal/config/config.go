@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -67,24 +66,6 @@ func Load() (*Config, error) {
 	}
 
 	return &config, nil
-}
-
-func parseDuration(raw string) (time.Duration, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return 0, nil
-	}
-
-	dur, err := time.ParseDuration(trimmed)
-	if err == nil {
-		return dur, nil
-	}
-
-	if seconds, convErr := strconv.Atoi(trimmed); convErr == nil {
-		return time.Duration(seconds) * time.Second, nil
-	}
-
-	return 0, fmt.Errorf("failed to parse duration %q: %w", raw, err)
 }
 
 // validateConfig validates configuration values and adjusts them to safe ranges
