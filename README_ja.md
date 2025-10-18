@@ -189,6 +189,47 @@ export OTEL_TRACES_SAMPLER_ARG=0.2
 
 チャネル種別、認証方式、ツール名、検索結果件数などが属性として付与されるため、ダッシュボードで簡単にフィルタリングできます。
 
+### Grafana ダッシュボード
+
+RAGentには、OpenTelemetryメトリクスを可視化するための事前設定済みGrafanaダッシュボードテンプレートが含まれています。このダッシュボードは、Slack BotとMCPサーバーの包括的な監視を提供します。
+
+![Grafana Dashboard](assets/grafana.png)
+
+**ダッシュボードパネル:**
+- **Slackメトリクス**
+  - Slack Botリクエスト（時系列）
+  - Slack応答レイテンシ（ヒストグラム）
+  - Slackエラー率（ゲージ）
+- **MCPメトリクス**
+  - MCPリクエスト（時系列）
+  - MCP応答時間（ヒストグラム）
+  - MCPエラー率（ゲージ）
+
+**セットアップ手順:**
+
+1. RAGentでOpenTelemetryを有効化:
+   ```bash
+   export OTEL_ENABLED=true
+   export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+   ```
+
+2. OTel CollectorをPrometheusにメトリクスをエクスポートするよう設定（上記の例を参照）
+
+3. Grafanaにダッシュボードテンプレートをインポート:
+   ```bash
+   # Grafana APIを使用
+   curl -X POST http://localhost:3000/api/dashboards/import \
+     -H "Content-Type: application/json" \
+     -d @assets/grafana.json
+   
+   # または、Grafana UIから手動でインポート
+   # Dashboard > Import > Upload JSON file > assets/grafana.json を選択
+   ```
+
+4. Grafanaでメトリクスエンドポイントを指すPrometheusデータソースを設定
+
+RAGentがリクエストの処理を開始すると、ダッシュボードは自動的にメトリクスを表示し始めます。
+
 ## インストール
 
 ### 前提条件
