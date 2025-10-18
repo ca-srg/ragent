@@ -208,6 +208,47 @@ export OTEL_TRACES_SAMPLER_ARG=0.2
 
 Attach additional attributes such as channel type, authentication method, tool name, and result totals for fine-grained analysis.
 
+### Grafana Dashboard
+
+RAGent includes a pre-configured Grafana dashboard template for visualizing OpenTelemetry metrics. The dashboard provides comprehensive monitoring of Slack Bot and MCP Server operations.
+
+![Grafana Dashboard](assets/grafana.png)
+
+**Dashboard Panels:**
+- **Slack Metrics**
+  - Slack Bot Requests (time series)
+  - Slack Response Latency (histogram)
+  - Slack Errors Rate (gauge)
+- **MCP Metrics**
+  - MCP Requests (time series)
+  - MCP Response Time (histogram)
+  - MCP Errors Rate (gauge)
+
+**Setup Instructions:**
+
+1. Enable OpenTelemetry in RAGent:
+   ```bash
+   export OTEL_ENABLED=true
+   export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+   ```
+
+2. Configure OTel Collector to export metrics to Prometheus (see example above)
+
+3. Import the dashboard template into Grafana:
+   ```bash
+   # Using Grafana API
+   curl -X POST http://localhost:3000/api/dashboards/import \
+     -H "Content-Type: application/json" \
+     -d @assets/grafana.json
+   
+   # Or manually import via Grafana UI
+   # Dashboard > Import > Upload JSON file > Select assets/grafana.json
+   ```
+
+4. Configure Prometheus data source in Grafana pointing to your metrics endpoint
+
+The dashboard will automatically start displaying metrics once RAGent begins processing requests.
+
 ## Installation
 
 ### Prerequisites
