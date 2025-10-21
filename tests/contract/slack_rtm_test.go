@@ -52,6 +52,13 @@ func (f *fakeClient) PostMessage(channelID string, options ...slack.MsgOption) (
 func (f *fakeClient) GetConversationReplies(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error) {
 	return nil, false, "", nil
 }
+func (f *fakeClient) GetConversationInfo(input *slack.GetConversationInfoInput) (*slack.Channel, error) {
+	return &slack.Channel{}, nil
+}
+func (f *fakeClient) GetUserInfo(userID string) (*slack.User, error) { return &slack.User{}, nil }
+func (f *fakeClient) GetPermalink(params *slack.PermalinkParameters) (string, error) {
+	return "", nil
+}
 
 // fakeSearch satisfies SearchAdapter
 type fakeSearch struct{}

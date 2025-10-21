@@ -34,6 +34,7 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
 - **セマンティック検索**: S3 Vector Indexを使用したセマンティック類似性検索
 - **対話型RAGチャット**: コンテキスト認識応答を行うチャットインターフェース
 - **ベクトル管理**: S3に保存されたベクトルの一覧表示
+- **Slackメッセージのベクトル化**: CLIによるバッチ処理とSlack Botによるリアルタイム取り込みに対応
 - **IPベースセキュリティ**: 許可IP制御に加え、バイパスレンジと監査ログを設定可能
 
 ## 前提条件
@@ -83,6 +84,12 @@ SLACK_ENABLE_THREADING=false
 SLACK_THREAD_CONTEXT_ENABLED=true
 SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
 
+# Slackベクトル化設定
+SLACK_VECTORIZE_ENABLED=false
+SLACK_VECTORIZE_CHANNELS=
+SLACK_EXCLUDE_BOTS=true
+SLACK_VECTORIZE_MIN_LENGTH=10
+
 # OpenTelemetry設定（任意）
 OTEL_ENABLED=false
 OTEL_SERVICE_NAME=ragent
@@ -98,6 +105,13 @@ MCP_BYPASS_VERBOSE_LOG=false
 MCP_BYPASS_AUDIT_LOG=true
 MCP_TRUSTED_PROXIES=192.168.1.1,10.0.0.1  # X-Forwarded-Forを信頼するプロキシ
 ```
+
+### Slackベクトル化設定の詳細
+
+- `SLACK_VECTORIZE_ENABLED`: `true` に設定するとSlackメッセージのリアルタイムベクトル化を有効化します（デフォルト `false`）。
+- `SLACK_VECTORIZE_CHANNELS`: 監視対象のチャンネルIDをカンマ区切りで指定します。未指定の場合はBotがアクセス可能な全チャンネルが対象です。
+- `SLACK_EXCLUDE_BOTS`: `true` の場合はBotやアプリによる投稿を除外します（デフォルト `true`）。
+- `SLACK_VECTORIZE_MIN_LENGTH`: ベクトル化を行うために必要な最低文字数を指定します（デフォルト `10`）。
 
 ### MCPバイパス設定（任意）
 
@@ -275,6 +289,32 @@ RAGent vectorize
 - Amazon Titan Text Embedding v2モデルを使用したembedding生成
 - S3 Vectorsへの安全な保存
 - 並行処理による高速化
+
+#### Slackメッセージのベクトル化
+
+`--source slack` を指定するとSlack API経由で過去のメッセージを取得し、同じデュアルバックエンドでベクトル化できます。RAGentは1分あたり1リクエストのレート制限、カーソルベースのページング、リトライ処理を自動でハンドリングします。
+
+**Slack固有のフラグ:**
+- `--channels`: 取得対象のチャンネルIDをカンマ区切りで指定（未指定時はBotがアクセスできる全チャンネル）
+- `--from`, `--to`: RFC3339形式でメッセージ取得期間を指定（`--to` は `--from` 以降である必要があります）
+- `--include-threads`: 親メッセージに加えてスレッド返信も取得
+- `--exclude-bots`: Bot/インテグレーションによる投稿を除外
+
+```bash
+# 2025年1月の1週間分を2チャンネル分ベクトル化
+RAGent vectorize --source slack \
+  --channels C01234567,C08976543 \
+  --from 2025-01-01T00:00:00Z \
+  --to   2025-01-07T23:59:59Z
+
+# 全チャンネル（スレッド含む）をBot投稿を除外して取得
+RAGent vectorize --source slack --include-threads --exclude-bots
+
+# 実際に保存せず取得対象を確認
+RAGent vectorize --source slack --dry-run --channels C01234567
+```
+
+> **Slack APIスコープ:** Botトークンには `channels:history`, `groups:history`, `im:history`, `mpim:history`, `users:read` が必要です。プライベートチャンネルではアプリを招待する必要があります。
 
 ### 2. query - セマンティック検索
 
@@ -500,7 +540,17 @@ RAGent/
    RAGent list
    ```
 
-5. **セマンティック検索の実行**
+5. **Slackメッセージのベクトル化（任意）**
+   ```bash
+   # 2025年1月のSlackメッセージを2チャンネル分取得
+   RAGent vectorize --source slack \
+     --channels C01234567,C08976543 \
+     --from 2025-01-01T00:00:00Z \
+     --to   2025-01-31T23:59:59Z
+   ```
+   > 実行前に `SLACK_VECTORIZE_CHANNELS` や `SLACK_EXCLUDE_BOTS`、`SLACK_VECTORIZE_MIN_LENGTH` を設定し、取得対象と負荷を調整してください。
+
+6. **セマンティック検索の実行**
    ```bash
    RAGent query -q "検索したい内容"
    ```
@@ -532,6 +582,15 @@ RAGent/
    Error: vector index not found
    ```
    → S3 Vector Indexが作成されているか確認
+
+### Slackベクトル化のトラブルシューティング
+
+1. **`missing_scope` や `not_in_channel` が返る**
+   → Slackアプリをワークスペースにインストールし、対象のプライベートチャンネルへ招待したうえで、`channels:history`、`groups:history`、`im:history`、`mpim:history`、`users:read` スコープを付与してください。
+2. **バッチ実行が途中で止まる／非常に遅い**
+   → Slackの履歴取得は1分あたり1リクエストの制限があります。期間やチャンネルを分割したり、複数回に分けて実行してください。
+3. **リアルタイム取り込みが動作しない**
+   → `SLACK_VECTORIZE_ENABLED=true` を設定し、メッセージが `SLACK_VECTORIZE_CHANNELS`（設定している場合）に含まれているか、`SLACK_VECTORIZE_MIN_LENGTH` を超えているか、`SLACK_EXCLUDE_BOTS=true` でBot投稿が除外されていないか確認してください。
 
 ### デバッグ方法
 
@@ -711,6 +770,21 @@ RAGent slack-bot
 - スレッドコンテキスト機能を使う場合は `SLACK_THREAD_CONTEXT_ENABLED=true`（デフォルト）を維持し、履歴の取得件数は `SLACK_THREAD_CONTEXT_MAX_MESSAGES`（デフォルト10件）で調整。
 - レート制限は `SLACK_RATE_USER_PER_MINUTE`/`SLACK_RATE_CHANNEL_PER_MINUTE`/`SLACK_RATE_GLOBAL_PER_MINUTE` で調整。
 - OpenSearch の設定（`OPENSEARCH_ENDPOINT`、`OPENSEARCH_INDEX`、`OPENSEARCH_REGION`）が必須です。Slack Bot では S3 Vector へのフォールバックは使用しません。
+
+#### リアルタイムベクトル化
+
+`SLACK_VECTORIZE_ENABLED=true` を設定すると、Botが参照できるメッセージを非同期でベクトル化します。`SLACK_VECTORIZE_CHANNELS` や `SLACK_EXCLUDE_BOTS`、`SLACK_VECTORIZE_MIN_LENGTH` で対象メッセージを制御し、大規模ワークスペースでも安全に運用できます。
+
+```bash
+export SLACK_VECTORIZE_ENABLED=true
+export SLACK_VECTORIZE_CHANNELS=C01234567,C08976543   # 任意のチャンネルフィルター
+export SLACK_EXCLUDE_BOTS=true
+export SLACK_VECTORIZE_MIN_LENGTH=20
+
+RAGent slack-bot
+```
+
+ベクトル化はバックグラウンドで動作し、応答メッセージをブロックしません。数分以内に `RAGent query` や MCP ツールで Slack の発言が検索結果に現れることを確認できます。
 
 詳細は `docs/slack-bot.md` を参照してください。
 

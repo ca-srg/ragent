@@ -165,3 +165,12 @@ func (m *mockSlackClient) GetConversationReplies(params *slack.GetConversationRe
 	}
 	return nil, false, "", nil
 }
+func (m *mockSlackClient) GetConversationInfo(input *slack.GetConversationInfoInput) (*slack.Channel, error) {
+	return &slack.Channel{}, nil
+}
+func (m *mockSlackClient) GetUserInfo(userID string) (*slack.User, error) {
+	return &slack.User{}, nil
+}
+func (m *mockSlackClient) GetPermalink(params *slack.PermalinkParameters) (string, error) {
+	return "", nil
+}

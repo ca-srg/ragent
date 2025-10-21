@@ -20,13 +20,18 @@ import (
 	"github.com/ca-srg/ragent/internal/metadata"
 	"github.com/ca-srg/ragent/internal/s3vector"
 	"github.com/ca-srg/ragent/internal/scanner"
+	"github.com/ca-srg/ragent/internal/slackmessages"
+	"github.com/ca-srg/ragent/internal/slackvectorizer"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/ca-srg/ragent/internal/vectorizer"
+	"github.com/slack-go/slack"
 )
 
 const (
 	defaultFollowInterval = "30m"
 	minFollowInterval     = 5 * time.Minute
+	sourceMarkdown        = "markdown"
+	sourceSlack           = "slack"
 )
 
 var (
@@ -35,6 +40,12 @@ var (
 	concurrency         int
 	clearVectors        bool
 	openSearchIndexName string
+	source              string
+	slackChannels       string
+	slackFrom           string
+	slackTo             string
+	slackIncludeThreads bool
+	slackExcludeBots    bool
 
 	followMode             bool
 	followInterval         string
@@ -59,6 +70,12 @@ documentation for RAG (Retrieval Augmented Generation) applications.
 }
 
 func init() {
+	vectorizeCmd.Flags().StringVar(&source, "source", sourceMarkdown, "Content source to vectorize (markdown|slack)")
+	vectorizeCmd.Flags().StringVar(&slackChannels, "channels", "", "Comma-separated Slack channel IDs to include (Slack source only)")
+	vectorizeCmd.Flags().StringVar(&slackFrom, "from", "", "RFC3339 start timestamp for Slack messages (Slack source only)")
+	vectorizeCmd.Flags().StringVar(&slackTo, "to", "", "RFC3339 end timestamp for Slack messages (Slack source only)")
+	vectorizeCmd.Flags().BoolVar(&slackIncludeThreads, "include-threads", false, "Include thread replies when vectorizing Slack messages")
+	vectorizeCmd.Flags().BoolVar(&slackExcludeBots, "exclude-bots", false, "Exclude bot-authored Slack messages")
 	vectorizeCmd.Flags().StringVarP(&directory, "directory", "d", "./markdown", "Directory containing markdown files to process")
 	vectorizeCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be processed without making API calls")
 	vectorizeCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0, "Number of concurrent operations (0 = use config default)")
@@ -69,6 +86,10 @@ func init() {
 
 func runVectorize(cmd *cobra.Command, args []string) error {
 	log.Println("Starting vectorization process...")
+
+	if err := validateSourceFlag(); err != nil {
+		return err
+	}
 
 	if err := validateOpenSearchFlags(); err != nil {
 		return fmt.Errorf("flag validation failed: %w", err)
@@ -90,6 +111,26 @@ func runVectorize(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
+	}
+
+	if source == sourceSlack {
+		if followMode {
+			return fmt.Errorf("--follow is not supported when --source=slack")
+		}
+		if clearVectors {
+			return fmt.Errorf("--clear is not supported when --source=slack")
+		}
+		stats, err := executeSlackVectorization(ctx, cfg)
+		if err != nil {
+			if stats != nil {
+				printSlackResults(stats, dryRun)
+			}
+			return err
+		}
+		if stats != nil {
+			printSlackResults(stats, dryRun)
+		}
+		return nil
 	}
 
 	if followMode {
@@ -211,6 +252,28 @@ func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.Pr
 	}
 
 	return result, nil
+}
+
+func executeSlackVectorization(ctx context.Context, cfg *types.Config) (*slackvectorizer.ProcessingStats, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	service, err := createSlackVectorizerService(cfg, openSearchIndexName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Slack vectorizer service: %w", err)
+	}
+
+	fetchCfg, err := buildSlackFetchConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	stats, vecErr := service.VectorizeMessages(ctx, fetchCfg, dryRun)
+	if vecErr != nil {
+		return stats, fmt.Errorf("slack vectorization failed: %w", vecErr)
+	}
+	return stats, nil
 }
 
 func startFollowProcessing() bool {
@@ -360,6 +423,67 @@ func createVectorizerService(cfg *types.Config) (*vectorizer.VectorizerService, 
 	)
 }
 
+func createSlackVectorizerService(cfg *types.Config, indexName string) (*slackvectorizer.SlackVectorizerService, error) {
+	if strings.TrimSpace(indexName) == "" {
+		return nil, fmt.Errorf("OpenSearch index name is not set")
+	}
+
+	slackCfg, err := appconfig.LoadSlack()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load Slack configuration: %w", err)
+	}
+
+	awsConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+	}
+
+	embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
+
+	s3Config := &s3vector.S3Config{
+		VectorBucketName: cfg.AWSS3VectorBucket,
+		IndexName:        cfg.AWSS3VectorIndex,
+		Region:           cfg.AWSS3Region,
+	}
+	s3Client, err := s3vector.NewS3VectorService(s3Config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create S3 client: %w", err)
+	}
+
+	indexerFactory := vectorizer.NewIndexerFactory(cfg)
+	var (
+		indexer          vectorizer.OpenSearchIndexer
+		enableOpenSearch bool
+	)
+	if indexerFactory.IsOpenSearchEnabled() {
+		indexer, err = indexerFactory.CreateOpenSearchIndexer(indexName, 1024)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create OpenSearch indexer: %w", err)
+		}
+		enableOpenSearch = indexer != nil
+	}
+
+	slackClient := slack.New(slackCfg.BotToken)
+	fetcher := slackmessages.NewMessageFetcher(slackClient)
+
+	serviceCfg := slackvectorizer.ServiceConfig{
+		EmbeddingClient:       embeddingClient,
+		S3Client:              s3Client,
+		OpenSearchIndexer:     indexer,
+		MessageFetcher:        fetcher,
+		Logger:                log.New(os.Stdout, "slack-vectorizer ", log.LstdFlags),
+		EnableOpenSearch:      enableOpenSearch,
+		OpenSearchIndexName:   indexName,
+		UseJapaneseProcessing: true,
+		Concurrency:           cfg.Concurrency,
+		RetryAttempts:         cfg.RetryAttempts,
+		RetryDelay:            cfg.RetryDelay,
+		MinMessageLength:      cfg.SlackVectorizeMinLength,
+	}
+
+	return slackvectorizer.NewSlackVectorizerService(serviceCfg)
+}
+
 // printResults prints the processing results in a user-friendly format
 func printResults(result *types.ProcessingResult, dryRun bool) {
 	fmt.Println("\n" + strings.Repeat("=", 60))
@@ -482,6 +606,51 @@ func printResults(result *types.ProcessingResult, dryRun bool) {
 	}
 }
 
+func printSlackResults(stats *slackvectorizer.ProcessingStats, dryRun bool) {
+	if stats == nil {
+		fmt.Println("No Slack messages were processed.")
+		return
+	}
+
+	fmt.Println("\n" + strings.Repeat("=", 60))
+	if dryRun {
+		fmt.Println("SLACK VECTORIZATION (DRY RUN)")
+	} else {
+		fmt.Println("SLACK VECTORIZATION RESULTS")
+	}
+	fmt.Println(strings.Repeat("=", 60))
+
+	duration := stats.EndTime.Sub(stats.StartTime)
+	if stats.EndTime.IsZero() || stats.StartTime.IsZero() {
+		duration = 0
+	}
+
+	fmt.Printf("Duration:             %v\n", duration)
+	fmt.Printf("Channels Processed:   %d\n", stats.ChannelsProcessed)
+	fmt.Printf("Messages Total:       %d\n", stats.MessagesTotal)
+	fmt.Printf("Messages Processed:   %d\n", stats.MessagesProcessed)
+	fmt.Printf("Messages Skipped:     %d\n", stats.MessagesSkipped)
+	fmt.Printf("Messages Failed:      %d\n", stats.MessagesFailed)
+	if stats.Retries > 0 {
+		fmt.Printf("Retries Attempted:    %d\n", stats.Retries)
+	}
+
+	if dryRun {
+		fmt.Println("\nDry run completed. No embeddings were generated or stored.")
+	} else if stats.MessagesFailed == 0 {
+		fmt.Println("\n✅ Slack messages were successfully vectorized and stored.")
+	} else {
+		fmt.Println("\n⚠️  Slack vectorization completed with failures. Review errors below.")
+	}
+
+	if len(stats.Errors) > 0 {
+		fmt.Println("\nErrors:")
+		for _, err := range stats.Errors {
+			fmt.Printf("- [%s] %s (context: %s)\n", err.Type, err.Message, err.FilePath)
+		}
+	}
+}
+
 // confirmDeletePrompt asks user for confirmation before deleting vectors and/or OpenSearch index
 func confirmDeletePrompt(indexName string) bool {
 	if indexName != "" {
@@ -498,6 +667,44 @@ func confirmDeletePrompt(indexName string) bool {
 
 	input = strings.TrimSpace(strings.ToLower(input))
 	return input == "y" || input == "yes"
+}
+
+func buildSlackFetchConfig() (slackmessages.FetchConfig, error) {
+	cfg := slackmessages.FetchConfig{
+		IncludeThreads: slackIncludeThreads,
+		ExcludeBots:    slackExcludeBots,
+	}
+
+	if strings.TrimSpace(slackChannels) != "" {
+		for _, channel := range strings.Split(slackChannels, ",") {
+			channelID := strings.TrimSpace(channel)
+			if channelID != "" {
+				cfg.ChannelIDs = append(cfg.ChannelIDs, channelID)
+			}
+		}
+	}
+
+	if slackFrom != "" {
+		parsed, err := time.Parse(time.RFC3339, slackFrom)
+		if err != nil {
+			return cfg, fmt.Errorf("invalid --from value: %w", err)
+		}
+		cfg.From = &parsed
+	}
+
+	if slackTo != "" {
+		parsed, err := time.Parse(time.RFC3339, slackTo)
+		if err != nil {
+			return cfg, fmt.Errorf("invalid --to value: %w", err)
+		}
+		cfg.To = &parsed
+	}
+
+	if cfg.From != nil && cfg.To != nil && cfg.To.Before(*cfg.From) {
+		return cfg, fmt.Errorf("--to must be equal to or after --from")
+	}
+
+	return cfg, nil
 }
 
 // validateFollowModeFlags ensures follow mode related flags are used with valid combinations.
@@ -559,4 +766,18 @@ func validateOpenSearchFlags() error {
 	log.Printf("Target OpenSearch index: %s", openSearchIndexName)
 
 	return nil
+}
+
+func validateSourceFlag() error {
+	source = strings.ToLower(strings.TrimSpace(source))
+	if source == "" {
+		source = sourceMarkdown
+	}
+
+	switch source {
+	case sourceMarkdown, sourceSlack:
+		return nil
+	default:
+		return fmt.Errorf("unsupported source %q. Valid options are %q or %q", source, sourceMarkdown, sourceSlack)
+	}
 }

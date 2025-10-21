@@ -34,6 +34,7 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 - **Semantic Search**: Semantic similarity search using S3 Vector Index
 - **Interactive RAG Chat**: Chat interface with context-aware responses
 - **Vector Management**: List vectors stored in S3
+- **Slack Message Vectorization**: Batch vectorization via CLI and realtime ingestion through the Slack Bot
 - **MCP Server**: Model Context Protocol server for Claude Desktop integration
 - **OIDC Authentication**: OpenID Connect authentication with multiple providers
 - **IP-based Security**: IP address-based access control with configurable bypass ranges and audit logging
@@ -103,6 +104,12 @@ SLACK_ENABLE_THREADING=false
 SLACK_THREAD_CONTEXT_ENABLED=true
 SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
 
+# Slack Vectorization Configuration
+SLACK_VECTORIZE_ENABLED=false
+SLACK_VECTORIZE_CHANNELS=
+SLACK_EXCLUDE_BOTS=true
+SLACK_VECTORIZE_MIN_LENGTH=10
+
 # OpenTelemetry Configuration (optional)
 OTEL_ENABLED=false
 OTEL_SERVICE_NAME=ragent
@@ -112,6 +119,13 @@ OTEL_RESOURCE_ATTRIBUTES=service.namespace=ragent,environment=dev
 OTEL_TRACES_SAMPLER=always_on
 OTEL_TRACES_SAMPLER_ARG=1.0
 ```
+
+### Slack Vectorization Settings
+
+- `SLACK_VECTORIZE_ENABLED`: Enable realtime Slack vectorization when `true` (default: `false`).
+- `SLACK_VECTORIZE_CHANNELS`: Comma-separated list of channel IDs to ingest. Leave empty to monitor all channels the bot can access.
+- `SLACK_EXCLUDE_BOTS`: Skip bot-authored messages when `true` (default: `true`).
+- `SLACK_VECTORIZE_MIN_LENGTH`: Minimum character length required before a Slack message is vectorized (default: `10`).
 
 ### MCP Bypass Configuration (Optional)
 
@@ -295,6 +309,32 @@ RAGent vectorize
 - Safe storage to S3 Vectors
 - High-speed processing through concurrency
 
+#### Slack Message Vectorization
+
+Set `--source slack` to pull historical conversations directly from Slack and vectorize them with the same dual-backend pipeline. RAGent handles rate limiting (1 request/minute), pagination via cursors, and retry logic so long-running backfills can safely resume.
+
+**Slack-specific flags:**
+- `--channels`: Comma-separated channel IDs to ingest (defaults to all channels the bot can read)
+- `--from`, `--to`: RFC3339 timestamps to bound the window of messages (`--to` must be after `--from`)
+- `--include-threads`: Fetch thread replies in addition to parent messages
+- `--exclude-bots`: Skip messages authored by bots or integrations
+
+```bash
+# Vectorize two channels for the first week of 2025
+RAGent vectorize --source slack \
+  --channels C01234567,C08976543 \
+  --from 2025-01-01T00:00:00Z \
+  --to   2025-01-07T23:59:59Z
+
+# Backfill an entire workspace (threads included) while filtering bot posts
+RAGent vectorize --source slack --include-threads --exclude-bots
+
+# Dry run to inspect what would be vectorized without storing anything
+RAGent vectorize --source slack --dry-run --channels C01234567
+```
+
+> **Slack API scopes:** The bot token must include `channels:history`, `groups:history`, `im:history`, `mpim:history`, and `users:read` to fetch messages and resolve display names. Private channels also require the app to be invited.
+
 ### 2. query - Semantic Search
 
 Execute semantic similarity search against S3 Vector Index.
@@ -427,6 +467,21 @@ Requirements:
 - Optionally enable threading with `SLACK_ENABLE_THREADING=true`.
 - Thread context: enable contextual search with `SLACK_THREAD_CONTEXT_ENABLED=true` (default) and control history depth via `SLACK_THREAD_CONTEXT_MAX_MESSAGES` (default `10` messages).
 - Requires OpenSearch configuration (`OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, `OPENSEARCH_REGION`). Slack Bot does not use S3 Vector fallback.
+
+#### Realtime Vectorization
+
+When `SLACK_VECTORIZE_ENABLED=true`, the bot asynchronously vectorizes every non-mention message it can read. Messages are filtered by `SLACK_VECTORIZE_CHANNELS`, `SLACK_EXCLUDE_BOTS`, and `SLACK_VECTORIZE_MIN_LENGTH` before being queued for embeddings, so production workspaces stay within API and storage limits.
+
+```bash
+export SLACK_VECTORIZE_ENABLED=true
+export SLACK_VECTORIZE_CHANNELS=C01234567,C08976543   # optional filter
+export SLACK_EXCLUDE_BOTS=true
+export SLACK_VECTORIZE_MIN_LENGTH=20
+
+RAGent slack-bot
+```
+
+Vectorization happens in the background and never blocks conversational responses. Run `RAGent query` or use the MCP integration to confirm Slack content is searchable moments after it is posted.
 
 Details: see `docs/slack-bot.md`.
 
@@ -620,11 +675,21 @@ RAGent/
    RAGent list
    ```
 
-5. **Execute Semantic Search**
+5. **Slack Message Vectorization (optional)**
+   ```bash
+   # Backfill January Slack messages for two channels
+   RAGent vectorize --source slack \
+     --channels C01234567,C08976543 \
+     --from 2025-01-01T00:00:00Z \
+     --to   2025-01-31T23:59:59Z
+   ```
+   > Configure `SLACK_VECTORIZE_CHANNELS`, `SLACK_EXCLUDE_BOTS`, and `SLACK_VECTORIZE_MIN_LENGTH` to control ingestion volume before running the command above.
+
+6. **Execute Semantic Search**
    ```bash
    RAGent query -q "content to search"
 
-6. **Start MCP Server (for Claude Desktop)**
+7. **Start MCP Server (for Claude Desktop)**
    ```bash
    # Configure OIDC provider (optional)
    export OIDC_ISSUER="https://accounts.google.com"
@@ -677,6 +742,15 @@ RAGent/
    Error: OIDC provider discovery failed
    ```
    → Check OIDC_ISSUER URL and network connectivity
+
+### Slack Vectorization Troubleshooting
+
+1. **`missing_scope` or `not_in_channel` errors**
+   → Ensure the Slack app is installed in the workspace, invited to every private channel you target, and has the scopes `channels:history`, `groups:history`, `im:history`, `mpim:history`, and `users:read`.
+2. **Vectorizer stops after a few messages**
+   → Slack enforces a 1 request/minute rate limit. Split large backfills into smaller time windows or run multiple passes with different channel filters.
+3. **Realtime ingestion does not run**
+   → Verify `SLACK_VECTORIZE_ENABLED=true`, the message channel matches `SLACK_VECTORIZE_CHANNELS` (if set), and message length exceeds `SLACK_VECTORIZE_MIN_LENGTH`. Bot-authored messages are skipped when `SLACK_EXCLUDE_BOTS=true`.
 
 ### Debugging Methods
 

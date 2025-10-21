@@ -23,6 +23,7 @@ type SocketBot struct {
 	rate         *RateLimiter
 	metrics      Metrics
 	reporter     ErrorReporter
+	vectorize    *vectorizeSupport
 }
 
 // NewSocketBot constructs a Socket Mode Slack Bot
@@ -51,12 +52,16 @@ func NewSocketBot(client *slack.Client, appToken string, processor *Processor, l
 		logger:    logger,
 		botUserID: auth.UserID,
 		reporter:  &noopReporter{},
+		vectorize: newVectorizeSupport(client, logger),
 	}, nil
 }
 
 // Option setters
 func (b *SocketBot) SetEnableThreading(v bool)      { b.enableThread = v }
 func (b *SocketBot) SetRateLimiter(rl *RateLimiter) { b.rate = rl }
+func (b *SocketBot) SetVectorizer(vectorizer realtimeVectorizer, opts VectorizeOptions) {
+	b.vectorize.configure(vectorizer, opts)
+}
 
 // Start begins the Socket Mode event loop
 func (b *SocketBot) Start(ctx context.Context) error {
@@ -122,7 +127,7 @@ func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
 			b.processMessage(ctx, msg)
 		case *slackevents.MessageEvent:
 			// Only process user messages
-			if data.SubType != "" { // ignore bot_message, message_changed, etc.
+			if data.SubType != "" && data.SubType != slack.MsgSubTypeFileShare {
 				return
 			}
 			msg := &slack.MessageEvent{
@@ -144,6 +149,14 @@ func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
 }
 
 func (b *SocketBot) processMessage(ctx context.Context, msg *slack.MessageEvent) {
+	shouldRespond := b.processor.IsMentionOrDM(b.botUserID, msg)
+	if b.vectorize.shouldVectorize(b.botUserID, msg) {
+		msgCopy := *msg
+		go b.vectorize.vectorize(&msgCopy)
+	}
+	if !shouldRespond {
+		return
+	}
 	// rate limit per user/channel/global if configured
 	if b.rate != nil && !b.rate.Allow(msg.User, msg.Channel) {
 		b.logger.Printf("rate_limit_exceeded user=%s channel=%s", msg.User, msg.Channel)

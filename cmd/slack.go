@@ -13,6 +13,7 @@ import (
 	appcfg "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/observability"
 	"github.com/ca-srg/ragent/internal/slackbot"
+	"github.com/ca-srg/ragent/internal/slackvectorizer"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
@@ -72,6 +73,23 @@ var slackCmd = &cobra.Command{
 		threadBuilder := slackbot.NewThreadContextBuilder(client, scfg, logger)
 		processor := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, adapter, &slackbot.Formatter{}, threadBuilder)
 
+		vectorizeOpts := slackbot.VectorizeOptions{
+			Enabled:          cfg.SlackVectorizeEnabled,
+			Channels:         cfg.SlackVectorizeChannels,
+			ExcludeBots:      cfg.SlackExcludeBots,
+			MinMessageLength: cfg.SlackVectorizeMinLength,
+		}
+		var realtimeVectorizer *slackvectorizer.SlackVectorizerService
+		if cfg.SlackVectorizeEnabled {
+			if cfg.OpenSearchIndex == "" {
+				return fmt.Errorf("SLACK_VECTORIZE_ENABLED requires OPENSEARCH_INDEX to be configured")
+			}
+			realtimeVectorizer, err = createSlackVectorizerService(cfg, cfg.OpenSearchIndex)
+			if err != nil {
+				return fmt.Errorf("failed to initialize Slack vectorizer: %w", err)
+			}
+		}
+
 		// Choose RTM vs Socket Mode
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -87,6 +105,9 @@ var slackCmd = &cobra.Command{
 				scfg.RateChannelPerMinute,
 				scfg.RateGlobalPerMinute,
 			))
+			if realtimeVectorizer != nil {
+				sbot.SetVectorizer(realtimeVectorizer, vectorizeOpts)
+			}
 			logger.Printf("Starting Slack Bot (Socket Mode) (max_results=%d)...", scfg.MaxResults)
 			return sbot.Start(ctx)
 		}
@@ -102,6 +123,9 @@ var slackCmd = &cobra.Command{
 			scfg.RateChannelPerMinute,
 			scfg.RateGlobalPerMinute,
 		))
+		if realtimeVectorizer != nil {
+			bot.SetVectorizer(realtimeVectorizer, vectorizeOpts)
+		}
 
 		// Run
 		logger.Printf("Starting Slack Bot (RTM) (max_results=%d)...", scfg.MaxResults)

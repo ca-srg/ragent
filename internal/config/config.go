@@ -28,6 +28,17 @@ func Load() (*Config, error) {
 		config.ExcludeCategories = strings.Split(config.ExcludeCategoriesStr, "|")
 	}
 
+	// Parse Slack vectorization channels from comma-separated string
+	if config.SlackVectorizeChannelsStr != "" {
+		channels := strings.Split(config.SlackVectorizeChannelsStr, ",")
+		config.SlackVectorizeChannels = make([]string, 0, len(channels))
+		for _, ch := range channels {
+			if trimmed := strings.TrimSpace(ch); trimmed != "" {
+				config.SlackVectorizeChannels = append(config.SlackVectorizeChannels, trimmed)
+			}
+		}
+	}
+
 	// Parse MCPAllowedIPs from comma-separated string
 	if config.MCPAllowedIPsStr != "" {
 		ips := strings.Split(config.MCPAllowedIPsStr, ",")
@@ -110,6 +121,11 @@ func validateConfig(config *Config) error {
 		if err := validateOTelConfig(config); err != nil {
 			return fmt.Errorf("OpenTelemetry configuration validation failed: %w", err)
 		}
+	}
+
+	// Normalize Slack vectorization settings
+	if config.SlackVectorizeMinLength < 0 {
+		config.SlackVectorizeMinLength = 0
 	}
 
 	return nil

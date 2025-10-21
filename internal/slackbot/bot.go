@@ -27,6 +27,9 @@ type SlackClient interface {
 	NewRTM(options ...slack.RTMOption) *slack.RTM
 	PostMessage(channelID string, options ...slack.MsgOption) (string, string, error)
 	GetConversationReplies(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error)
+	GetConversationInfo(input *slack.GetConversationInfoInput) (*slack.Channel, error)
+	GetUserInfo(userID string) (*slack.User, error)
+	GetPermalink(params *slack.PermalinkParameters) (string, error)
 }
 
 // Bot encapsulates RTM handling and message processing
@@ -41,6 +44,7 @@ type Bot struct {
 	rate          *RateLimiter
 	metrics       Metrics
 	reporter      ErrorReporter
+	vectorize     *vectorizeSupport
 }
 
 // NewBot constructs a Slack Bot
@@ -59,6 +63,7 @@ func NewBot(client SlackClient, processor *Processor, logger *log.Logger) (*Bot,
 		logger:    logger,
 		botUserID: auth.UserID,
 		reporter:  &noopReporter{},
+		vectorize: newVectorizeSupport(client, logger),
 	}
 	// initialize RTM
 	rtm := client.NewRTM()
@@ -78,6 +83,7 @@ func NewBotWithRTM(client SlackClient, rtm RTMClient, processor *Processor, logg
 		logger:    logger,
 		botUserID: botUserID,
 		reporter:  &noopReporter{},
+		vectorize: newVectorizeSupport(client, logger),
 	}
 }
 
@@ -118,11 +124,15 @@ func (b *Bot) handleEvent(ctx context.Context, ev slack.RTMEvent) {
 
 	switch data := ev.Data.(type) {
 	case *slack.MessageEvent:
-		if data.SubType != "" { // ignore bot_message, message_changed, etc.
+		if data.SubType != "" && data.SubType != slack.MsgSubTypeFileShare {
 			return
 		}
-		// gate: mention/DM + rate limit
-		if !b.processor.IsMentionOrDM(b.botUserID, data) {
+		shouldRespond := b.processor.IsMentionOrDM(b.botUserID, data)
+		if b.vectorize.shouldVectorize(b.botUserID, data) {
+			eventCopy := *data
+			go b.vectorize.vectorize(&eventCopy)
+		}
+		if !shouldRespond {
 			return
 		}
 		if b.rate != nil && !b.rate.Allow(data.User, data.Channel) {
@@ -178,3 +188,8 @@ func (w *rtmWrapper) Typing(channel string) { w.rtm.SendMessage(w.rtm.NewTypingM
 // Option setters
 func (b *Bot) SetEnableThreading(v bool)      { b.enableThread = v }
 func (b *Bot) SetRateLimiter(rl *RateLimiter) { b.rate = rl }
+
+// SetVectorizer enables realtime vectorization.
+func (b *Bot) SetVectorizer(vectorizer realtimeVectorizer, opts VectorizeOptions) {
+	b.vectorize.configure(vectorizer, opts)
+}

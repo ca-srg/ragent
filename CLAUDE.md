@@ -56,6 +56,11 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
   - メンション検出とメッセージ処理
   - RAG検索統合とレスポンス生成
   - Slack Block Kit形式でのフォーマット
+  - `vectorize.go` によるリアルタイムベクトル化パイプライン
+- **internal/slackmessages/**: Slackメッセージの正規化とメタデータ変換ロジック
+- **internal/slackvectorizer/**: Slack向けベクトル化サービス
+  - バッチ処理 (`VectorizeMessages`) と単一メッセージ処理 (`VectorizeRealtime`)
+  - S3 Vectors と OpenSearch のデュアルバックエンド処理
 - **internal/mcpserver/**: MCP Server統合 [NEW]
   - MCP SDK v0.4.0ベースの実装
   - JSON-RPC 2.0準拠プロトコル
@@ -96,6 +101,12 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
 - `SLACK_MAX_RESULTS`: 最大検索結果数（デフォルト: 5）
 - `SLACK_ENABLE_THREADING`: スレッド機能の有効化（デフォルト: false）
 
+### Slackベクトル化設定
+- `SLACK_VECTORIZE_ENABLED`: Slackメッセージのリアルタイムベクトル化を有効化（デフォルト: false）
+- `SLACK_VECTORIZE_CHANNELS`: 監視するチャンネルID（カンマ区切り、省略時はアクセス可能な全チャンネル）
+- `SLACK_EXCLUDE_BOTS`: Bot投稿を除外するか（デフォルト: true）
+- `SLACK_VECTORIZE_MIN_LENGTH`: ベクトル化を行うための最小文字数（デフォルト: 10）
+
 ### MCP Server設定 [NEW]
 - `MCP_SERVER_HOST`: サーバーホスト（デフォルト: localhost）
 - `MCP_SERVER_PORT`: サーバーポート（デフォルト: 8080）
@@ -121,6 +132,7 @@ go build -o RAGent
 
 # テスト実行（テストファイルが存在する場合）
 go test ./...
+INTEGRATION_TEST=true go test -tags=integration ./tests/integration -run SlackVectorizationFlow
 
 # フォーマット
 go fmt ./...
@@ -163,6 +175,12 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 ./RAGent vectorize --follow --interval 15m
 # ※ `--follow` は `--dry-run` および `--clear` と併用不可
 
+# 1c. Slackメッセージのベクトル化
+./RAGent vectorize --source slack \
+  --channels C01234567 \
+  --from 2025-01-01T00:00:00Z \
+  --to   2025-01-07T23:59:59Z
+
 # 2. セマンティック検索（ハイブリッドモード）
 ./RAGent query -q "機械学習のアルゴリズム" --top-k 5 --search-mode hybrid
 
@@ -178,6 +196,8 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 # 5. Slack Bot起動
 ./RAGent slack-bot
 # Slackでの使用: @ragent-bot <質問内容>
+# リアルタイム取り込みを有効化する場合:
+SLACK_VECTORIZE_ENABLED=true ./RAGent slack-bot
 
 # 6. MCP Server起動 [NEW]
 ./RAGent mcp-server --auth-method either

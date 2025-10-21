@@ -119,6 +119,13 @@ type Config struct {
 	RetryDelay           time.Duration `json:"retry_delay" env:"VECTORIZER_RETRY_DELAY,default=2s"`
 	ExcludeCategoriesStr string        `json:"-" env:"EXCLUDE_CATEGORIES,default=日報"`
 	ExcludeCategories    []string      `json:"exclude_categories"`
+
+	// Slack vectorization configuration
+	SlackVectorizeEnabled     bool     `json:"slack_vectorize_enabled" env:"SLACK_VECTORIZE_ENABLED,default=false"`
+	SlackVectorizeChannelsStr string   `json:"-" env:"SLACK_VECTORIZE_CHANNELS"`
+	SlackVectorizeChannels    []string `json:"slack_vectorize_channels"`
+	SlackExcludeBots          bool     `json:"slack_exclude_bots" env:"SLACK_EXCLUDE_BOTS,default=true"`
+	SlackVectorizeMinLength   int      `json:"slack_vectorize_min_length" env:"SLACK_VECTORIZE_MIN_LENGTH,default=10"`
 	// OpenSearch configuration
 	OpenSearchEndpoint          string        `json:"opensearch_endpoint" env:"OPENSEARCH_ENDPOINT,required=true"`
 	OpenSearchIndex             string        `json:"opensearch_index" env:"OPENSEARCH_INDEX,required=true"`
