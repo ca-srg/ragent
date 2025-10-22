@@ -10,7 +10,7 @@ import (
 
 type okSearch struct{}
 
-func (o *okSearch) Search(ctx context.Context, q string) *slackbot.SearchResult {
+func (o *okSearch) Search(ctx context.Context, q string, opts slackbot.SearchOptions) *slackbot.SearchResult {
 	return &slackbot.SearchResult{Items: []slackbot.SearchItem{{Title: "Doc", Snippet: "概要"}}, Total: 1}
 }
 

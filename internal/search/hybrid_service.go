@@ -7,14 +7,18 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/slacksearch"
 	"github.com/ca-srg/ragent/internal/types"
+	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 )
 
 // HybridSearchService provides reusable hybrid search functionality
@@ -24,34 +28,46 @@ type HybridSearchService struct {
 	osClient        *opensearch.Client
 	hybridEngine    *opensearch.HybridSearchEngine
 	logger          *log.Logger
+	slackService    *slacksearch.SlackSearchService
 }
 
-var searchTracer = otel.Tracer("ragent/search")
+var (
+	searchTracer = otel.Tracer("ragent/search")
+)
 
 // SearchRequest represents a search request with all parameters
 type SearchRequest struct {
-	Query          string            `json:"query"`
-	IndexName      string            `json:"index_name"`
-	ContextSize    int               `json:"context_size"`
-	BM25Weight     float64           `json:"bm25_weight"`
-	VectorWeight   float64           `json:"vector_weight"`
-	UseJapaneseNLP bool              `json:"use_japanese_nlp"`
-	TimeoutSeconds int               `json:"timeout_seconds"`
-	Filters        map[string]string `json:"filters,omitempty"`
+	Query             string            `json:"query"`
+	IndexName         string            `json:"index_name"`
+	ContextSize       int               `json:"context_size"`
+	BM25Weight        float64           `json:"bm25_weight"`
+	VectorWeight      float64           `json:"vector_weight"`
+	UseJapaneseNLP    bool              `json:"use_japanese_nlp"`
+	TimeoutSeconds    int               `json:"timeout_seconds"`
+	Filters           map[string]string `json:"filters,omitempty"`
+	EnableSlackSearch bool              `json:"enable_slack_search"`
+	SlackChannels     []string          `json:"slack_channels,omitempty"`
 }
 
 // SearchResponse represents the search response with context and references
 type SearchResponse struct {
-	ContextParts []string          `json:"context_parts"`
-	References   map[string]string `json:"references"`
-	TotalResults int               `json:"total_results"`
-	SearchTime   string            `json:"search_time"`
-	IndexUsed    string            `json:"index_used"`
-	SearchMethod string            `json:"search_method"`
+	ContextParts  []string                       `json:"context_parts"`
+	References    map[string]string              `json:"references"`
+	TotalResults  int                            `json:"total_results"`
+	SearchTime    string                         `json:"search_time"`
+	IndexUsed     string                         `json:"index_used"`
+	SearchMethod  string                         `json:"search_method"`
+	SlackResults  *slacksearch.SlackSearchResult `json:"slack_results,omitempty"`
+	SearchSources []string                       `json:"search_sources,omitempty"`
 }
 
 // NewHybridSearchService creates a new hybrid search service
-func NewHybridSearchService(config *types.Config, embeddingClient *bedrock.BedrockClient) (*HybridSearchService, error) {
+func NewHybridSearchService(
+	config *types.Config,
+	embeddingClient *bedrock.BedrockClient,
+	slackClient *slack.Client,
+	slackBedrockClient *bedrock.BedrockClient,
+) (*HybridSearchService, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
@@ -69,6 +85,8 @@ func NewHybridSearchService(config *types.Config, embeddingClient *bedrock.Bedro
 		embeddingClient: embeddingClient,
 		logger:          log.Default(),
 	}
+
+	service.slackService = nil
 
 	return service, nil
 }
@@ -165,66 +183,151 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 		span.SetAttributes(attribute.String("search.filters", formatFilters(request.Filters)))
 	}
 
-	// Execute search
-	s.logger.Printf("Executing hybrid search: query='%s', index='%s'", request.Query, request.IndexName)
-	result, err := s.hybridEngine.Search(ctx, hybridQuery)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "hybrid_search_failed")
-		return nil, fmt.Errorf("hybrid search failed: %w", err)
-	}
-
-	// Extract context and references from results
-	response := &SearchResponse{
-		ContextParts: make([]string, 0, len(result.FusionResult.Documents)),
-		References:   make(map[string]string),
-		TotalResults: result.FusionResult.TotalHits,
-		SearchTime:   result.ExecutionTime.String(),
-		IndexUsed:    request.IndexName,
-		SearchMethod: result.SearchMethod,
-	}
-
-	for _, doc := range result.FusionResult.Documents {
-		// Unmarshal the source JSON
-		var source map[string]interface{}
-		if err := json.Unmarshal(doc.Source, &source); err != nil {
-			s.logger.Printf("Failed to unmarshal document source: %v", err)
-			span.RecordError(err, trace.WithAttributes(attribute.String("search.document.id", doc.ID)))
-			continue // Skip this document if we can't unmarshal
+	type (
+		documentResult struct {
+			response *SearchResponse
+			err      error
 		}
-
-		// Extract content
-		if content, ok := source["content"].(string); ok && content != "" {
-			response.ContextParts = append(response.ContextParts, content)
+		slackResult struct {
+			response *slacksearch.SlackSearchResult
+			err      error
 		}
-
-		// Extract title and reference
-		var title, reference string
-		if t, ok := source["title"].(string); ok {
-			title = t
-		}
-		if ref, ok := source["reference"].(string); ok && ref != "" {
-			reference = ref
-		}
-		if title != "" && reference != "" {
-			response.References[title] = reference
-		}
-	}
-
-	s.logger.Printf("Search completed: found %d results in %s", len(response.ContextParts), result.ExecutionTime)
-
-	span.SetAttributes(
-		attribute.Int("search.results.total_hits", result.FusionResult.TotalHits),
-		attribute.Int("search.results.returned", len(response.ContextParts)),
-		attribute.String("search.method", result.SearchMethod),
-		attribute.Float64("search.execution_ms", float64(result.ExecutionTime.Milliseconds())),
 	)
-	if result.FallbackReason != "" {
-		span.SetAttributes(attribute.String("search.fallback_reason", result.FallbackReason))
+
+	docCh := make(chan documentResult, 1)
+	slackCh := make(chan slackResult, 1)
+
+	group, ctx := errgroup.WithContext(ctx)
+
+	group.Go(func() error {
+		s.logger.Printf("Executing hybrid search: query='%s', index='%s'", request.Query, request.IndexName)
+		result, err := s.hybridEngine.Search(ctx, hybridQuery)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "hybrid_search_failed")
+			docCh <- documentResult{err: fmt.Errorf("hybrid search failed: %w", err)}
+			return nil
+		}
+
+		resp := &SearchResponse{
+			ContextParts: make([]string, 0, len(result.FusionResult.Documents)),
+			References:   make(map[string]string),
+			TotalResults: result.FusionResult.TotalHits,
+			SearchTime:   result.ExecutionTime.String(),
+			IndexUsed:    request.IndexName,
+			SearchMethod: result.SearchMethod,
+		}
+
+		for _, doc := range result.FusionResult.Documents {
+			var source map[string]interface{}
+			if err := json.Unmarshal(doc.Source, &source); err != nil {
+				s.logger.Printf("Failed to unmarshal document source: %v", err)
+				span.RecordError(err, trace.WithAttributes(attribute.String("search.document.id", doc.ID)))
+				continue
+			}
+			if content, ok := source["content"].(string); ok && content != "" {
+				resp.ContextParts = append(resp.ContextParts, content)
+			}
+			var title, reference string
+			if t, ok := source["title"].(string); ok {
+				title = t
+			}
+			if ref, ok := source["reference"].(string); ok && ref != "" {
+				reference = ref
+			}
+			if title != "" && reference != "" {
+				resp.References[title] = reference
+			}
+		}
+
+		s.logger.Printf("Document search completed: found %d results in %s", len(resp.ContextParts), result.ExecutionTime)
+
+		span.SetAttributes(
+			attribute.Int("search.results.total_hits", result.FusionResult.TotalHits),
+			attribute.Int("search.results.returned", len(resp.ContextParts)),
+			attribute.String("search.method", result.SearchMethod),
+			attribute.Float64("search.execution_ms", float64(result.ExecutionTime.Milliseconds())),
+		)
+		if result.FallbackReason != "" {
+			span.SetAttributes(attribute.String("search.fallback_reason", result.FallbackReason))
+		}
+		if result.URLDetected {
+			span.SetAttributes(attribute.Bool("search.url_detected", true))
+		}
+
+		docCh <- documentResult{response: resp}
+		return nil
+	})
+
+	slackEnabled := request.EnableSlackSearch && s.slackService != nil
+	if slackEnabled {
+		group.Go(func() error {
+			timeoutSeconds := s.config.SlackSearchTimeoutSeconds
+			if timeoutSeconds <= 0 {
+				timeoutSeconds = 5
+			}
+			slackCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+			defer cancel()
+			slackResp, err := s.slackService.Search(slackCtx, request.Query, request.SlackChannels)
+			if err != nil {
+				slackCh <- slackResult{err: err}
+				return nil
+			}
+			slackCh <- slackResult{response: slackResp}
+			return nil
+		})
 	}
-	if result.URLDetected {
-		span.SetAttributes(attribute.Bool("search.url_detected", true))
+
+	if err := group.Wait(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "parallel_search_failed")
+		return nil, err
 	}
+	close(docCh)
+	close(slackCh)
+
+	var (
+		docRes   documentResult
+		slackRes slackResult
+	)
+
+	if result, ok := <-docCh; ok && result.err != nil {
+		return nil, result.err
+	} else if ok {
+		docRes = result
+	}
+
+	if result, ok := <-slackCh; ok {
+		slackRes = result
+	}
+
+	if docRes.response == nil {
+		docRes = documentResult{response: &SearchResponse{
+			ContextParts: []string{},
+			References:   map[string]string{},
+			TotalResults: 0,
+			SearchTime:   "0s",
+			IndexUsed:    request.IndexName,
+		}}
+	}
+
+	response := docRes.response
+	searchSources := make([]string, 0, 2)
+	if len(response.ContextParts) > 0 || response.TotalResults > 0 {
+		searchSources = append(searchSources, "documents")
+	}
+	if slackRes.response != nil {
+		response.SlackResults = slackRes.response
+		response.TotalResults += slackRes.response.TotalMatches
+		searchSources = append(searchSources, "slack")
+	} else if slackRes.err != nil {
+		s.logger.Printf("Slack search failed, continuing with document results: %v", slackRes.err)
+	}
+	if len(searchSources) == 0 {
+		searchSources = append(searchSources, "documents")
+	}
+
+	response.SearchSources = searchSources
 	span.SetStatus(codes.Ok, "search_completed")
 	return response, nil
 }

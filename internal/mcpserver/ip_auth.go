@@ -117,7 +117,7 @@ func extractClientIPFromRequest(r *http.Request) string {
 		// X-Forwarded-For can contain multiple IPs, use the first one
 		ips := strings.Split(xff, ",")
 		if len(ips) > 0 {
-			clientIP := strings.TrimSpace(ips[0])
+			clientIP := sanitizeClientIP(ips[0])
 			if clientIP != "" {
 				return clientIP
 			}
@@ -126,7 +126,7 @@ func extractClientIPFromRequest(r *http.Request) string {
 
 	// Check X-Real-IP header
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+		return sanitizeClientIP(xri)
 	}
 
 	// Fallback to RemoteAddr
@@ -137,6 +137,30 @@ func extractClientIPFromRequest(r *http.Request) string {
 	}
 	return ip
 
+}
+
+func sanitizeClientIP(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	for _, r := range raw {
+		switch {
+		case r >= '0' && r <= '9':
+			builder.WriteRune(r)
+		case r >= 'a' && r <= 'f':
+			builder.WriteRune(r)
+		case r >= 'A' && r <= 'F':
+			builder.WriteRune(r)
+		case r == '.' || r == ':':
+			builder.WriteRune(r)
+		default:
+			return builder.String()
+		}
+	}
+	return builder.String()
 }
 
 // isIPAllowed checks if the given IP is in the allowed list

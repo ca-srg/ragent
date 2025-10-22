@@ -16,23 +16,29 @@ import (
 
 // SearchAdapter abstracts the RAG search for Slack
 type SearchAdapter interface {
-	Search(ctx context.Context, query string) *SearchResult
+	Search(ctx context.Context, query string, opts SearchOptions) *SearchResult
+}
+
+type SearchOptions struct {
+	ChannelID       string
+	ThreadTimestamp string
 }
 
 // HybridSearchAdapter uses OpenSearch Hybrid + Bedrock embedding
 type HybridSearchAdapter struct {
-	cfg        *commontypes.Config
-	maxResults int
+	cfg         *commontypes.Config
+	maxResults  int
+	slackSearch SlackConversationSearcher
 }
 
-func NewHybridSearchAdapter(cfg *commontypes.Config, maxResults int) *HybridSearchAdapter {
+func NewHybridSearchAdapter(cfg *commontypes.Config, maxResults int, slackSearch SlackConversationSearcher) *HybridSearchAdapter {
 	if maxResults <= 0 {
 		maxResults = 5
 	}
-	return &HybridSearchAdapter{cfg: cfg, maxResults: maxResults}
+	return &HybridSearchAdapter{cfg: cfg, maxResults: maxResults, slackSearch: slackSearch}
 }
 
-func (h *HybridSearchAdapter) Search(ctx context.Context, query string) *SearchResult {
+func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts SearchOptions) *SearchResult {
 	start := time.Now()
 	// AWS config fixed to us-east-1 for embedding and chat
 	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
@@ -127,6 +133,16 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string) *SearchR
 		generatedResponse = "関連する情報が見つかりませんでした。"
 	}
 
+	var slackResult *SlackConversationResult
+	if h.slackSearch != nil {
+		var err error
+		slackResult, err = h.slackSearch.SearchConversations(ctx, query, opts)
+		if err != nil {
+			log.Printf("slack search error: %v", err)
+			slackResult = nil
+		}
+	}
+
 	// Add references to response if any were found
 	if len(references) > 0 {
 		var referenceBuilder strings.Builder
@@ -141,13 +157,19 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string) *SearchR
 		generatedResponse = referenceBuilder.String()
 	}
 
+	total := res.FusionResult.TotalHits
+	if slackResult != nil {
+		total += slackResult.TotalMatches
+	}
+
 	// Return the generated response as a single item
 	return &SearchResult{
 		GeneratedResponse: generatedResponse,
-		Total:             len(res.FusionResult.Documents),
+		Total:             total,
 		Elapsed:           time.Since(start),
 		SearchMethod:      res.SearchMethod,
 		URLDetected:       res.URLDetected,
 		FallbackReason:    res.FallbackReason,
+		Slack:             slackResult,
 	}
 }

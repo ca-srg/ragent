@@ -113,7 +113,7 @@ type Config struct {
 	AWSS3VectorBucket    string        `json:"aws_s3_vector_bucket" env:"AWS_S3_VECTOR_BUCKET,required=true"`
 	AWSS3VectorIndex     string        `json:"aws_s3_vector_index" env:"AWS_S3_VECTOR_INDEX,required=true"`
 	AWSS3Region          string        `json:"aws_s3_region" env:"AWS_S3_REGION,default=us-east-1"`
-	ChatModel            string        `json:"chat_model" env:"CHAT_MODEL,default=anthropic.claude-3-5-sonnet-20240620-v1:0"`
+	ChatModel            string        `json:"chat_model" env:"CHAT_MODEL,default=global.anthropic.claude-sonnet-4-5-20250929-v1:0"`
 	Concurrency          int           `json:"concurrency" env:"VECTORIZER_CONCURRENCY,default=10"`
 	RetryAttempts        int           `json:"retry_attempts" env:"VECTORIZER_RETRY_ATTEMPTS,default=0"`
 	RetryDelay           time.Duration `json:"retry_delay" env:"VECTORIZER_RETRY_DELAY,default=2s"`
@@ -174,6 +174,16 @@ type Config struct {
 	MCPSSEBufferSize        int           `json:"mcp_sse_buffer_size" env:"MCP_SSE_BUFFER_SIZE,default=100"`
 	MCPSSEMaxClients        int           `json:"mcp_sse_max_clients" env:"MCP_SSE_MAX_CLIENTS,default=1000"`
 	MCPSSEHistorySize       int           `json:"mcp_sse_history_size" env:"MCP_SSE_HISTORY_SIZE,default=50"`
+
+	// Slack Search configuration
+	SlackSearchEnabled              bool   `json:"slack_search_enabled" env:"SLACK_SEARCH_ENABLED,default=false"`
+	SlackUserToken                  string `json:"slack_user_token" env:"SLACK_USER_TOKEN"`
+	SlackSearchMaxResults           int    `json:"slack_search_max_results" env:"SLACK_SEARCH_MAX_RESULTS,default=20"`
+	SlackSearchMaxRetries           int    `json:"slack_search_max_retries" env:"SLACK_SEARCH_MAX_RETRIES,default=5"`
+	SlackSearchContextWindowMinutes int    `json:"slack_search_context_window_minutes" env:"SLACK_SEARCH_CONTEXT_WINDOW_MINUTES,default=30"`
+	SlackSearchMaxIterations        int    `json:"slack_search_max_iterations" env:"SLACK_SEARCH_MAX_ITERATIONS,default=5"`
+	SlackSearchMaxContextMessages   int    `json:"slack_search_max_context_messages" env:"SLACK_SEARCH_MAX_CONTEXT_MESSAGES,default=100"`
+	SlackSearchTimeoutSeconds       int    `json:"slack_search_timeout_seconds" env:"SLACK_SEARCH_TIMEOUT_SECONDS,default=5"`
 
 	// Observability (OpenTelemetry) configuration
 	OTelEnabled              bool    `json:"otel_enabled" env:"OTEL_ENABLED,default=false"`

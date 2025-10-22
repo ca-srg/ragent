@@ -10,6 +10,7 @@ import (
 
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/slacksearch"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -25,8 +26,8 @@ type HybridSearchHandler struct {
 }
 
 // NewHybridSearchHandler creates a new SDK-compatible hybrid search handler
-func NewHybridSearchHandler(osClient *opensearch.Client, embeddingClient *bedrock.BedrockClient, config *HybridSearchConfig) *HybridSearchHandler {
-	adapter := NewHybridSearchToolAdapter(osClient, embeddingClient, config)
+func NewHybridSearchHandler(osClient *opensearch.Client, embeddingClient *bedrock.BedrockClient, config *HybridSearchConfig, slackService *slacksearch.SlackSearchService) *HybridSearchHandler {
+	adapter := NewHybridSearchToolAdapter(osClient, embeddingClient, config, slackService)
 
 	return &HybridSearchHandler{
 		adapter: adapter,
@@ -96,6 +97,12 @@ func (hsh *HybridSearchHandler) HandleSDKToolCall(ctx context.Context, req *mcp.
 	if topK := extractInt(params["top_k"]); topK > 0 {
 		metricAttrs = append(metricAttrs, attribute.Int("mcp.search.top_k", topK))
 	}
+	if enableSlack, ok := extractBoolValue(params["enable_slack_search"]); ok {
+		metricAttrs = append(metricAttrs, attribute.Bool("mcp.search.enable_slack", enableSlack))
+	}
+	if channelFilters := extractStringSliceLen(params["slack_channels"]); channelFilters > 0 {
+		metricAttrs = append(metricAttrs, attribute.Int("mcp.search.slack_channel_filters", channelFilters))
+	}
 
 	// Execute using existing adapter
 	ragentResult, err := hsh.adapter.HandleToolCall(ctx, params)
@@ -113,6 +120,9 @@ func (hsh *HybridSearchHandler) HandleSDKToolCall(ctx context.Context, req *mcp.
 		)
 		if hybridResponse.FallbackReason != "" {
 			metricAttrs = append(metricAttrs, attribute.String("mcp.search.fallback_reason", hybridResponse.FallbackReason))
+		}
+		if len(hybridResponse.SlackResults) > 0 {
+			metricAttrs = append(metricAttrs, attribute.Int("mcp.search.slack_results", len(hybridResponse.SlackResults)))
 		}
 	}
 	if ragentResult != nil {
@@ -237,6 +247,13 @@ func annotateSpanWithRequest(span trace.Span, params map[string]interface{}) {
 		span.SetAttributes(attribute.Int("mcp.search.top_k", topK))
 	}
 
+	if enableSlack, ok := extractBoolValue(params["enable_slack_search"]); ok {
+		span.SetAttributes(attribute.Bool("mcp.search.enable_slack", enableSlack))
+	}
+	if channelFilters := extractStringSliceLen(params["slack_channels"]); channelFilters > 0 {
+		span.SetAttributes(attribute.Int("mcp.search.slack_channel_filters", channelFilters))
+	}
+
 	if weight := extractFloat(params["bm25_weight"]); weight >= 0 {
 		span.SetAttributes(attribute.Float64("mcp.search.bm25_weight", weight))
 	}
@@ -273,6 +290,12 @@ func annotateSpanWithResult(span trace.Span, result *types.MCPToolCallResult) *t
 	}
 	span.SetAttributes(attribute.Int("mcp.search.results.returned", len(response.Results)))
 	span.SetAttributes(attribute.Bool("mcp.search.url_detected", response.URLDetected))
+	if len(response.SlackResults) > 0 {
+		span.SetAttributes(attribute.Int("mcp.search.slack_results", len(response.SlackResults)))
+	}
+	if len(response.SearchSources) > 0 {
+		span.SetAttributes(attribute.String("mcp.search.sources", strings.Join(response.SearchSources, ",")))
+	}
 	return &response
 }
 
@@ -322,4 +345,36 @@ func extractFloat(value interface{}) float64 {
 		}
 	}
 	return -1
+}
+
+func extractBoolValue(value interface{}) (bool, bool) {
+	switch v := value.(type) {
+	case bool:
+		return v, true
+	case string:
+		if parsed, err := strconv.ParseBool(strings.TrimSpace(v)); err == nil {
+			return parsed, true
+		}
+	case json.Number:
+		if parsed, err := strconv.ParseBool(v.String()); err == nil {
+			return parsed, true
+		}
+	}
+	return false, false
+}
+
+func extractStringSliceLen(value interface{}) int {
+	switch v := value.(type) {
+	case []string:
+		return len(v)
+	case []interface{}:
+		return len(v)
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return 0
+		}
+		return len(strings.Split(v, ","))
+	default:
+		return 0
+	}
 }

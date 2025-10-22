@@ -2,10 +2,17 @@ package slackbot
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/slack-go/slack"
+)
+
+const (
+	maxSlackBlocks   = 45
+	maxSlackMessages = 15
 )
 
 // Formatter builds Slack responses (Block Kit)
@@ -24,7 +31,7 @@ func (f *Formatter) BuildUsage(tip string) slack.MsgOption {
 func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.MsgOption {
 	// If we have a generated response (chat-style), use that format
 	if result.GeneratedResponse != "" {
-		return f.BuildChatResponse(query, result.GeneratedResponse, result.Total, result.Elapsed, result.SearchMethod, result.FallbackReason)
+		return f.BuildChatResponse(query, result)
 	}
 
 	// Otherwise, use the traditional search result format
@@ -75,20 +82,24 @@ func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.
 }
 
 // BuildChatResponse formats LLM-generated response into blocks
-func (f *Formatter) BuildChatResponse(query string, response string, total int, elapsed time.Duration, method string, fallback string) slack.MsgOption {
+func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.MsgOption {
+	response := result.GeneratedResponse
+	if response == "" {
+		response = "回答を生成できませんでした。"
+	}
 	// Header with query
 	header := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, fmt.Sprintf("質問: %s", truncate(query, 60)), false, false))
 
 	// Context info including search method
 	metaParts := []string{
-		fmt.Sprintf("%d 件の参考文献から生成", total),
-		fmt.Sprintf("%.0f ms", elapsed.Seconds()*1000),
+		fmt.Sprintf("%d 件の参考文献から生成", result.Total),
+		fmt.Sprintf("%.0f ms", result.Elapsed.Seconds()*1000),
 	}
-	if method != "" {
-		metaParts = append(metaParts, fmt.Sprintf("モード: %s", method))
+	if result.SearchMethod != "" {
+		metaParts = append(metaParts, fmt.Sprintf("モード: %s", result.SearchMethod))
 	}
-	if fallback != "" {
-		metaParts = append(metaParts, fmt.Sprintf("フォールバック: %s", fallback))
+	if result.FallbackReason != "" {
+		metaParts = append(metaParts, fmt.Sprintf("フォールバック: %s", result.FallbackReason))
 	}
 	intro := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, strings.Join(metaParts, " / "), false, false))
 
@@ -130,6 +141,10 @@ func (f *Formatter) BuildChatResponse(query string, response string, total int, 
 		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, currentSection, false, false), nil, nil))
 	}
 
+	if result != nil && result.Slack != nil {
+		blocks = append(blocks, buildSlackResultBlocks(result.Slack)...)
+	}
+
 	// Footer
 	footer := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%sにより生成", "RAGent"), false, false))
 	blocks = append(blocks, footer)
@@ -167,6 +182,36 @@ func escapeTitle(s string) string {
 	return strings.ReplaceAll(s, "|", "-")
 }
 
+func channelName(id string) string {
+	if id == "" {
+		return "-"
+	}
+	return id
+}
+
+func displayUser(userID, username string) string {
+	if username != "" {
+		return username
+	}
+	if userID != "" {
+		return userID
+	}
+	return "unknown"
+}
+
+func humanTimestamp(ts string) string {
+	if ts == "" {
+		return "-"
+	}
+	seconds, err := strconv.ParseFloat(ts, 64)
+	if err != nil {
+		return ts
+	}
+	secs := int64(seconds)
+	nsecs := int64((seconds - math.Floor(seconds)) * 1e9)
+	return time.Unix(secs, nsecs).Format(time.RFC3339)
+}
+
 // SearchResult is a simplified structure for Slack formatting
 type SearchResult struct {
 	Items             []SearchItem
@@ -176,6 +221,7 @@ type SearchResult struct {
 	SearchMethod      string
 	URLDetected       bool
 	FallbackReason    string
+	Slack             *SlackConversationResult
 }
 
 type SearchItem struct {
@@ -186,4 +232,105 @@ type SearchItem struct {
 	Link     string
 	Category string
 	FilePath string
+}
+
+func buildSlackResultBlocks(result *SlackConversationResult) []slack.Block {
+	blocks := []slack.Block{
+		slack.NewDividerBlock(),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject(slack.MarkdownType, "*Conversations from Slack:*", false, false),
+			nil,
+			nil,
+		),
+	}
+
+	if result == nil || len(result.Messages) == 0 {
+		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, "関連するSlackメッセージは見つかりませんでした。", false, false), nil, nil))
+		return blocks
+	}
+
+	meta := fmt.Sprintf("%d件 / %d回の探索", result.TotalMatches, result.IterationCount)
+	if !result.IsSufficient && len(result.MissingInfo) > 0 {
+		meta += fmt.Sprintf(" / 不足情報: %s", strings.Join(result.MissingInfo, ", "))
+	}
+	blocks = append(blocks, slack.NewContextBlock("slack-meta", slack.NewTextBlockObject(slack.MarkdownType, meta, false, false)))
+
+	displayCount := 0
+	truncated := false
+	totalMessages := len(result.Messages)
+	for i, msg := range result.Messages {
+		if displayCount >= maxSlackMessages {
+			truncated = true
+			break
+		}
+		channel := channelName(msg.Channel)
+		stamp := humanTimestamp(msg.Timestamp)
+		user := displayUser(msg.User, msg.Username)
+		body := strings.TrimSpace(msg.Text)
+		if body == "" {
+			continue
+		}
+
+		header := fmt.Sprintf("*#%s* • %s • %s", channel, stamp, user)
+		blockBudget := maxSlackBlocks - len(blocks)
+		if blockBudget <= 2 { // ensure space for context + section at least
+			truncated = true
+			break
+		}
+		blocks = append(blocks, slack.NewContextBlock(
+			fmt.Sprintf("slack-msg-meta-%d", i),
+			slack.NewTextBlockObject(slack.MarkdownType, header, false, false),
+		))
+
+		text := truncateSlackText(body, 600)
+		section := slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, text, false, false), nil, nil)
+		if msg.Permalink != "" {
+			btn := slack.NewButtonBlockElement(fmt.Sprintf("slack-msg-%d", i), "view", slack.NewTextBlockObject(slack.PlainTextType, "View", false, false))
+			btn.URL = msg.Permalink
+			section.Accessory = slack.NewAccessory(btn)
+		}
+		blocks = append(blocks, section)
+
+		if len(msg.Thread) > 0 {
+			if len(blocks) >= maxSlackBlocks {
+				truncated = true
+				break
+			}
+			var lines []string
+			for _, reply := range msg.Thread {
+				stamp := humanTimestamp(reply.Timestamp)
+				threadUser := displayUser(reply.User, reply.Username)
+				lines = append(lines, fmt.Sprintf("• %s • %s • %s", stamp, threadUser, truncateSlackText(strings.TrimSpace(reply.Text), 200)))
+			}
+			blocks = append(blocks, slack.NewContextBlock(fmt.Sprintf("slack-thread-%d", i), slack.NewTextBlockObject(slack.MarkdownType, strings.Join(lines, "\n"), false, false)))
+		}
+
+		displayCount++
+	}
+
+	if truncated {
+		remaining := totalMessages - displayCount
+		if remaining > 0 && len(blocks) < maxSlackBlocks {
+			notice := fmt.Sprintf("… Slackメッセージが多いため %d 件のみ表示しています (残り %d 件)", displayCount, remaining)
+			blocks = append(blocks, slack.NewContextBlock("slack-truncated", slack.NewTextBlockObject(slack.MarkdownType, notice, false, false)))
+		}
+	}
+
+	return blocks
+}
+
+// BuildSlackResultBlocksForTest exposes Slack result blocks for testing and validation purposes.
+func BuildSlackResultBlocksForTest(result *SlackConversationResult) []slack.Block {
+	return buildSlackResultBlocks(result)
+}
+
+func truncateSlackText(value string, limit int) string {
+	if limit <= 0 {
+		return value
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit]) + "…"
 }

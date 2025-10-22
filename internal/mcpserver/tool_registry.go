@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/ca-srg/ragent/internal/types"
@@ -116,23 +117,48 @@ func (tr *ToolRegistry) ExecuteTool(ctx context.Context, toolName string, params
 
 	tr.logger.Printf("Executing tool: %s (internal: %s)", toolName, internalName)
 
-	// Execute the tool handler
-	result, err := toolInfo.Handler(ctx, params)
-	if err != nil {
-		tr.logger.Printf("Tool execution failed for %s: %v", toolName, err)
+	type execResult struct {
+		result *types.MCPToolCallResult
+		err    error
+	}
+
+	resultCh := make(chan execResult, 1)
+
+	go func() {
+		res, err := toolInfo.Handler(ctx, params)
+		resultCh <- execResult{result: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		err := ctx.Err()
+		tr.logger.Printf("Tool execution timed out or was cancelled for %s: %v", toolName, err)
 		return &types.MCPToolCallResult{
 			Content: []types.MCPContent{
 				{
 					Type: "text",
-					Text: fmt.Sprintf("Tool execution failed: %v", err),
+					Text: fmt.Sprintf("Tool execution cancelled: %v", err),
 				},
 			},
 			IsError: true,
 		}, err
-	}
+	case exec := <-resultCh:
+		if exec.err != nil {
+			tr.logger.Printf("Tool execution failed for %s: %v", toolName, exec.err)
+			return &types.MCPToolCallResult{
+				Content: []types.MCPContent{
+					{
+						Type: "text",
+						Text: fmt.Sprintf("Tool execution failed: %v", exec.err),
+					},
+				},
+				IsError: true,
+			}, exec.err
+		}
 
-	tr.logger.Printf("Tool execution completed successfully: %s", toolName)
-	return result, nil
+		tr.logger.Printf("Tool execution completed successfully: %s", toolName)
+		return exec.result, nil
+	}
 }
 
 // ListTools returns all registered tools
@@ -187,6 +213,11 @@ func (tr *ToolRegistry) ToolCount() int {
 // getConfiguredToolName gets the configured name for a tool from environment variable
 func (tr *ToolRegistry) getConfiguredToolName(internalName string) string {
 	// Check for specific tool name configuration
+	envVarNameUpper := fmt.Sprintf("MCP_TOOL_NAME_%s", strings.ToUpper(internalName))
+	if configuredName := os.Getenv(envVarNameUpper); configuredName != "" {
+		return configuredName
+	}
+
 	envVarName := fmt.Sprintf("MCP_TOOL_NAME_%s", internalName)
 	if configuredName := os.Getenv(envVarName); configuredName != "" {
 		return configuredName

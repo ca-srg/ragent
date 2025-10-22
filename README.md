@@ -1,3 +1,4 @@
+- [Features](#features)
 # RAGent - RAG System Builder for Markdown Documents
 
 **[日本語版 (Japanese) / 日本語 README](README_ja.md)**
@@ -7,6 +8,9 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 ## Table of Contents
 
 - [Features](#features)
+- [Slack Search Integration](#slack-search-integration)
+- [Embedding-Agnostic RAG](#embedding-agnostic-rag)
+- [Architecture Overview](#architecture-overview)
 - [Prerequisites](#prerequisites)
 - [Required Environment Variables](#required-environment-variables)
 - [Installation](#installation)
@@ -31,13 +35,59 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 - **Vectorization**: Convert markdown files to embeddings using Amazon Bedrock
 - **S3 Vector Integration**: Store generated vectors in Amazon S3 Vectors
 - **Hybrid Search**: Combined BM25 + vector search using OpenSearch
+- **Slack Search Integration**: Blend document results with Slack conversations via an iterative enrichment pipeline
 - **Semantic Search**: Semantic similarity search using S3 Vector Index
 - **Interactive RAG Chat**: Chat interface with context-aware responses
 - **Vector Management**: List vectors stored in S3
+- **Embedding-Agnostic RAG**: Optional search path that answers directly from Slack without requiring pre-built vectors
 - **MCP Server**: Model Context Protocol server for Claude Desktop integration
 - **OIDC Authentication**: OpenID Connect authentication with multiple providers
 - **IP-based Security**: IP address-based access control with configurable bypass ranges and audit logging
 - **Dual Transport**: HTTP and Server-Sent Events (SSE) transport support
+
+## Slack Search Integration
+
+Slack search extends every retrieval workflow by streaming recent conversations, threads, and channel timelines directly from Slack’s Web API. When `SLACK_SEARCH_ENABLED=true`, the following behavior is enabled automatically:
+
+- `query` exposes `--enable-slack-search` and `--slack-channels` flags to opt in per request.
+- `chat` surfaces Slack context in addition to documents without requiring extra flags.
+- `slack-bot` responds with combined document + Slack answers inside Block Kit messages.
+- `mcp-server` adds `enable_slack_search` and `slack_channels` parameters to the `hybrid_search` tool.
+
+Each Slack lookup performs iterative query refinement, merges timeline context from threads, and runs a sufficiency check before the final answer is generated. Results include permalinks so operators can pivot back to the original conversation instantly.
+
+Quick example:
+
+```bash
+# Search across documents and Slack channels in one command
+RAGent query -q "incident timeline" --enable-slack-search --slack-channels "prod-incident,devops"
+```
+
+## Embedding-Agnostic RAG
+
+Slack search is intentionally embedding-agnostic: the system fetches live messages at query time instead of relying on pre-generated vectors. This provides several benefits:
+
+- **Operational cost savings**: no additional vector storage or nightly re-indexing jobs are required for Slack data.
+- **Real-time awareness**: answers incorporate messages posted seconds ago, keeping incident timelines and release notes fresh.
+- **Time-series preservation**: the pipeline keeps message order and thread structure so analysts can replay discussions accurately.
+- **Seamless fallbacks**: when Slack returns no hits the document-only hybrid search continues without interruption.
+
+Slack-only output is still fused with document references, giving operators a single consolidated view while staying within compliance rules.
+
+## Architecture Overview
+
+The diagram below highlights how document and Slack pipelines converge before the answer is generated.
+
+```mermaid
+graph LR
+    MD[Markdown Documents] -->|Vectorize| VE[Amazon S3 Vectors]
+    VE --> HY[Hybrid Search Engine]
+    OS[(Amazon OpenSearch)] --> HY
+    SL[Slack Workspace] -->|Conversations API| SS[SlackSearch Service]
+    SS --> HY
+    HY --> CT[Context Builder]
+    CT --> AN[Answer Generation (Claude / Bedrock Chat)]
+```
 
 ## Prerequisites
 
@@ -97,11 +147,21 @@ OIDC_CLIENT_SECRET=your_client_secret
 
 # Slack Bot Configuration
 SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_USER_TOKEN=xoxp-your-user-token-with-search-read
 SLACK_RESPONSE_TIMEOUT=5s
 SLACK_MAX_RESULTS=5
 SLACK_ENABLE_THREADING=false
 SLACK_THREAD_CONTEXT_ENABLED=true
 SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
+
+# Slack Search Configuration
+SLACK_SEARCH_ENABLED=false                     # Enable Slack search pipeline (set true to activate)
+SLACK_SEARCH_MAX_RESULTS=20                    # Max Slack messages retrieved per query (1-100)
+SLACK_SEARCH_MAX_RETRIES=5                     # Retry count for Slack API rate limits (0-10)
+SLACK_SEARCH_CONTEXT_WINDOW_MINUTES=30         # Time window (minutes) of surrounding message context
+SLACK_SEARCH_MAX_ITERATIONS=5                  # Iterative refinements performed when answers insufficient
+SLACK_SEARCH_MAX_CONTEXT_MESSAGES=100          # Max messages assembled into enriched context
+SLACK_SEARCH_TIMEOUT_SECONDS=5                 # Slack API request timeout in seconds (1-60)
 
 # OpenTelemetry Configuration (optional)
 OTEL_ENABLED=false
@@ -112,6 +172,8 @@ OTEL_RESOURCE_ATTRIBUTES=service.namespace=ragent,environment=dev
 OTEL_TRACES_SAMPLER=always_on
 OTEL_TRACES_SAMPLER_ARG=1.0
 ```
+
+Slack search requires `SLACK_SEARCH_ENABLED=true`, a valid `SLACK_BOT_TOKEN`, **and** a user token `SLACK_USER_TOKEN` that includes scopes such as `search:read`, `channels:history`, `groups:history`, and other conversation history scopes relevant to the channels you query. The search-specific knobs let you tune throughput and cost per workspace without touching the core document pipeline.
 
 ### MCP Bypass Configuration (Optional)
 
@@ -315,6 +377,8 @@ RAGent query -q "error handling" --filter '{"category":"programming"}'
 - `-k, --top-k`: Number of similar results to return (default: 10)
 - `-j, --json`: Output results in JSON format
 - `-f, --filter`: JSON metadata filter (e.g., `'{"category":"docs"}'`)
+- `--enable-slack-search`: Include Slack conversations alongside document results when Slack search is enabled
+- `--slack-channels`: Comma-separated channel names to scope Slack search (omit the leading '#')
 
 **Usage Examples:**
 ```bash
@@ -326,6 +390,9 @@ RAGent query -q "authentication" --filter '{"type":"security"}' --json
 
 # Get more results
 RAGent query -q "database optimization" --top-k 20
+
+# Merge Slack context for incident reviews
+RAGent query -q "on-call handoff" --enable-slack-search --slack-channels "oncall,incident-review"
 ```
 
 #### URL-Aware Search
@@ -391,6 +458,9 @@ RAGent chat --bm25-weight 0.7 --vector-weight 0.3
 
 # Chat with custom system prompt
 RAGent chat --system "You are a helpful assistant specialized in documentation."
+
+# Chat with Slack context enabled via environment flag
+SLACK_SEARCH_ENABLED=true RAGent chat
 ```
 
 **Options:**
@@ -400,6 +470,8 @@ RAGent chat --system "You are a helpful assistant specialized in documentation."
 - `-b, --bm25-weight`: Weight for BM25 scoring in hybrid search (0-1, default: 0.5)
 - `-v, --vector-weight`: Weight for vector scoring in hybrid search (0-1, default: 0.5)
 - `--use-japanese-nlp`: Use Japanese NLP optimization for OpenSearch (default: true)
+
+When `SLACK_SEARCH_ENABLED=true`, chat sessions automatically pull in recent Slack conversations, show live progress for each refinement iteration, and append permalinks under the final answer.
 
 **Features:**
 - Hybrid search combining BM25 and vector similarity
@@ -426,9 +498,12 @@ Requirements:
 - Invite the bot user to the target Slack channel.
 - Optionally enable threading with `SLACK_ENABLE_THREADING=true`.
 - Thread context: enable contextual search with `SLACK_THREAD_CONTEXT_ENABLED=true` (default) and control history depth via `SLACK_THREAD_CONTEXT_MAX_MESSAGES` (default `10` messages).
+- Slack search: set `SLACK_SEARCH_ENABLED=true` to blend Slack conversations into every answer. Use `SLACK_SEARCH_MAX_RESULTS`, `SLACK_SEARCH_MAX_CONTEXT_MESSAGES`, and `SLACK_SEARCH_MAX_ITERATIONS` to tune throughput per workspace.
 - Requires OpenSearch configuration (`OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, `OPENSEARCH_REGION`). Slack Bot does not use S3 Vector fallback.
 
 Details: see `docs/slack-bot.md`.
+
+When enabled, the bot delivers a Block Kit section labelled **Conversations from Slack** with permalinks for each hit so responders can jump straight into the thread.
 
 ### 6. mcp-server - MCP Server for Claude Desktop Integration (New)
 
@@ -447,6 +522,13 @@ RAGent mcp-server --auth-method both
 # IP authentication only (default)
 RAGent mcp-server --auth-method ip
 ```
+
+The `hybrid_search` MCP tool accepts two new parameters when the server is launched with `SLACK_SEARCH_ENABLED=true`:
+
+- `enable_slack_search` (boolean, default `false`): opt in per request from your MCP client.
+- `slack_channels` (string array): optional list of channel names to narrow the Slack search scope.
+
+Responses include a `slack_results` array with message metadata and permalinks so downstream tools can render conversation context alongside document references.
 
 **Authentication Methods:**
 - `ip`: Traditional IP address-based authentication only
@@ -677,6 +759,24 @@ RAGent/
    Error: OIDC provider discovery failed
    ```
    → Check OIDC_ISSUER URL and network connectivity
+
+7. **Slack token missing or invalid**
+   ```
+   Slack search unavailable: SLACK_BOT_TOKEN not configured
+   ```
+   → Ensure `SLACK_SEARCH_ENABLED=true` and `SLACK_BOT_TOKEN` belongs to the same workspace you are querying.
+
+8. **Slack rate limit (HTTP 429)**
+   ```
+   slack search failed: rate_limited
+   ```
+   → Respect the `Retry-After` header, increase `SLACK_SEARCH_MAX_RETRIES`, or reduce `SLACK_SEARCH_MAX_RESULTS`.
+
+9. **Bot not invited to channel**
+   ```
+   slack search failed: not_in_channel
+   ```
+   → Invite the bot user to the private channels you reference or remove them from `--slack-channels`.
 
 ### Debugging Methods
 
