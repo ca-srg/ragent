@@ -48,7 +48,6 @@ type ChatRequest struct {
 	Messages         []ChatMessage `json:"messages"`
 	MaxTokens        int           `json:"max_tokens,omitempty"`
 	Temperature      float64       `json:"temperature,omitempty"`
-	TopP             float64       `json:"top_p,omitempty"`
 	StopSequences    []string      `json:"stop_sequences,omitempty"`
 	AnthropicVersion string        `json:"anthropic_version,omitempty"`
 	System           string        `json:"system,omitempty"`
@@ -171,7 +170,6 @@ func (c *BedrockClient) GenerateChatResponse(ctx context.Context, messages []Cha
 		Messages:         sanitized,
 		MaxTokens:        4000,
 		Temperature:      0.7,
-		TopP:             0.9,
 		AnthropicVersion: "bedrock-2023-05-31",
 	}
 	if len(systemPrompts) > 0 {

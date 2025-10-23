@@ -86,7 +86,15 @@ func NewHybridSearchService(
 		logger:          log.Default(),
 	}
 
-	service.slackService = nil
+	if config.SlackSearchEnabled && slackClient != nil && slackBedrockClient != nil {
+		slackService, err := slacksearch.NewSlackSearchService(config, slackClient, slackBedrockClient, service.logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize Slack search service: %w", err)
+		}
+		service.slackService = slackService
+	} else {
+		service.slackService = nil
+	}
 
 	return service, nil
 }
@@ -117,6 +125,16 @@ func (s *HybridSearchService) Initialize(ctx context.Context) error {
 	s.hybridEngine = opensearch.NewHybridSearchEngine(s.osClient, s.embeddingClient)
 
 	s.logger.Printf("Hybrid search service initialized successfully")
+
+	if s.slackService != nil {
+		if err := s.slackService.Initialize(ctx); err != nil {
+			return fmt.Errorf("failed to initialize Slack search service: %w", err)
+		}
+		if err := s.slackService.HealthCheck(ctx); err != nil {
+			return fmt.Errorf("Slack search health check failed: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -183,30 +201,39 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 		span.SetAttributes(attribute.String("search.filters", formatFilters(request.Filters)))
 	}
 
-	type (
-		documentResult struct {
-			response *SearchResponse
-			err      error
-		}
-		slackResult struct {
-			response *slacksearch.SlackSearchResult
-			err      error
-		}
+	if !request.EnableSlackSearch && queryMentionsSlack(request.Query) {
+		s.logger.Printf("Query contains 'Slack'; forcing Slack search enablement")
+		request.EnableSlackSearch = true
+	}
+
+	s.logger.Printf("Executing hybrid search: query='%s', index='%s'", request.Query, request.IndexName)
+
+	if request.EnableSlackSearch && s.slackService == nil {
+		err := fmt.Errorf("Slack search was requested but the Slack search service is not configured")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "slack_service_unavailable")
+		return nil, err
+	}
+
+	var (
+		docResponse   *SearchResponse
+		slackResponse *slacksearch.SlackSearchResult
+		docErr        error
+		slackErr      error
+		docFallback   bool
 	)
 
-	docCh := make(chan documentResult, 1)
-	slackCh := make(chan slackResult, 1)
-
-	group, ctx := errgroup.WithContext(ctx)
+	group, groupCtx := errgroup.WithContext(ctx)
+	docReady := make(chan struct{})
 
 	group.Go(func() error {
-		s.logger.Printf("Executing hybrid search: query='%s', index='%s'", request.Query, request.IndexName)
-		result, err := s.hybridEngine.Search(ctx, hybridQuery)
+		defer close(docReady)
+		result, err := s.hybridEngine.Search(groupCtx, hybridQuery)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "hybrid_search_failed")
-			docCh <- documentResult{err: fmt.Errorf("hybrid search failed: %w", err)}
-			return nil
+			docErr = fmt.Errorf("hybrid search failed: %w", err)
+			return docErr
 		}
 
 		resp := &SearchResponse{
@@ -255,81 +282,83 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 			span.SetAttributes(attribute.Bool("search.url_detected", true))
 		}
 
-		docCh <- documentResult{response: resp}
+		docResponse = resp
+		docFallback = s.shouldFallbackToSlack(resp)
 		return nil
 	})
 
-	slackEnabled := request.EnableSlackSearch && s.slackService != nil
-	if slackEnabled {
-		group.Go(func() error {
-			timeoutSeconds := s.config.SlackSearchTimeoutSeconds
-			if timeoutSeconds <= 0 {
-				timeoutSeconds = 5
-			}
-			slackCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
-			defer cancel()
-			slackResp, err := s.slackService.Search(slackCtx, request.Query, request.SlackChannels)
-			if err != nil {
-				slackCh <- slackResult{err: err}
-				return nil
-			}
-			slackCh <- slackResult{response: slackResp}
+	mustUseSlack := request.EnableSlackSearch
+
+	group.Go(func() error {
+		<-docReady
+		if groupCtx.Err() != nil {
 			return nil
-		})
-	}
+		}
+		if docErr != nil {
+			return nil
+		}
+		if !mustUseSlack && !docFallback {
+			return nil
+		}
+		if s.slackService == nil {
+			slackErr = fmt.Errorf("slack search service is not configured")
+			return nil
+		}
+		resp, err := s.executeSlackSearch(groupCtx, request)
+		if err != nil {
+			slackErr = err
+			return nil
+		}
+		slackResponse = resp
+		return nil
+	})
 
 	if err := group.Wait(); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "parallel_search_failed")
 		return nil, err
 	}
-	close(docCh)
-	close(slackCh)
 
-	var (
-		docRes   documentResult
-		slackRes slackResult
-	)
-
-	if result, ok := <-docCh; ok && result.err != nil {
-		return nil, result.err
-	} else if ok {
-		docRes = result
+	if docErr != nil {
+		return nil, docErr
 	}
 
-	if result, ok := <-slackCh; ok {
-		slackRes = result
-	}
-
-	if docRes.response == nil {
-		docRes = documentResult{response: &SearchResponse{
+	if docResponse == nil {
+		docResponse = &SearchResponse{
 			ContextParts: []string{},
 			References:   map[string]string{},
 			TotalResults: 0,
 			SearchTime:   "0s",
 			IndexUsed:    request.IndexName,
-		}}
+		}
 	}
 
-	response := docRes.response
-	searchSources := make([]string, 0, 2)
-	if len(response.ContextParts) > 0 || response.TotalResults > 0 {
-		searchSources = append(searchSources, "documents")
+	if mustUseSlack && slackErr != nil {
+		span.RecordError(slackErr)
+		span.SetStatus(codes.Error, "slack_search_failed")
+		return nil, fmt.Errorf("slack search failed: %w", slackErr)
 	}
-	if slackRes.response != nil {
-		response.SlackResults = slackRes.response
-		response.TotalResults += slackRes.response.TotalMatches
+	if !mustUseSlack && docFallback && s.slackService == nil {
+		s.logger.Printf("Slack fallback requested but Slack search service is unavailable")
+	}
+
+	if slackResponse != nil {
+		docResponse.SlackResults = slackResponse
+		docResponse.TotalResults += slackResponse.TotalMatches
+	}
+
+	searchSources := []string{"documents"}
+	if slackResponse != nil {
 		searchSources = append(searchSources, "slack")
-	} else if slackRes.err != nil {
-		s.logger.Printf("Slack search failed, continuing with document results: %v", slackRes.err)
 	}
-	if len(searchSources) == 0 {
-		searchSources = append(searchSources, "documents")
+	docResponse.SearchSources = searchSources
+
+	if slackErr != nil {
+		s.logger.Printf("Slack search encountered an error: %v", slackErr)
 	}
 
-	response.SearchSources = searchSources
 	span.SetStatus(codes.Ok, "search_completed")
-	return response, nil
+	return docResponse, nil
 }
 
 // SearchWithDefaults performs search using configuration defaults
@@ -397,6 +426,72 @@ func (s *HybridSearchService) SetLogger(logger *log.Logger) {
 // GetClient returns the OpenSearch client (for advanced usage)
 func (s *HybridSearchService) GetClient() *opensearch.Client {
 	return s.osClient
+}
+
+// SetSlackService allows injecting a Slack search service after construction.
+func (s *HybridSearchService) SetSlackService(service *slacksearch.SlackSearchService) {
+	s.slackService = service
+}
+
+func (s *HybridSearchService) shouldFallbackToSlack(response *SearchResponse) bool {
+	if response == nil {
+		return true
+	}
+	if response.TotalResults == 0 {
+		return true
+	}
+	if len(response.ContextParts) == 0 {
+		return true
+	}
+	return false
+}
+
+func (s *HybridSearchService) executeSlackSearch(ctx context.Context, request *SearchRequest) (*slacksearch.SlackSearchResult, error) {
+	if s.slackService == nil {
+		return nil, fmt.Errorf("slack search service is not configured")
+	}
+	timeoutSeconds := s.config.SlackSearchTimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 5
+	}
+	slackCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+
+	channels := sanitizeSlackChannels(request.SlackChannels)
+	return s.slackService.Search(slackCtx, request.Query, channels)
+}
+
+func sanitizeSlackChannels(channels []string) []string {
+	if len(channels) == 0 {
+		return nil
+	}
+	clean := make([]string, 0, len(channels))
+	for _, ch := range channels {
+		ch = strings.TrimSpace(ch)
+		ch = strings.TrimPrefix(ch, "#")
+		if ch != "" {
+			clean = append(clean, ch)
+		}
+	}
+	if len(clean) == 0 {
+		return nil
+	}
+	return clean
+}
+
+func queryMentionsSlack(query string) bool {
+	if query == "" {
+		return false
+	}
+	normalized := strings.ToLower(query)
+	if strings.Contains(normalized, "slack") {
+		return true
+	}
+	halfWidth := strings.NewReplacer(
+		"Ｓ", "s", "Ｌ", "l", "Ａ", "a", "Ｃ", "c", "Ｋ", "k",
+		"ｓ", "s", "ｌ", "l", "ａ", "a", "ｃ", "c", "ｋ", "k",
+	).Replace(query)
+	return strings.Contains(strings.ToLower(halfWidth), "slack")
 }
 
 // GetHybridEngine returns the hybrid engine (for advanced usage)

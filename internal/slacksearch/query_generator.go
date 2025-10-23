@@ -3,6 +3,7 @@ package slacksearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -17,7 +18,7 @@ import (
 
 const (
 	maxGeneratedQueries = 3
-	llmRequestTimeout   = 10 * time.Second
+	llmRequestTimeout   = 30 * time.Second
 )
 
 var (
@@ -223,6 +224,9 @@ func (g *QueryGenerator) invokeLLM(ctx context.Context, messages []bedrock.ChatM
 
 	responseText, err := g.bedrockClient.GenerateChatResponse(ctx, messages)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("failed to invoke bedrock for query generation: LLMリクエストがタイムアウトしました (llmRequestTimeout=%s): %w", llmRequestTimeout, err)
+		}
 		return nil, fmt.Errorf("failed to invoke bedrock for query generation: %w", err)
 	}
 

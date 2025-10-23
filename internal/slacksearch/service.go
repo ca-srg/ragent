@@ -2,6 +2,7 @@ package slacksearch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -276,6 +277,9 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 			iteration,
 		)
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				err = fmt.Errorf("%w: LLMリクエストがタイムアウトしました (llmRequestTimeout=%s)", err, llmRequestTimeout)
+			}
 			iterSpan.RecordError(err)
 			iterSpan.SetStatus(codes.Error, "iteration_failed")
 			iterSpan.End()

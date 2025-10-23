@@ -3,9 +3,11 @@ package slackbot
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/slack-go/slack"
 )
@@ -115,7 +117,10 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 		if strings.HasPrefix(line, "## ") {
 			// Add current section if exists
 			if currentSection != "" {
-				blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, currentSection, false, false), nil, nil))
+				normalized := normalizeMarkdownForSlack(currentSection)
+				if strings.TrimSpace(normalized) != "" {
+					blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, normalized, false, false), nil, nil))
+				}
 				currentSection = ""
 			}
 			// Add header as divider
@@ -130,7 +135,10 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 
 			// If section gets too long, flush it (Slack has a 3000 char limit per text block)
 			if len(currentSection) > 2500 {
-				blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, currentSection, false, false), nil, nil))
+				normalized := normalizeMarkdownForSlack(currentSection)
+				if strings.TrimSpace(normalized) != "" {
+					blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, normalized, false, false), nil, nil))
+				}
 				currentSection = ""
 			}
 		}
@@ -138,7 +146,10 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 
 	// Add remaining section
 	if currentSection != "" {
-		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, currentSection, false, false), nil, nil))
+		normalized := normalizeMarkdownForSlack(currentSection)
+		if strings.TrimSpace(normalized) != "" {
+			blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, normalized, false, false), nil, nil))
+		}
 	}
 
 	if result != nil && result.Slack != nil {
@@ -197,6 +208,138 @@ func displayUser(userID, username string) string {
 		return userID
 	}
 	return "unknown"
+}
+
+func normalizeMarkdownForSlack(text string) string {
+	lines := strings.Split(text, "\n")
+	if len(lines) == 0 {
+		return text
+	}
+
+	normalized := make([]string, 0, len(lines))
+	insideCode := false
+
+	for _, line := range lines {
+		trimmedLeft := strings.TrimLeft(line, " \t")
+
+		if strings.HasPrefix(trimmedLeft, "```") {
+			insideCode = !insideCode
+			normalized = append(normalized, strings.TrimRight(trimmedLeft, " \t"))
+			continue
+		}
+
+		if insideCode {
+			normalized = append(normalized, line)
+			continue
+		}
+
+		if trimmedLeft == "" {
+			normalized = append(normalized, "")
+			continue
+		}
+
+		if level, heading := parseHeading(trimmedLeft); level > 0 {
+			normalized = append(normalized, formatHeading(level, heading))
+			continue
+		}
+
+		indent := len(line) - len(trimmedLeft)
+		if bullet := formatBulletLine(trimmedLeft, indent); bullet != "" {
+			normalized = append(normalized, bullet)
+			continue
+		}
+
+		if strings.HasPrefix(trimmedLeft, ">") {
+			normalized = append(normalized, convertMarkdownBoldForSlack("> "+strings.TrimSpace(strings.TrimPrefix(trimmedLeft, ">"))))
+			continue
+		}
+
+		normalized = append(normalized, convertMarkdownBoldForSlack(strings.TrimRight(line, " \t")))
+	}
+
+	return strings.Join(normalized, "\n")
+}
+
+func parseHeading(line string) (int, string) {
+	if !strings.HasPrefix(line, "#") {
+		return 0, ""
+	}
+
+	level := 0
+	for level < len(line) && line[level] == '#' {
+		level++
+	}
+
+	if level == 0 || level >= len(line) || line[level] != ' ' {
+		return 0, ""
+	}
+
+	text := strings.TrimSpace(line[level+1:])
+	if text == "" {
+		return 0, ""
+	}
+	return level, text
+}
+
+func formatHeading(level int, text string) string {
+	switch {
+	case text == "":
+		return ""
+	case level <= 3:
+		return fmt.Sprintf("*%s*", convertMarkdownBoldForSlack(text))
+	default:
+		return fmt.Sprintf("_%s_", convertMarkdownBoldForSlack(text))
+	}
+}
+
+func formatBulletLine(line string, indent int) string {
+	if len(line) >= 2 {
+		if strings.HasPrefix(line, "- [") || strings.HasPrefix(line, "* [") {
+			closing := strings.Index(line, "]")
+			if closing > 1 {
+				label := strings.TrimSpace(line[closing+1:])
+				if label != "" {
+					checkbox := strings.TrimSpace(line[2:closing])
+					emoji := ":white_large_square:"
+					if strings.EqualFold(checkbox, "[x") {
+						emoji = ":white_check_mark:"
+					}
+					return strings.Repeat(" ", indent) + emoji + " " + convertMarkdownBoldForSlack(label)
+				}
+			}
+		}
+
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") || strings.HasPrefix(line, "+ ") {
+			content := strings.TrimSpace(line[2:])
+			if content == "" {
+				return ""
+			}
+			return strings.Repeat(" ", indent) + "• " + convertMarkdownBoldForSlack(content)
+		}
+	}
+
+	if dot := strings.Index(line, "."); dot > 0 && isDigits(line[:dot]) {
+		content := strings.TrimSpace(line[dot+1:])
+		prefix := strings.Repeat(" ", indent)
+		if content == "" {
+			return prefix + line[:dot] + "."
+		}
+		return prefix + line[:dot] + ". " + convertMarkdownBoldForSlack(content)
+	}
+
+	return ""
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func humanTimestamp(ts string) string {
@@ -333,4 +476,13 @@ func truncateSlackText(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit]) + "…"
+}
+
+var boldMarkdownPattern = regexp.MustCompile(`\*\*([^*\n]+)\*\*`)
+
+func convertMarkdownBoldForSlack(s string) string {
+	if !strings.Contains(s, "**") {
+		return s
+	}
+	return boldMarkdownPattern.ReplaceAllString(s, "*$1*")
 }
