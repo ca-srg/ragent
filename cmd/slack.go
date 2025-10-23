@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/slack-go/slack"
 	"github.com/spf13/cobra"
 
 	appcfg "github.com/ca-srg/ragent/internal/config"
+	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/observability"
 	"github.com/ca-srg/ragent/internal/slackbot"
+	"github.com/ca-srg/ragent/internal/slacksearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
@@ -49,6 +54,9 @@ var slackCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to load slack config: %w", err)
 		}
+		if strings.TrimSpace(cfg.SlackUserToken) == "" {
+			return fmt.Errorf("slack user token (SLACK_USER_TOKEN) not configured; enable Slack search requires user token with search scopes")
+		}
 
 		// Slack client
 		// For Socket Mode, the app-level token must be supplied to the client options
@@ -68,7 +76,39 @@ var slackCmd = &cobra.Command{
 			scfg.MaxResults = slackContextSize
 		}
 
-		adapter := slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults)
+		var convSearcher slackbot.SlackConversationSearcher
+		awsCfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(cfg.AWSS3Region))
+		if err != nil {
+			return fmt.Errorf("failed to load AWS config for Slack search: %w", err)
+		}
+
+		originalSlackEnabled := cfg.SlackSearchEnabled
+		cfg.SlackSearchEnabled = true
+		defer func() { cfg.SlackSearchEnabled = originalSlackEnabled }()
+
+		if cfg.SlackSearchMaxResults <= 0 {
+			cfg.SlackSearchMaxResults = scfg.MaxResults
+		}
+		if cfg.SlackSearchMaxContextMessages <= 0 {
+			cfg.SlackSearchMaxContextMessages = scfg.MaxResults * 5
+		}
+		if cfg.SlackSearchTimeoutSeconds <= 0 {
+			cfg.SlackSearchTimeoutSeconds = 5
+		}
+
+		bedrockClient := bedrock.NewBedrockClient(awsCfg, cfg.ChatModel)
+		slackService, err := slacksearch.NewSlackSearchService(cfg, client, bedrockClient, logger)
+		if err != nil {
+			logger.Printf("slack search initialization failed; continuing without Slack search: %v", err)
+		} else {
+			if err := slackService.Initialize(context.Background()); err != nil {
+				logger.Printf("slack search dependencies failed to initialize; continuing without Slack search: %v", err)
+			} else {
+				convSearcher = newBotSlackSearcher(slackService, client)
+			}
+		}
+
+		adapter := slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults, convSearcher)
 		threadBuilder := slackbot.NewThreadContextBuilder(client, scfg, logger)
 		processor := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, adapter, &slackbot.Formatter{}, threadBuilder)
 
@@ -119,3 +159,89 @@ func init() {
 
 // ensure unused import of commontypes is referenced to keep module tidy
 var _ = commontypes.QueryVectorsResult{}
+
+type slackConversationService interface {
+	Search(ctx context.Context, query string, channels []string) (*slacksearch.SlackSearchResult, error)
+}
+
+type botSlackSearcher struct {
+	service slackConversationService
+	client  *slack.Client
+	cache   sync.Map
+}
+
+func newBotSlackSearcher(service slackConversationService, client *slack.Client) slackbot.SlackConversationSearcher {
+	if service == nil {
+		return nil
+	}
+	return &botSlackSearcher{service: service, client: client}
+}
+
+func (b *botSlackSearcher) SearchConversations(ctx context.Context, query string, opts slackbot.SearchOptions) (*slackbot.SlackConversationResult, error) {
+	if b.service == nil {
+		return nil, nil
+	}
+	channels := b.channelFilter(ctx, opts.ChannelID)
+	result, err := b.service.Search(ctx, query, channels)
+	if err != nil {
+		return nil, err
+	}
+	return convertSlackSearchResult(result), nil
+}
+
+func (b *botSlackSearcher) channelFilter(ctx context.Context, channelID string) []string {
+	if channelID == "" || strings.HasPrefix(channelID, "D") {
+		return nil
+	}
+	if name, ok := b.cache.Load(channelID); ok {
+		if str, ok2 := name.(string); ok2 && str != "" {
+			return []string{str}
+		}
+	}
+	if b.client == nil {
+		return nil
+	}
+	info, err := b.client.GetConversationInfo(&slack.GetConversationInfoInput{ChannelID: channelID})
+	if err != nil || info == nil || info.Name == "" {
+		if err != nil {
+			log.Printf("slack conversation info error: %v", err)
+		}
+		return nil
+	}
+	b.cache.Store(channelID, info.Name)
+	return []string{info.Name}
+}
+
+func convertSlackSearchResult(src *slacksearch.SlackSearchResult) *slackbot.SlackConversationResult {
+	if src == nil {
+		return nil
+	}
+	dst := &slackbot.SlackConversationResult{
+		IterationCount: src.IterationCount,
+		TotalMatches:   src.TotalMatches,
+		IsSufficient:   src.IsSufficient,
+		MissingInfo:    append([]string{}, src.MissingInfo...),
+		Messages:       make([]slackbot.SlackConversationMessage, 0, len(src.EnrichedMessages)),
+	}
+	for _, msg := range src.EnrichedMessages {
+		conv := slackbot.SlackConversationMessage{
+			Channel:   msg.OriginalMessage.Channel,
+			Timestamp: msg.OriginalMessage.Timestamp,
+			User:      msg.OriginalMessage.User,
+			Username:  msg.OriginalMessage.Username,
+			Text:      msg.OriginalMessage.Text,
+			Permalink: msg.Permalink,
+			Thread:    make([]slackbot.SlackThreadMessage, 0, len(msg.ThreadMessages)),
+		}
+		for _, reply := range msg.ThreadMessages {
+			conv.Thread = append(conv.Thread, slackbot.SlackThreadMessage{
+				Timestamp: reply.Timestamp,
+				User:      reply.User,
+				Username:  reply.Username,
+				Text:      reply.Text,
+			})
+		}
+		dst.Messages = append(dst.Messages, conv)
+	}
+	return dst
+}

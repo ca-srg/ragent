@@ -11,6 +11,7 @@ import (
 
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/types"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // Mock tool handler for testing
@@ -52,7 +53,7 @@ func TestToolRegistry_RegisterTool(t *testing.T) {
 	definition := types.MCPToolDefinition{
 		Name:        "test_tool",
 		Description: "A test tool",
-		InputSchema: nil,
+		InputSchema: &jsonschema.Schema{Type: "object"},
 	}
 
 	tests := []struct {
@@ -552,7 +553,7 @@ func TestToolRegistry_ValidateToolDefinition(t *testing.T) {
 			definition: types.MCPToolDefinition{
 				Name:        "valid_tool",
 				Description: "A valid tool",
-				InputSchema: nil,
+				InputSchema: &jsonschema.Schema{Type: "object"},
 			},
 			expectError: false,
 		},

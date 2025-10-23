@@ -11,7 +11,7 @@ import (
 
 type nullSearch struct{}
 
-func (n *nullSearch) Search(ctx context.Context, q string) *slackbot.SearchResult {
+func (n *nullSearch) Search(ctx context.Context, q string, opts slackbot.SearchOptions) *slackbot.SearchResult {
 	return &slackbot.SearchResult{}
 }
 

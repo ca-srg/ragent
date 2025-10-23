@@ -43,6 +43,7 @@ type SSEManager struct {
 	maxClients        int
 	eventHistory      []*SSEEvent // Optional: store recent events for replay
 	historySize       int
+	cancel            context.CancelFunc
 }
 
 // SSEManagerConfig contains configuration for SSE manager
@@ -85,6 +86,11 @@ func NewSSEManager(config *SSEManagerConfig, logger *log.Logger) *SSEManager {
 
 // Start starts the SSE manager
 func (m *SSEManager) Start(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	m.cancel = cancel
 	go m.run(ctx)
 }
 
@@ -111,6 +117,13 @@ func (m *SSEManager) run(ctx context.Context) {
 		case <-heartbeatTicker.C:
 			m.sendHeartbeat()
 		}
+	}
+}
+
+// Stop stops the SSE manager
+func (m *SSEManager) Stop() {
+	if m.cancel != nil {
+		m.cancel()
 	}
 }
 

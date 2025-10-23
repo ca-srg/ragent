@@ -52,6 +52,8 @@ func NewServerWrapper(config *types.Config) (*ServerWrapper, error) {
 		return nil, fmt.Errorf("configuration cannot be nil")
 	}
 
+	applyServerWrapperDefaults(config)
+
 	// Create configuration adapter
 	configAdapter := NewConfigAdapter(config)
 	sdkConfig, err := configAdapter.ToSDKConfig()
@@ -86,6 +88,64 @@ func NewServerWrapper(config *types.Config) (*ServerWrapper, error) {
 
 	logger.Printf("ServerWrapper initialized successfully")
 	return wrapper, nil
+}
+
+func applyServerWrapperDefaults(cfg *types.Config) {
+	if cfg == nil {
+		return
+	}
+
+	if cfg.MCPServerReadTimeout <= 0 {
+		cfg.MCPServerReadTimeout = 30 * time.Second
+	}
+	if cfg.MCPServerWriteTimeout <= 0 {
+		cfg.MCPServerWriteTimeout = 30 * time.Second
+	}
+	if cfg.MCPServerIdleTimeout <= 0 {
+		cfg.MCPServerIdleTimeout = 120 * time.Second
+	}
+	if cfg.MCPServerShutdownTimeout <= 0 {
+		cfg.MCPServerShutdownTimeout = 30 * time.Second
+	}
+	if cfg.MCPServerMaxHeaderBytes <= 0 {
+		cfg.MCPServerMaxHeaderBytes = 1 << 20 // 1MB
+	}
+	if cfg.MCPDefaultSearchSize <= 0 {
+		cfg.MCPDefaultSearchSize = 10
+	}
+	if cfg.MCPDefaultBM25Weight <= 0 {
+		cfg.MCPDefaultBM25Weight = 0.5
+	}
+	if cfg.MCPDefaultVectorWeight <= 0 {
+		cfg.MCPDefaultVectorWeight = 0.5
+	}
+	if cfg.MCPDefaultTimeoutSeconds <= 0 {
+		cfg.MCPDefaultTimeoutSeconds = 30
+	}
+	if cfg.OpenSearchIndex == "" {
+		cfg.OpenSearchIndex = "docs-index"
+	}
+	if cfg.OpenSearchEndpoint == "" {
+		cfg.OpenSearchEndpoint = "http://localhost:9200"
+	}
+	if cfg.MCPHybridSearchToolName == "" {
+		cfg.MCPHybridSearchToolName = "hybrid_search"
+	}
+	if len(cfg.MCPAllowedIPs) == 0 {
+		cfg.MCPAllowedIPs = []string{"127.0.0.1"}
+	}
+	if cfg.MCPSSEHeartbeatInterval <= 0 {
+		cfg.MCPSSEHeartbeatInterval = 30 * time.Second
+	}
+	if cfg.MCPSSEBufferSize <= 0 {
+		cfg.MCPSSEBufferSize = 100
+	}
+	if cfg.MCPSSEMaxClients <= 0 {
+		cfg.MCPSSEMaxClients = 1000
+	}
+	if cfg.MCPSSEHistorySize <= 0 {
+		cfg.MCPSSEHistorySize = 50
+	}
 }
 
 // initializeSDKServer creates and configures the SDK server instance
@@ -148,6 +208,9 @@ func (sw *ServerWrapper) GetToolRegistry() *ToolRegistry {
 
 // RegisterTool registers a tool with the SDK server
 func (sw *ServerWrapper) RegisterTool(name string, handler mcp.ToolHandler) error {
+	if sw == nil {
+		return fmt.Errorf("server wrapper is nil")
+	}
 	if name == "" {
 		return fmt.Errorf("tool name cannot be empty")
 	}
@@ -175,6 +238,9 @@ func (sw *ServerWrapper) RegisterTool(name string, handler mcp.ToolHandler) erro
 
 // RegisterCustomTool registers a tool with an explicit SDK tool definition.
 func (sw *ServerWrapper) RegisterCustomTool(tool *mcp.Tool, handler mcp.ToolHandler) error {
+	if sw == nil {
+		return fmt.Errorf("server wrapper is nil")
+	}
 	if sw.sdkServer == nil {
 		return fmt.Errorf("SDK server not initialized")
 	}

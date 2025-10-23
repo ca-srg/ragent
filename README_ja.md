@@ -7,6 +7,9 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
 ## 目次
 
 - [機能](#機能)
+- [Slack検索統合](#slack検索統合)
+- [Embedding非依存RAG](#embedding非依存rag)
+- [アーキテクチャ概要](#アーキテクチャ概要)
 - [前提条件](#前提条件)
 - [必要な環境変数](#必要な環境変数)
 - [インストール](#インストール)
@@ -31,10 +34,52 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
 - **ベクトル化**: markdownファイルをAmazon Bedrockを使用してembeddingに変換
 - **S3 Vector統合**: 生成されたベクトルをAmazon S3 Vectorsに保存
 - **ハイブリッド検索**: OpenSearchを使用したBM25 + ベクトル検索の組み合わせ
+- **Slack検索統合**: Slack会話とドキュメント検索結果を統合する反復型パイプライン
 - **セマンティック検索**: S3 Vector Indexを使用したセマンティック類似性検索
 - **対話型RAGチャット**: コンテキスト認識応答を行うチャットインターフェース
 - **ベクトル管理**: S3に保存されたベクトルの一覧表示
+- **Embedding非依存RAG**: 事前ベクトル化なしでSlackから直接回答を生成する検索経路
 - **IPベースセキュリティ**: 許可IP制御に加え、バイパスレンジと監査ログを設定可能
+
+## Slack検索統合
+
+`SLACK_SEARCH_ENABLED=true` を設定すると、以下のワークフローでSlack検索が自動的に動作します。
+
+- `query` コマンドは `--enable-slack-search` と `--slack-channels` フラグでリクエスト単位の制御が可能。
+- `chat` コマンドは追加フラグなしで最新のSlack会話を取り込み、進捗を表示します。
+- `slack-bot` は回答内に「Conversations from Slack」セクションを追加し、各メッセージへのパーマリンクを提供します。
+- `mcp-server` の `hybrid_search` ツールは `enable_slack_search` と `slack_channels` パラメータを受け付けます。
+
+各検索ではクエリの言い換え、タイムライン展開、十分性判定を行い、ドキュメント結果と一体化したレスポンスを生成します。
+
+```bash
+# ドキュメントとSlackを同時に検索
+RAGent query -q "インシデントタイムライン" --enable-slack-search --slack-channels "prod-incident,devops"
+```
+
+## Embedding非依存RAG
+
+Slack検索はベクトルの事前生成に依存せず、クエリ時に最新メッセージを取得する設計です。これにより以下のメリットがあります。
+
+- **運用コストの削減**: Slackデータ用の追加ベクトルストアや夜間バッチは不要。
+- **リアルタイム性**: 投稿直後のメッセージも回答に反映できるため、障害対応やリリース情報が遅延しません。
+- **時系列の保持**: スレッド構造と投稿順を維持したまま文脈を提示できます。
+- **シームレスなフォールバック**: Slackでヒットしない場合でも従来のドキュメント検索が継続します。
+
+## アーキテクチャ概要
+
+下図はドキュメント検索とSlack検索がどのように合流するかを示しています。
+
+```mermaid
+graph LR
+    MD[Markdown Documents] -->|Vectorize| VE[Amazon S3 Vectors]
+    VE --> HY[Hybrid Search Engine]
+    OS[(Amazon OpenSearch)] --> HY
+    SL[Slack Workspace] -->|Conversations API| SS[SlackSearch Service]
+    SS --> HY
+    HY --> CT[Context Builder]
+    CT --> AN[Answer Generation (Claude / Bedrock Chat)]
+```
 
 ## 前提条件
 
@@ -77,11 +122,21 @@ EXCLUDE_CATEGORIES=個人メモ,日報  # 検索から除外するカテゴリ
 
 # Slack Bot設定
 SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_USER_TOKEN=xoxp-your-user-token-with-search-read
 SLACK_RESPONSE_TIMEOUT=5s
 SLACK_MAX_RESULTS=5
 SLACK_ENABLE_THREADING=false
 SLACK_THREAD_CONTEXT_ENABLED=true
 SLACK_THREAD_CONTEXT_MAX_MESSAGES=10
+
+# Slack検索設定
+SLACK_SEARCH_ENABLED=false                     # Slack検索パイプラインを有効化
+SLACK_SEARCH_MAX_RESULTS=20                    # 1クエリで取得するメッセージ数 (1-100)
+SLACK_SEARCH_MAX_RETRIES=5                     # rate limit時の再試行回数 (0-10)
+SLACK_SEARCH_CONTEXT_WINDOW_MINUTES=30         # 周辺メッセージを取得する時間範囲（分）
+SLACK_SEARCH_MAX_ITERATIONS=5                  # 不足情報がある場合の再探索回数
+SLACK_SEARCH_MAX_CONTEXT_MESSAGES=100          # コンテキストとして蓄積する最大メッセージ数
+SLACK_SEARCH_TIMEOUT_SECONDS=5                 # Slack APIリクエストのタイムアウト秒数 (1-60)
 
 # OpenTelemetry設定（任意）
 OTEL_ENABLED=false
@@ -98,6 +153,8 @@ MCP_BYPASS_VERBOSE_LOG=false
 MCP_BYPASS_AUDIT_LOG=true
 MCP_TRUSTED_PROXIES=192.168.1.1,10.0.0.1  # X-Forwarded-Forを信頼するプロキシ
 ```
+
+Slack検索を利用する場合は、`SLACK_SEARCH_ENABLED=true`・`SLACK_BOT_TOKEN` に加えて、`search:read` や `channels:history` / `groups:history` など必要なスコープを付与した `SLACK_USER_TOKEN` を同じワークスペースで設定してください。Slack検索用の環境変数でスループットや動作を調整できます。
 
 ### MCPバイパス設定（任意）
 
@@ -296,6 +353,8 @@ RAGent query -q "error handling" --filter '{"category":"programming"}'
 - `-k, --top-k`: 返される類似結果の数（デフォルト: 10）
 - `-j, --json`: 結果をJSON形式で出力
 - `-f, --filter`: JSONメタデータフィルター（例: `'{"category":"docs"}'`）
+- `--enable-slack-search`: Slack検索を有効化し、ドキュメント結果と併せて表示
+- `--slack-channels`: Slack検索対象のチャンネル名をカンマ区切りで指定（先頭の`#`は不要）
 
 **使用例:**
 ```bash
@@ -307,6 +366,9 @@ RAGent query -q "authentication" --filter '{"type":"security"}' --json
 
 # より多くの結果を取得
 RAGent query -q "database optimization" --top-k 20
+
+# Slackと併せてインシデントレビューを検索
+RAGent query -q "オンコール引き継ぎ" --enable-slack-search --slack-channels "oncall,incident-review"
 ```
 
 #### URL対応検索
@@ -372,6 +434,9 @@ RAGent chat --bm25-weight 0.7 --vector-weight 0.3
 
 # カスタムシステムプロンプトでチャット
 RAGent chat --system "あなたはドキュメントに特化した親切なアシスタントです。"
+
+# Slackコンテキストを取り込んでチャット（要: SLACK_SEARCH_ENABLED=true）
+SLACK_SEARCH_ENABLED=true RAGent chat
 ```
 
 **オプション:**
@@ -381,6 +446,8 @@ RAGent chat --system "あなたはドキュメントに特化した親切なア�
 - `-b, --bm25-weight`: ハイブリッド検索でのBM25スコアリングの重み（0-1、デフォルト: 0.5）
 - `-v, --vector-weight`: ハイブリッド検索でのベクトルスコアリングの重み（0-1、デフォルト: 0.5）
 - `--use-japanese-nlp`: OpenSearchで日本語NLP最適化を使用（デフォルト: true）
+
+`SLACK_SEARCH_ENABLED=true` を設定した場合、チャットはSlackの会話を自動取得し、各イテレーションの進捗とパーマリンク付き結果を表示します。
 
 **機能:**
 - BM25とベクトル類似性を組み合わせたハイブリッド検索
@@ -532,6 +599,24 @@ RAGent/
    Error: vector index not found
    ```
    → S3 Vector Indexが作成されているか確認
+
+5. **Slackトークン未設定または無効**
+   ```
+   Slack search unavailable: SLACK_BOT_TOKEN not configured
+   ```
+   → `SLACK_SEARCH_ENABLED=true` と同じワークスペースの `SLACK_BOT_TOKEN` が設定されているか確認してください。
+
+6. **Slackレート制限 (HTTP 429)**
+   ```
+   slack search failed: rate_limited
+   ```
+   → `Retry-After` ヘッダーに従い、`SLACK_SEARCH_MAX_RETRIES` を増やすか `SLACK_SEARCH_MAX_RESULTS` を減らしてください。
+
+7. **Botがチャンネルに参加していない**
+   ```
+   slack search failed: not_in_channel
+   ```
+   → Botユーザーを対象チャンネルに招待するか、`--slack-channels` から当該チャンネルを除外してください。
 
 ### デバッグ方法
 
@@ -710,9 +795,12 @@ RAGent slack-bot
 - スレッド返信を有効化する場合は `SLACK_ENABLE_THREADING=true`。
 - スレッドコンテキスト機能を使う場合は `SLACK_THREAD_CONTEXT_ENABLED=true`（デフォルト）を維持し、履歴の取得件数は `SLACK_THREAD_CONTEXT_MAX_MESSAGES`（デフォルト10件）で調整。
 - レート制限は `SLACK_RATE_USER_PER_MINUTE`/`SLACK_RATE_CHANNEL_PER_MINUTE`/`SLACK_RATE_GLOBAL_PER_MINUTE` で調整。
+- Slack検索を併用する場合は `SLACK_SEARCH_ENABLED=true` を設定し、`SLACK_SEARCH_MAX_RESULTS` や `SLACK_SEARCH_MAX_CONTEXT_MESSAGES` で取得件数を調整してください。
 - OpenSearch の設定（`OPENSEARCH_ENDPOINT`、`OPENSEARCH_INDEX`、`OPENSEARCH_REGION`）が必須です。Slack Bot では S3 Vector へのフォールバックは使用しません。
 
 詳細は `docs/slack-bot.md` を参照してください。
+
+Slack検索が有効な場合、返信メッセージに **Conversations from Slack** セクションが挿入され、各メッセージへのパーマリンクから元スレッドに素早く移動できます。
 
 ### 6. mcp-server - Claude Desktop統合用MCPサーバー（新機能）
 
@@ -731,6 +819,13 @@ RAGent mcp-server --auth-method both
 # IP認証のみ（デフォルト）
 RAGent mcp-server --auth-method ip
 ```
+
+`SLACK_SEARCH_ENABLED=true` の場合、MCPツール `ragent-hybrid_search` は以下のパラメータを追加で受け付けます:
+
+- `enable_slack_search` (bool, デフォルト `false`): リクエスト単位でSlack検索を有効化。
+- `slack_channels` (string[]): Slack検索対象チャンネル名の配列（省略可）。
+
+レスポンスには `slack_results` フィールドが含まれ、メッセージのメタデータとパーマリンクをMCPクライアント側でレンダリングできます。
 
 **認証方式:**
 - `ip`: 従来のIPアドレスベース認証のみ

@@ -10,7 +10,7 @@ import (
 
 type spyingSearch struct{ got string }
 
-func (s *spyingSearch) Search(ctx context.Context, q string) *slackbot.SearchResult {
+func (s *spyingSearch) Search(ctx context.Context, q string, opts slackbot.SearchOptions) *slackbot.SearchResult {
 	s.got = q
 	return &slackbot.SearchResult{}
 }

@@ -47,7 +47,7 @@ func createTestAdapter() *mcpserver.HybridSearchToolAdapter {
 		DefaultTimeoutSeconds: 30,
 	}
 
-	return mcpserver.NewHybridSearchToolAdapter(osClient, brClient, config)
+	return mcpserver.NewHybridSearchToolAdapter(osClient, brClient, config, nil)
 }
 
 func TestHybridSearchToolAdapter_GetToolDefinition(t *testing.T) {
@@ -97,7 +97,7 @@ func TestHybridSearchToolAdapter_GetToolDefinition(t *testing.T) {
 	}
 
 	// Check optional parameters exist
-	expectedParams := []string{"top_k", "search_mode", "bm25_weight", "vector_weight", "filters"}
+	expectedParams := []string{"top_k", "search_mode", "bm25_weight", "vector_weight", "filters", "enable_slack_search", "slack_channels"}
 	for _, param := range expectedParams {
 		if _, exists := properties[param]; !exists {
 			t.Errorf("Input schema should have '%s' property", param)
@@ -228,6 +228,15 @@ func TestHybridSearchToolAdapter_HandleToolCall_ParameterValidation(t *testing.T
 			},
 			expectError:    true,
 			errorSubstring: "vector_weight must be between 0.0 and 1.0",
+		},
+		{
+			name: "slack search requested without configuration",
+			params: map[string]interface{}{
+				"query":               "test query",
+				"enable_slack_search": true,
+			},
+			expectError:    true,
+			errorSubstring: "Slack search requested but not configured",
 		},
 	}
 

@@ -75,26 +75,30 @@ type MCPToolCallParams struct {
 
 // HybridSearchRequest represents parameters for hybrid search tool
 type HybridSearchRequest struct {
-	Query           string            `json:"query"`
-	TopK            int               `json:"top_k,omitempty"`
-	Filters         map[string]string `json:"filters,omitempty"`
-	SearchMode      string            `json:"search_mode,omitempty"`      // "hybrid", "s3vector", "opensearch"
-	BM25Weight      float64           `json:"bm25_weight,omitempty"`      // Weight for BM25 scoring in hybrid mode
-	VectorWeight    float64           `json:"vector_weight,omitempty"`    // Weight for vector scoring in hybrid mode
-	MinScore        float64           `json:"min_score,omitempty"`        // Minimum score threshold
-	IncludeMetadata bool              `json:"include_metadata,omitempty"` // Include document metadata in results
+	Query             string            `json:"query"`
+	TopK              int               `json:"top_k,omitempty"`
+	Filters           map[string]string `json:"filters,omitempty"`
+	SearchMode        string            `json:"search_mode,omitempty"`      // "hybrid", "s3vector", "opensearch"
+	BM25Weight        float64           `json:"bm25_weight,omitempty"`      // Weight for BM25 scoring in hybrid mode
+	VectorWeight      float64           `json:"vector_weight,omitempty"`    // Weight for vector scoring in hybrid mode
+	MinScore          float64           `json:"min_score,omitempty"`        // Minimum score threshold
+	IncludeMetadata   bool              `json:"include_metadata,omitempty"` // Include document metadata in results
+	EnableSlackSearch bool              `json:"enable_slack_search,omitempty"`
+	SlackChannels     []string          `json:"slack_channels,omitempty"`
 }
 
 // HybridSearchResponse represents the hybrid search tool response
 type HybridSearchResponse struct {
-	Query          string                   `json:"query"`
-	Total          int                      `json:"total"`
-	SearchMode     string                   `json:"search_mode"`
-	SearchMethod   string                   `json:"search_method"`
-	URLDetected    bool                     `json:"url_detected,omitempty"`
-	FallbackReason string                   `json:"fallback_reason,omitempty"`
-	Results        []HybridSearchResultItem `json:"results"`
-	Metadata       *HybridSearchMetadata    `json:"metadata,omitempty"`
+	Query          string                    `json:"query"`
+	Total          int                       `json:"total"`
+	SearchMode     string                    `json:"search_mode"`
+	SearchMethod   string                    `json:"search_method"`
+	URLDetected    bool                      `json:"url_detected,omitempty"`
+	FallbackReason string                    `json:"fallback_reason,omitempty"`
+	Results        []HybridSearchResultItem  `json:"results"`
+	Metadata       *HybridSearchMetadata     `json:"metadata,omitempty"`
+	SlackResults   []HybridSearchSlackResult `json:"slack_results,omitempty"`
+	SearchSources  []string                  `json:"search_sources,omitempty"`
 }
 
 // HybridSearchResultItem represents a single search result
@@ -119,6 +123,15 @@ type HybridSearchMetadata struct {
 	ExecutionTimeMs   int64   `json:"execution_time_ms,omitempty"`
 	BM25Weight        float64 `json:"bm25_weight,omitempty"`
 	VectorWeight      float64 `json:"vector_weight,omitempty"`
+}
+
+// HybridSearchSlackResult represents a Slack conversation snippet in the response
+type HybridSearchSlackResult struct {
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+	User      string `json:"user"`
+	Channel   string `json:"channel"`
+	Permalink string `json:"permalink,omitempty"`
 }
 
 // InitializeRequest represents parameters for initialize tool

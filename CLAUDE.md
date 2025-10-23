@@ -46,11 +46,17 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
   - ユーザーフィルタとの統合機能
 - **internal/types/**: 共通型定義
   - システム全体で使用される構造体
+  - `Config` に Slack検索 (`SLACK_SEARCH_*`) フィールドとデフォルト値を保持
 - **internal/opensearch/**: OpenSearch統合（BM25 + Dense Hybrid RAG）
   - ハイブリッド検索エンジンの実装
   - BM25とベクトル検索の組み合わせ
   - 日本語最適化処理
   - エラーハンドリングと設定管理
+- **internal/slacksearch/**: Slack検索パイプライン
+  - クエリ生成、再検索、コンテキスト収集、十分性判定の各ステージをモジュール化
+  - Slack Web APIとBedrock埋め込みクライアントを組み合わせたライブ検索
+  - 進捗ハンドラーとOpenTelemetryトレーサーで観測可能性を担保
+  - メッセージ、スレッド、タイムラインを`SlackSearchResult`として集約
 - **internal/slackbot/**: Slack Bot統合
   - RTM WebSocket接続管理
   - メンション検出とメッセージ処理
@@ -96,6 +102,15 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
 - `SLACK_MAX_RESULTS`: 最大検索結果数（デフォルト: 5）
 - `SLACK_ENABLE_THREADING`: スレッド機能の有効化（デフォルト: false）
 
+### Slack検索設定
+- `SLACK_SEARCH_ENABLED`: Slack検索パイプラインの有効化（デフォルト: false）
+- `SLACK_SEARCH_MAX_RESULTS`: Slack検索で取得するメッセージ件数（デフォルト: 20）
+- `SLACK_SEARCH_MAX_RETRIES`: Slack APIの再試行回数（デフォルト: 5）
+- `SLACK_SEARCH_CONTEXT_WINDOW_MINUTES`: タイムラインコンテキストを取得する時間幅（デフォルト: 30分）
+- `SLACK_SEARCH_MAX_ITERATIONS`: 再探索イテレーションの最大数（デフォルト: 5）
+- `SLACK_SEARCH_MAX_CONTEXT_MESSAGES`: Slackコンテキストとして蓄積する最大メッセージ数（デフォルト: 100）
+- `SLACK_SEARCH_TIMEOUT_SECONDS`: Slack API タイムアウト秒数（デフォルト: 5秒）
+
 ### MCP Server設定 [NEW]
 - `MCP_SERVER_HOST`: サーバーホスト（デフォルト: localhost）
 - `MCP_SERVER_PORT`: サーバーポート（デフォルト: 8080）
@@ -134,7 +149,9 @@ go run main.go vectorize                 # ベクトル化実行
 go run main.go vectorize --follow        # フォローモード（30分間隔）
 go run main.go vectorize --follow --interval 15m # カスタム間隔のフォローモード
 go run main.go query -q "検索クエリ"      # セマンティック検索
+go run main.go query -q "障害報告" --enable-slack-search --slack-channels "prod-incident" # Slack会話と併用
 go run main.go chat                      # 対話的RAGチャット
+SLACK_SEARCH_ENABLED=true go run main.go chat  # Slackコンテキスト付きチャット
 go run main.go list                      # ベクトル一覧表示
 go run main.go slack-bot                 # Slack Bot起動
 go run main.go mcp-server                # MCP Server起動 [NEW]
@@ -166,11 +183,17 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 # 2. セマンティック検索（ハイブリッドモード）
 ./RAGent query -q "機械学習のアルゴリズム" --top-k 5 --search-mode hybrid
 
+# 2b. Slack会話も含めて検索
+./RAGent query -q "インシデントタイムライン" --enable-slack-search --slack-channels "prod-incident,devops"
+
 # 2a. OpenSearchのみ使用
 ./RAGent query -q "API documentation" --search-mode opensearch --bm25-weight 0.7
 
 # 3. 対話的RAGチャット
 ./RAGent chat
+
+# Slack検索を有効化したチャット
+SLACK_SEARCH_ENABLED=true ./RAGent chat
 
 # 4. ベクトル一覧表示
 ./RAGent list --prefix "docs/"
@@ -179,9 +202,30 @@ Markdownドキュメントを`markdown/`ディレクトリに準備する必要�
 ./RAGent slack-bot
 # Slackでの使用: @ragent-bot <質問内容>
 
+# Slack検索を有効化したBot（環境変数）
+SLACK_SEARCH_ENABLED=true SLACK_SEARCH_MAX_RESULTS=30 ./RAGent slack-bot
+
 # 6. MCP Server起動 [NEW]
 ./RAGent mcp-server --auth-method either
 # Claude Desktopでの使用: MCP統合によるハイブリッド検索
+```
+
+Slack結果を返すMCPツールリクエスト例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "example",
+  "method": "tools/call",
+  "params": {
+    "name": "ragent-hybrid_search",
+    "arguments": {
+      "query": "リリースメモ",
+      "enable_slack_search": true,
+      "slack_channels": ["release-notes"]
+    }
+  }
+}
 ```
 
 ## Dependencies

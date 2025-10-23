@@ -117,6 +117,7 @@ func BenchmarkServerStartup_Custom(b *testing.B) {
 			benchConfig.osClient,
 			benchConfig.embeddingClient,
 			benchConfig.hybridConfig,
+			nil,
 		)
 
 		toolRegistry := server.GetToolRegistry()
@@ -174,6 +175,7 @@ func BenchmarkServerStartup_SDK(b *testing.B) {
 			benchConfig.osClient,
 			benchConfig.embeddingClient,
 			benchConfig.hybridConfig,
+			nil,
 		)
 
 		err = serverWrapper.RegisterTool("hybrid_search", hybridSearchHandler.HandleSDKToolCall)
@@ -218,6 +220,7 @@ func BenchmarkToolCall_Custom(b *testing.B) {
 		benchConfig.osClient,
 		benchConfig.embeddingClient,
 		benchConfig.hybridConfig,
+		nil,
 	)
 
 	toolRegistry := server.GetToolRegistry()
@@ -307,6 +310,7 @@ func BenchmarkToolCall_SDK(b *testing.B) {
 		benchConfig.osClient,
 		benchConfig.embeddingClient,
 		benchConfig.hybridConfig,
+		nil,
 	)
 
 	err = serverWrapper.RegisterTool("hybrid_search", hybridSearchHandler.HandleSDKToolCall)
@@ -389,6 +393,7 @@ func BenchmarkConcurrentToolCalls_Custom(b *testing.B) {
 		benchConfig.osClient,
 		benchConfig.embeddingClient,
 		benchConfig.hybridConfig,
+		nil,
 	)
 
 	toolRegistry := server.GetToolRegistry()
@@ -476,6 +481,7 @@ func BenchmarkConcurrentToolCalls_SDK(b *testing.B) {
 		benchConfig.osClient,
 		benchConfig.embeddingClient,
 		benchConfig.hybridConfig,
+		nil,
 	)
 
 	err = serverWrapper.RegisterTool("hybrid_search", hybridSearchHandler.HandleSDKToolCall)
@@ -564,6 +570,7 @@ func BenchmarkMemoryUsage_Custom(b *testing.B) {
 			benchConfig.osClient,
 			benchConfig.embeddingClient,
 			benchConfig.hybridConfig,
+			nil,
 		)
 
 		toolRegistry := server.GetToolRegistry()
@@ -645,6 +652,7 @@ func BenchmarkMemoryUsage_SDK(b *testing.B) {
 			benchConfig.osClient,
 			benchConfig.embeddingClient,
 			benchConfig.hybridConfig,
+			nil,
 		)
 
 		if err := serverWrapper.RegisterTool("hybrid_search", hybridSearchHandler.HandleSDKToolCall); err != nil {
@@ -739,7 +747,7 @@ func TestPerformanceRequirements(t *testing.T) {
 		serverConfig.Port = 9600
 		server := mcpserver.NewMCPServer(serverConfig)
 		hybridSearchTool := mcpserver.NewHybridSearchToolAdapter(
-			benchConfig.osClient, benchConfig.embeddingClient, benchConfig.hybridConfig)
+			benchConfig.osClient, benchConfig.embeddingClient, benchConfig.hybridConfig, nil)
 		toolRegistry := server.GetToolRegistry()
 		if err := toolRegistry.RegisterTool("hybrid_search", hybridSearchTool.GetToolDefinition(), hybridSearchTool.HandleToolCall); err != nil {
 			t.Fatalf("Failed to register tool: %v", err)
@@ -756,7 +764,7 @@ func TestPerformanceRequirements(t *testing.T) {
 		start = time.Now()
 		mcpConfig := &types.Config{MCPServerHost: "127.0.0.1", MCPServerPort: 9601, MCPSSEEnabled: false}
 		serverWrapper, _ := mcpserver.NewServerWrapper(mcpConfig)
-		hybridHandler := mcpserver.NewHybridSearchHandler(benchConfig.osClient, benchConfig.embeddingClient, benchConfig.hybridConfig)
+		hybridHandler := mcpserver.NewHybridSearchHandler(benchConfig.osClient, benchConfig.embeddingClient, benchConfig.hybridConfig, nil)
 		if err := serverWrapper.RegisterTool("hybrid_search", hybridHandler.HandleSDKToolCall); err != nil {
 			t.Fatalf("Failed to register tool: %v", err)
 		}

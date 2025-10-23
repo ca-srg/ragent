@@ -56,7 +56,7 @@ func (f *fakeClient) GetConversationReplies(params *slack.GetConversationReplies
 // fakeSearch satisfies SearchAdapter
 type fakeSearch struct{}
 
-func (f *fakeSearch) Search(ctx context.Context, q string) *slackbot.SearchResult {
+func (f *fakeSearch) Search(ctx context.Context, q string, opts slackbot.SearchOptions) *slackbot.SearchResult {
 	return &slackbot.SearchResult{}
 }
 

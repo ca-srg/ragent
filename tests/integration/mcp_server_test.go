@@ -37,7 +37,7 @@ func createTestMCPServer(t testing.TB) (*mcpserver.MCPServer, *mcpserver.HybridS
 	}
 
 	// Create hybrid search tool adapter
-	hybridSearchTool := mcpserver.NewHybridSearchToolAdapter(osClient, brClient, config)
+	hybridSearchTool := mcpserver.NewHybridSearchToolAdapter(osClient, brClient, config, nil)
 
 	// Create MCP server
 	serverConfig := mcpserver.DefaultMCPServerConfig()

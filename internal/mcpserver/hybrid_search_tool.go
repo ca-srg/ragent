@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/slacksearch"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/google/jsonschema-go/jsonschema"
 )
@@ -24,6 +27,7 @@ type HybridSearchToolAdapter struct {
 	hybridEngine    *opensearch.HybridSearchEngine
 	defaultConfig   *HybridSearchConfig
 	logger          *log.Logger
+	slackService    *slacksearch.SlackSearchService
 }
 
 // HybridSearchConfig contains configuration for hybrid search
@@ -38,7 +42,7 @@ type HybridSearchConfig struct {
 }
 
 // NewHybridSearchToolAdapter creates a new hybrid search tool adapter
-func NewHybridSearchToolAdapter(searchClient SearchClient, embeddingClient opensearch.EmbeddingClient, config *HybridSearchConfig) *HybridSearchToolAdapter {
+func NewHybridSearchToolAdapter(searchClient SearchClient, embeddingClient opensearch.EmbeddingClient, config *HybridSearchConfig, slackService *slacksearch.SlackSearchService) *HybridSearchToolAdapter {
 	if config == nil {
 		config = &HybridSearchConfig{
 			DefaultIndexName:      "ragent-docs",
@@ -59,6 +63,7 @@ func NewHybridSearchToolAdapter(searchClient SearchClient, embeddingClient opens
 		hybridEngine:    hybridEngine,
 		defaultConfig:   config,
 		logger:          log.New(log.Writer(), "[HybridSearchTool] ", log.LstdFlags),
+		slackService:    slackService,
 	}
 }
 
@@ -128,6 +133,19 @@ func (hsta *HybridSearchToolAdapter) GetToolDefinition() types.MCPToolDefinition
 				"description": "Enable Japanese NLP processing for better Japanese text matching",
 				"default":     true,
 			},
+			"enable_slack_search": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Include Slack workspace conversations in the response (requires server Slack configuration)",
+				"default":     false,
+			},
+			"slack_channels": map[string]interface{}{
+				"type":        "array",
+				"description": "Optional Slack channel names (without '#') to scope the conversation search",
+				"items": map[string]interface{}{
+					"type":      "string",
+					"minLength": 1,
+				},
+			},
 		},
 		"required": []string{"query"},
 	}
@@ -156,6 +174,10 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 	if err != nil {
 		return CreateToolCallErrorResult(fmt.Sprintf("Invalid parameters: %v", err)), err
 	}
+	if searchRequest.EnableSlackSearch && hsta.slackService == nil {
+		err := fmt.Errorf("slack search requested but not configured on the server")
+		return CreateToolCallErrorResult(err.Error()), err
+	}
 
 	// Test OpenSearch connection
 	if err := hsta.searchClient.HealthCheck(ctx); err != nil {
@@ -183,8 +205,23 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 		return CreateToolCallErrorResult(errorMsg), err
 	}
 
+	var slackResult *slacksearch.SlackSearchResult
+	if searchRequest.EnableSlackSearch && hsta.slackService != nil {
+		timeout := hsta.defaultConfig.DefaultTimeoutSeconds
+		if timeout <= 0 {
+			timeout = 10
+		}
+		slackCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		slackResult, err = hsta.slackService.Search(slackCtx, searchRequest.Query, searchRequest.SlackChannels)
+		cancel()
+		if err != nil {
+			hsta.logger.Printf("Slack search error: %v", err)
+			slackResult = nil
+		}
+	}
+
 	// Convert to MCP format
-	mcpResponse := hsta.convertToMCPResponse(searchRequest, result)
+	mcpResponse := hsta.convertToMCPResponse(searchRequest, result, slackResult)
 	responseJSON, err := json.MarshalIndent(mcpResponse, "", "  ")
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to serialize response: %v", err)
@@ -192,7 +229,7 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 	}
 
 	hsta.logger.Printf("Search completed successfully - found %d results in %v",
-		len(result.FusionResult.Documents), result.ExecutionTime)
+		mcpResponse.Total, result.ExecutionTime)
 
 	return CreateToolCallResult(string(responseJSON)), nil
 }
@@ -222,10 +259,23 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 
 	// Optional parameters
 	if topKInterface, ok := params["top_k"]; ok {
-		if topK, ok := topKInterface.(float64); ok {
-			request.TopK = int(topK)
-		} else if topKStr, ok := topKInterface.(string); ok {
-			if topK, err := strconv.Atoi(topKStr); err == nil {
+		switch v := topKInterface.(type) {
+		case float64:
+			request.TopK = int(v)
+		case float32:
+			request.TopK = int(v)
+		case int:
+			request.TopK = v
+		case int32:
+			request.TopK = int(v)
+		case int64:
+			request.TopK = int(v)
+		case json.Number:
+			if n, err := v.Int64(); err == nil {
+				request.TopK = int(n)
+			}
+		case string:
+			if topK, err := strconv.Atoi(v); err == nil {
 				request.TopK = topK
 			}
 		}
@@ -238,27 +288,26 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 	}
 
 	if bm25WeightInterface, ok := params["bm25_weight"]; ok {
-		if bm25Weight, ok := bm25WeightInterface.(float64); ok {
-			request.BM25Weight = bm25Weight
-		}
+		request.BM25Weight = parseFloatParam(bm25WeightInterface, request.BM25Weight)
 	}
 
 	if vectorWeightInterface, ok := params["vector_weight"]; ok {
-		if vectorWeight, ok := vectorWeightInterface.(float64); ok {
-			request.VectorWeight = vectorWeight
-		}
+		request.VectorWeight = parseFloatParam(vectorWeightInterface, request.VectorWeight)
 	}
 
 	if minScoreInterface, ok := params["min_score"]; ok {
-		if minScore, ok := minScoreInterface.(float64); ok {
-			request.MinScore = minScore
-		}
+		request.MinScore = parseFloatParam(minScoreInterface, request.MinScore)
 	}
 
 	if includeMetadataInterface, ok := params["include_metadata"]; ok {
 		if includeMetadata, ok := includeMetadataInterface.(bool); ok {
 			request.IncludeMetadata = includeMetadata
 		}
+	}
+
+	request.EnableSlackSearch = parseBoolParam(params["enable_slack_search"])
+	if channels := parseStringSliceParam(params["slack_channels"]); len(channels) > 0 {
+		request.SlackChannels = sanitizeSlackChannels(channels)
 	}
 
 	if filtersInterface, ok := params["filters"]; ok {
@@ -286,6 +335,30 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 	}
 
 	return request, nil
+}
+
+func parseFloatParam(value interface{}, fallback float64) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
+	case string:
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+	}
+	return fallback
 }
 
 // executeHybridSearch performs hybrid search
@@ -330,7 +403,7 @@ func (hsta *HybridSearchToolAdapter) buildHybridQuery(request *types.HybridSearc
 }
 
 // convertToMCPResponse converts HybridSearchResult to MCP response format
-func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridSearchRequest, result *opensearch.HybridSearchResult) *types.HybridSearchResponse {
+func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridSearchRequest, result *opensearch.HybridSearchResult, slackResult *slacksearch.SlackSearchResult) *types.HybridSearchResponse {
 	response := &types.HybridSearchResponse{
 		Query:          request.Query,
 		Total:          result.FusionResult.TotalHits,
@@ -409,6 +482,24 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridS
 		}
 	}
 
+	sources := make([]string, 0, 2)
+	if len(response.Results) > 0 {
+		sources = append(sources, "documents")
+	}
+
+	if slackResult != nil {
+		slackItems := convertSlackResult(slackResult)
+		if len(slackItems) > 0 {
+			response.SlackResults = slackItems
+			sources = append(sources, "slack")
+			response.Total += slackResult.TotalMatches
+		}
+	}
+
+	if len(sources) > 0 {
+		response.SearchSources = sources
+	}
+
 	return response
 }
 
@@ -420,4 +511,100 @@ func (hsta *HybridSearchToolAdapter) SetDefaultConfig(config *HybridSearchConfig
 // GetDefaultConfig returns the current default configuration
 func (hsta *HybridSearchToolAdapter) GetDefaultConfig() *HybridSearchConfig {
 	return hsta.defaultConfig
+}
+
+func parseBoolParam(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(v))
+		if err == nil {
+			return parsed
+		}
+	case json.Number:
+		parsed, err := strconv.ParseBool(v.String())
+		if err == nil {
+			return parsed
+		}
+	}
+	return false
+}
+
+func parseStringSliceParam(value interface{}) []string {
+	switch v := value.(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []interface{}:
+		result := make([]string, 0, len(v))
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				result = append(result, str)
+			}
+		}
+		return result
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return nil
+		}
+		parts := strings.Split(trimmed, ",")
+		result := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if s := strings.TrimSpace(part); s != "" {
+				result = append(result, s)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func sanitizeSlackChannels(channels []string) []string {
+	result := make([]string, 0, len(channels))
+	for _, ch := range channels {
+		if normalized := normalizeSlackChannel(ch); normalized != "" {
+			result = append(result, normalized)
+		}
+	}
+	return result
+}
+
+func normalizeSlackChannel(value string) string {
+	trimmed := strings.TrimSpace(value)
+	trimmed = strings.TrimPrefix(trimmed, "#")
+	if trimmed == "" {
+		return ""
+	}
+	return strings.ToLower(trimmed)
+}
+
+func convertSlackResult(src *slacksearch.SlackSearchResult) []types.HybridSearchSlackResult {
+	if src == nil {
+		return nil
+	}
+	results := make([]types.HybridSearchSlackResult, 0, len(src.EnrichedMessages))
+	for _, msg := range src.EnrichedMessages {
+		primary := msg.OriginalMessage
+		text := strings.TrimSpace(primary.Text)
+		if text == "" && len(msg.ThreadMessages) > 0 {
+			text = strings.TrimSpace(msg.ThreadMessages[0].Text)
+		}
+		results = append(results, types.HybridSearchSlackResult{
+			Message:   text,
+			Timestamp: primary.Timestamp,
+			User:      selectSlackUser(primary.User, primary.Username),
+			Channel:   primary.Channel,
+			Permalink: msg.Permalink,
+		})
+	}
+	return results
+}
+
+func selectSlackUser(userID, username string) string {
+	if strings.TrimSpace(username) != "" {
+		return username
+	}
+	return userID
 }

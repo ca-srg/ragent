@@ -127,7 +127,7 @@ func (p *Processor) ProcessMessage(ctx context.Context, botUserID string, msg *s
 	}
 
 	// Perform search
-	result := p.search.Search(ctx, searchQuery)
+	result := p.search.Search(ctx, searchQuery, SearchOptions{ChannelID: msg.Channel, ThreadTimestamp: msg.ThreadTimestamp})
 	if result != nil {
 		span.SetAttributes(
 			attribute.Int("slack.search.results", result.Total),
@@ -148,7 +148,8 @@ func (p *Processor) ProcessMessage(ctx context.Context, botUserID string, msg *s
 
 	// Format
 	opts := p.format.BuildSearchResult(query, result)
-	return &Reply{Channel: msg.Channel, MsgOptions: []slack.MsgOption{opts}}
+	reply := &Reply{Channel: msg.Channel, MsgOptions: []slack.MsgOption{opts}}
+	return reply
 }
 
 func otelTraceAttributes(msg *slack.MessageEvent, isMention, isDM bool) []attribute.KeyValue {

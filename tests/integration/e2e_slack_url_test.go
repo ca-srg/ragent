@@ -19,7 +19,7 @@ type stubSlackSearch struct {
 	lastQuery string
 }
 
-func (s *stubSlackSearch) Search(_ context.Context, query string) *slackbot.SearchResult {
+func (s *stubSlackSearch) Search(_ context.Context, query string, _ slackbot.SearchOptions) *slackbot.SearchResult {
 	s.lastQuery = query
 	return s.result
 }

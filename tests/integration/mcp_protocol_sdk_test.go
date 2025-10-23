@@ -260,7 +260,7 @@ func createSDKMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 		DefaultTimeoutSeconds: 30,
 	}
 
-	hybridSearchHandler := mcpserver.NewHybridSearchHandler(osClient, embeddingClient, hybridConfig)
+	hybridSearchHandler := mcpserver.NewHybridSearchHandler(osClient, embeddingClient, hybridConfig, nil)
 
 	// Register hybrid search tool using SDK interface
 	err = serverWrapper.RegisterTool("hybrid_search", hybridSearchHandler.HandleSDKToolCall)

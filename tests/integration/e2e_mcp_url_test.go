@@ -101,7 +101,7 @@ func TestHybridSearchToolAdapter_URLAwareMode(t *testing.T) {
 	stubSearch := newMCPStubSearchClient()
 	stubEmbedding := &mcpStubEmbeddingClient{vector: []float64{0.1, 0.2, 0.3}}
 	config := &mcpserver.HybridSearchConfig{DefaultIndexName: "docs-index", DefaultSize: 3}
-	adapter := mcpserver.NewHybridSearchToolAdapter(stubSearch, stubEmbedding, config)
+	adapter := mcpserver.NewHybridSearchToolAdapter(stubSearch, stubEmbedding, config, nil)
 
 	tcases := []struct {
 		name                string

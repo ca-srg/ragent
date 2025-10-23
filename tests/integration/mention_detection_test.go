@@ -11,7 +11,7 @@ import (
 // fakeSearch simply echoes the query
 type fakeSearch struct{}
 
-func (f *fakeSearch) Search(ctx context.Context, q string) *slackbot.SearchResult {
+func (f *fakeSearch) Search(ctx context.Context, q string, opts slackbot.SearchOptions) *slackbot.SearchResult {
 	return &slackbot.SearchResult{}
 }
 
