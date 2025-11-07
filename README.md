@@ -89,6 +89,227 @@ graph LR
     CT --> AN[Answer Generation (Claude / Bedrock Chat)]
 ```
 
+### Detailed Architecture Diagrams
+
+#### Command Overview
+
+RAGent provides five main commands, each serving a specific purpose in the RAG workflow:
+
+```mermaid
+flowchart LR
+    User([User])
+
+    User -->|1| Vectorize[vectorize<br/>Markdown → Vectors]
+    User -->|2| Query[query<br/>Semantic Search]
+    User -->|3| Chat[chat<br/>Interactive RAG]
+    User -->|4| SlackBot[slack-bot<br/>Slack Integration]
+    User -->|5| MCPServer[mcp-server<br/>Claude Desktop]
+
+    Vectorize -->|Store| S3V[(S3 Vectors)]
+    Vectorize -->|Index| OS[(OpenSearch)]
+
+    Query --> Hybrid[Hybrid Search<br/>BM25 + Vector]
+    Chat --> Hybrid
+    SlackBot --> Hybrid
+    MCPServer --> Hybrid
+
+    Hybrid --> S3V
+    Hybrid --> OS
+    Hybrid -->|Optional| Slack[(Slack API)]
+
+    Hybrid --> Results[Search Results]
+    Results --> Answer[Generated Answer<br/>via Bedrock Claude]
+
+    style Vectorize fill:#e1f5ff
+    style Query fill:#fff4e1
+    style Chat fill:#ffe1f5
+    style SlackBot fill:#e1ffe1
+    style MCPServer fill:#f5e1ff
+```
+
+#### Hybrid Search Flow
+
+The hybrid search engine combines BM25 keyword matching with vector similarity search:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as CLI Command
+    participant Bedrock as Amazon Bedrock
+    participant OS as OpenSearch
+    participant Slack as Slack API
+    participant Engine as Hybrid Engine
+
+    User->>CLI: query "検索クエリ"
+    CLI->>Bedrock: GenerateEmbedding(query)
+    Bedrock-->>CLI: Vector[1024]
+
+    par BM25 Search
+        CLI->>OS: BM25 Search (kuromoji tokenizer)
+        OS-->>CLI: BM25 Results (200 docs)
+    and Vector Search
+        CLI->>OS: k-NN Search (cosine similarity)
+        OS-->>CLI: Vector Results (100 docs)
+    end
+
+    CLI->>Engine: Fuse Results (RRF/weighted_sum)
+    Engine-->>CLI: Fused Results (top-k)
+
+    opt Slack Search Enabled
+        CLI->>Slack: search.messages(query)
+        Slack-->>CLI: Slack Messages
+        CLI->>Slack: conversations.history(threads)
+        Slack-->>CLI: Thread Context
+        CLI->>Engine: Merge Slack Context
+        Engine-->>CLI: Enriched Results
+    end
+
+    CLI-->>User: Combined Results + References
+```
+
+#### Slack Bot Processing
+
+Slack Bot listens for mentions and responds with RAG-powered answers:
+
+```mermaid
+sequenceDiagram
+    participant Slack as Slack Workspace
+    participant Bot as Slack Bot (RTM/Socket)
+    participant Detector as Mention Detector
+    participant Extractor as Query Extractor
+    participant Hybrid as Hybrid Search
+    participant SlackSearch as Slack Search Service
+    participant Formatter as Block Kit Formatter
+
+    Slack->>Bot: @ragent-bot "質問内容"
+    Bot->>Detector: Detect Mention
+    Detector-->>Bot: Mention Event
+
+    Bot->>Extractor: Extract Query
+    Extractor-->>Bot: Query Text
+
+    Bot->>Hybrid: Search(query)
+
+    par Document Search
+        Hybrid->>Hybrid: BM25 + k-NN
+        Hybrid-->>Bot: Document Results
+    and Slack Context Search (Optional)
+        Bot->>SlackSearch: SearchSlack(query, channels)
+        SlackSearch->>SlackSearch: Query Refinement Loop
+        SlackSearch->>Slack: search.messages API
+        Slack-->>SlackSearch: Messages
+        SlackSearch->>Slack: conversations.history (threads)
+        Slack-->>SlackSearch: Thread Timeline
+        SlackSearch->>SlackSearch: Sufficiency Check
+        SlackSearch-->>Bot: Slack Context
+    end
+
+    Bot->>Formatter: Format Results (Block Kit)
+    Formatter-->>Bot: Slack Blocks
+
+    Bot->>Slack: Post Message (with Blocks)
+    Slack-->>Slack: Display Answer + References
+```
+
+#### MCP Server Integration
+
+MCP Server exposes RAGent's hybrid search to Claude Desktop and other MCP-compatible tools:
+
+```mermaid
+sequenceDiagram
+    participant Claude as Claude Desktop
+    participant MCP as MCP Server
+    participant Auth as Auth Middleware
+    participant Handler as Hybrid Search Handler
+    participant Bedrock as Amazon Bedrock
+    participant OS as OpenSearch
+    participant Slack as Slack API
+
+    Claude->>MCP: JSON-RPC Request<br/>tools/call "hybrid_search"
+
+    MCP->>Auth: Authenticate Request
+
+    alt IP Authentication
+        Auth->>Auth: Check Client IP
+    else OIDC Authentication
+        Auth->>Auth: Verify JWT Token
+    else Bypass Range
+        Auth->>Auth: Check Bypass CIDR
+    end
+
+    Auth-->>MCP: Authentication OK
+
+    MCP->>Handler: Handle hybrid_search(query, options)
+
+    Handler->>Bedrock: GenerateEmbedding(query)
+    Bedrock-->>Handler: Vector[1024]
+
+    par OpenSearch BM25
+        Handler->>OS: BM25 Query
+        OS-->>Handler: BM25 Results
+    and OpenSearch k-NN
+        Handler->>OS: k-NN Query
+        OS-->>Handler: Vector Results
+    end
+
+    Handler->>Handler: Fuse Results (weighted_sum/RRF)
+
+    opt enable_slack_search=true
+        Handler->>Slack: Search Messages + Threads
+        Slack-->>Handler: Slack Context
+        Handler->>Handler: Merge Slack Results
+    end
+
+    Handler-->>MCP: Search Results (JSON)
+    MCP-->>Claude: JSON-RPC Response<br/>{results, slack_results, metadata}
+```
+
+#### Vectorization Pipeline
+
+The vectorize command processes markdown documents and stores them in dual backends:
+
+```mermaid
+flowchart TD
+    Start([vectorize command]) --> CheckFlags{Check Flags}
+
+    CheckFlags -->|--clear| Clear[Delete All Vectors<br/>+ Recreate Index]
+    CheckFlags -->|Normal| Scan
+    Clear --> Scan
+
+    Scan[Scan Markdown Directory] --> Files[List .md Files]
+
+    Files --> Loop{For Each File<br/>Parallel Processing}
+
+    Loop --> Read[Read File Content]
+    Read --> Extract[Extract Metadata<br/>FrontMatter Parser]
+    Extract --> Embed[Generate Embedding<br/>Bedrock Titan v2]
+
+    Embed --> Dual{Dual Backend Storage}
+
+    Dual --> S3[Store to S3 Vector<br/>with Metadata]
+    Dual --> OSIndex[Index to OpenSearch<br/>BM25 + k-NN fields]
+
+    S3 --> Stats1[Update Stats<br/>S3: Success/Fail]
+    OSIndex --> Stats2[Update Stats<br/>OS: Indexed/Skipped/Retry]
+
+    Stats1 --> Check{More Files?}
+    Stats2 --> Check
+
+    Check -->|Yes| Loop
+    Check -->|No| Report[Display Statistics<br/>Success Rate, Errors]
+
+    Report --> Follow{Follow Mode?}
+    Follow -->|Yes| Wait[Wait Interval<br/>Default: 30m]
+    Wait --> Scan
+    Follow -->|No| End([Completed])
+
+    style Start fill:#e1f5ff
+    style Clear fill:#ffe1e1
+    style Embed fill:#fff4e1
+    style Dual fill:#f5e1ff
+    style End fill:#e1ffe1
+```
+
 ## Prerequisites
 
 ### Prepare Markdown Documents

@@ -81,6 +81,227 @@ graph LR
     CT --> AN[Answer Generation (Claude / Bedrock Chat)]
 ```
 
+### 詳細アーキテクチャ図
+
+#### コマンド概要
+
+RAGentは5つの主要コマンドを提供し、それぞれRAGワークフローで特定の役割を果たします：
+
+```mermaid
+flowchart LR
+    User([ユーザー])
+
+    User -->|1| Vectorize[vectorize<br/>Markdown → ベクトル]
+    User -->|2| Query[query<br/>セマンティック検索]
+    User -->|3| Chat[chat<br/>対話型RAG]
+    User -->|4| SlackBot[slack-bot<br/>Slack統合]
+    User -->|5| MCPServer[mcp-server<br/>Claude Desktop]
+
+    Vectorize -->|保存| S3V[(S3 Vectors)]
+    Vectorize -->|インデックス| OS[(OpenSearch)]
+
+    Query --> Hybrid[ハイブリッド検索<br/>BM25 + ベクトル]
+    Chat --> Hybrid
+    SlackBot --> Hybrid
+    MCPServer --> Hybrid
+
+    Hybrid --> S3V
+    Hybrid --> OS
+    Hybrid -->|オプション| Slack[(Slack API)]
+
+    Hybrid --> Results[検索結果]
+    Results --> Answer[生成された回答<br/>via Bedrock Claude]
+
+    style Vectorize fill:#e1f5ff
+    style Query fill:#fff4e1
+    style Chat fill:#ffe1f5
+    style SlackBot fill:#e1ffe1
+    style MCPServer fill:#f5e1ff
+```
+
+#### ハイブリッド検索フロー
+
+ハイブリッド検索エンジンは、BM25キーワードマッチングとベクトル類似性検索を組み合わせます：
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant CLI as CLIコマンド
+    participant Bedrock as Amazon Bedrock
+    participant OS as OpenSearch
+    participant Slack as Slack API
+    participant Engine as ハイブリッドエンジン
+
+    User->>CLI: query "検索クエリ"
+    CLI->>Bedrock: GenerateEmbedding(query)
+    Bedrock-->>CLI: Vector[1024]
+
+    par BM25検索
+        CLI->>OS: BM25検索 (kuromoji tokenizer)
+        OS-->>CLI: BM25結果 (200件)
+    and ベクトル検索
+        CLI->>OS: k-NN検索 (コサイン類似度)
+        OS-->>CLI: ベクトル結果 (100件)
+    end
+
+    CLI->>Engine: 結果融合 (RRF/weighted_sum)
+    Engine-->>CLI: 融合結果 (top-k)
+
+    opt Slack検索有効時
+        CLI->>Slack: search.messages(query)
+        Slack-->>CLI: Slackメッセージ
+        CLI->>Slack: conversations.history(threads)
+        Slack-->>CLI: スレッドコンテキスト
+        CLI->>Engine: Slackコンテキストをマージ
+        Engine-->>CLI: 拡張結果
+    end
+
+    CLI-->>User: 統合結果 + 参考文献
+```
+
+#### Slack Bot処理フロー
+
+Slack Botはメンションをリッスンし、RAG駆動の回答を返します：
+
+```mermaid
+sequenceDiagram
+    participant Slack as Slackワークスペース
+    participant Bot as Slack Bot (RTM/Socket)
+    participant Detector as メンション検出
+    participant Extractor as クエリ抽出
+    participant Hybrid as ハイブリッド検索
+    participant SlackSearch as Slack検索サービス
+    participant Formatter as Block Kitフォーマッター
+
+    Slack->>Bot: @ragent-bot "質問内容"
+    Bot->>Detector: メンション検出
+    Detector-->>Bot: メンションイベント
+
+    Bot->>Extractor: クエリ抽出
+    Extractor-->>Bot: クエリテキスト
+
+    Bot->>Hybrid: Search(query)
+
+    par ドキュメント検索
+        Hybrid->>Hybrid: BM25 + k-NN
+        Hybrid-->>Bot: ドキュメント結果
+    and Slackコンテキスト検索（オプション）
+        Bot->>SlackSearch: SearchSlack(query, channels)
+        SlackSearch->>SlackSearch: クエリ改良ループ
+        SlackSearch->>Slack: search.messages API
+        Slack-->>SlackSearch: メッセージ
+        SlackSearch->>Slack: conversations.history (threads)
+        Slack-->>SlackSearch: スレッドタイムライン
+        SlackSearch->>SlackSearch: 十分性チェック
+        SlackSearch-->>Bot: Slackコンテキスト
+    end
+
+    Bot->>Formatter: 結果フォーマット (Block Kit)
+    Formatter-->>Bot: Slackブロック
+
+    Bot->>Slack: メッセージ投稿 (ブロック付き)
+    Slack-->>Slack: 回答 + 参考文献を表示
+```
+
+#### MCP Server統合
+
+MCP ServerはRAGentのハイブリッド検索をClaude DesktopなどのMCP対応ツールに公開します：
+
+```mermaid
+sequenceDiagram
+    participant Claude as Claude Desktop
+    participant MCP as MCPサーバー
+    participant Auth as 認証ミドルウェア
+    participant Handler as ハイブリッド検索ハンドラ
+    participant Bedrock as Amazon Bedrock
+    participant OS as OpenSearch
+    participant Slack as Slack API
+
+    Claude->>MCP: JSON-RPCリクエスト<br/>tools/call "hybrid_search"
+
+    MCP->>Auth: リクエスト認証
+
+    alt IP認証
+        Auth->>Auth: クライアントIPチェック
+    else OIDC認証
+        Auth->>Auth: JWTトークン検証
+    else バイパスレンジ
+        Auth->>Auth: バイパスCIDRチェック
+    end
+
+    Auth-->>MCP: 認証OK
+
+    MCP->>Handler: hybrid_search(query, options)を処理
+
+    Handler->>Bedrock: GenerateEmbedding(query)
+    Bedrock-->>Handler: Vector[1024]
+
+    par OpenSearch BM25
+        Handler->>OS: BM25クエリ
+        OS-->>Handler: BM25結果
+    and OpenSearch k-NN
+        Handler->>OS: k-NNクエリ
+        OS-->>Handler: ベクトル結果
+    end
+
+    Handler->>Handler: 結果融合 (weighted_sum/RRF)
+
+    opt enable_slack_search=true
+        Handler->>Slack: メッセージ + スレッド検索
+        Slack-->>Handler: Slackコンテキスト
+        Handler->>Handler: Slack結果をマージ
+    end
+
+    Handler-->>MCP: 検索結果 (JSON)
+    MCP-->>Claude: JSON-RPCレスポンス<br/>{results, slack_results, metadata}
+```
+
+#### ベクトル化パイプライン
+
+vectorizeコマンドはMarkdownドキュメントを処理し、デュアルバックエンドに保存します：
+
+```mermaid
+flowchart TD
+    Start([vectorize コマンド]) --> CheckFlags{フラグ確認}
+
+    CheckFlags -->|--clear| Clear[全ベクトル削除<br/>+ インデックス再作成]
+    CheckFlags -->|通常| Scan
+    Clear --> Scan
+
+    Scan[Markdownディレクトリスキャン] --> Files[.mdファイルリスト化]
+
+    Files --> Loop{各ファイル処理<br/>並行実行}
+
+    Loop --> Read[ファイル内容読み込み]
+    Read --> Extract[メタデータ抽出<br/>FrontMatterパーサー]
+    Extract --> Embed[埋め込み生成<br/>Bedrock Titan v2]
+
+    Embed --> Dual{デュアルバックエンド保存}
+
+    Dual --> S3[S3 Vectorへ保存<br/>メタデータ付き]
+    Dual --> OSIndex[OpenSearchへインデックス<br/>BM25 + k-NNフィールド]
+
+    S3 --> Stats1[統計更新<br/>S3: 成功/失敗]
+    OSIndex --> Stats2[統計更新<br/>OS: インデックス済/スキップ/リトライ]
+
+    Stats1 --> Check{さらにファイル?}
+    Stats2 --> Check
+
+    Check -->|はい| Loop
+    Check -->|いいえ| Report[統計表示<br/>成功率、エラー詳細]
+
+    Report --> Follow{フォローモード?}
+    Follow -->|はい| Wait[インターバル待機<br/>デフォルト: 30分]
+    Wait --> Scan
+    Follow -->|いいえ| End([完了])
+
+    style Start fill:#e1f5ff
+    style Clear fill:#ffe1e1
+    style Embed fill:#fff4e1
+    style Dual fill:#f5e1ff
+    style End fill:#e1ffe1
+```
+
 ## 前提条件
 
 ### Markdownドキュメントの準備
