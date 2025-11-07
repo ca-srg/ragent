@@ -21,10 +21,6 @@ import (
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 const (
 	defaultS3MaxRetries        = 5
 	defaultS3RetryDelay        = 2 * time.Second
@@ -226,11 +222,7 @@ func (s *S3VectorService) isTooManyRequestsError(err error) bool {
 	}
 
 	var tooManyRequests *types.TooManyRequestsException
-	if errors.As(err, &tooManyRequests) {
-		return true
-	}
-
-	return false
+	return errors.As(err, &tooManyRequests)
 }
 
 func (s *S3VectorService) calculateBackoffDelay(attempt int) time.Duration {
