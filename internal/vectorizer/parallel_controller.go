@@ -224,14 +224,24 @@ func (pc *ParallelController) processFile(
 	var anyS3Success = false
 	var anyOSSuccess = false
 
+	// Collect errors from goroutines
+	var s3Errors []error
+	var osErrors []error
+	var errorsMu sync.Mutex
+
 	log.Printf("Processing %s as %d chunk(s)", fileInfo.Name, len(chunks))
 
 	for _, chunk := range chunks {
 		// Generate embedding for this chunk
 		embedding, err := embeddingClient.GenerateEmbedding(ctx, chunk.Content)
 		if err != nil {
-			log.Printf("Failed to generate embedding for %s (chunk %d/%d): %v",
-				fileInfo.Name, chunk.ChunkIndex+1, chunk.TotalChunks, err)
+			embeddingErr := fmt.Errorf("chunk %d/%d: failed to generate embedding: %w",
+				chunk.ChunkIndex+1, chunk.TotalChunks, err)
+			log.Printf("Failed to generate embedding for %s: %v", fileInfo.Name, embeddingErr)
+			errorsMu.Lock()
+			s3Errors = append(s3Errors, embeddingErr)
+			osErrors = append(osErrors, embeddingErr)
+			errorsMu.Unlock()
 			allS3Success = false
 			allOSSuccess = false
 			continue
@@ -239,8 +249,13 @@ func (pc *ParallelController) processFile(
 
 		// Validate embedding is not empty
 		if len(embedding) == 0 {
-			log.Printf("ERROR: Generated embedding is empty for %s (chunk %d/%d)",
-				fileInfo.Name, chunk.ChunkIndex+1, chunk.TotalChunks)
+			embeddingErr := fmt.Errorf("chunk %d/%d: generated embedding is empty",
+				chunk.ChunkIndex+1, chunk.TotalChunks)
+			log.Printf("ERROR: Generated embedding is empty for %s: %v", fileInfo.Name, embeddingErr)
+			errorsMu.Lock()
+			s3Errors = append(s3Errors, embeddingErr)
+			osErrors = append(osErrors, embeddingErr)
+			errorsMu.Unlock()
 			allS3Success = false
 			allOSSuccess = false
 			continue
@@ -299,8 +314,12 @@ func (pc *ParallelController) processFile(
 				}
 			} else {
 				allS3Success = false
-				log.Printf("S3 Vector storage failed for %s (chunk %d/%d): %v",
-					fileInfo.Name, chunkInfo.ChunkIndex+1, chunkInfo.TotalChunks, err)
+				s3Err := fmt.Errorf("chunk %d/%d: S3 storage failed: %w",
+					chunkInfo.ChunkIndex+1, chunkInfo.TotalChunks, err)
+				log.Printf("S3 Vector storage failed for %s: %v", fileInfo.Name, s3Err)
+				errorsMu.Lock()
+				s3Errors = append(s3Errors, s3Err)
+				errorsMu.Unlock()
 			}
 			result.S3Duration += duration
 		}(&localVectorData, localChunk)
@@ -330,8 +349,12 @@ func (pc *ParallelController) processFile(
 				}
 			} else {
 				allOSSuccess = false
-				log.Printf("OpenSearch indexing failed for %s (chunk %d/%d): %v",
-					fileInfo.Name, chunkInfo.ChunkIndex+1, chunkInfo.TotalChunks, err)
+				osErr := fmt.Errorf("chunk %d/%d: OpenSearch indexing failed: %w",
+					chunkInfo.ChunkIndex+1, chunkInfo.TotalChunks, err)
+				log.Printf("OpenSearch indexing failed for %s: %v", fileInfo.Name, osErr)
+				errorsMu.Lock()
+				osErrors = append(osErrors, osErr)
+				errorsMu.Unlock()
 			}
 			result.OSDuration += duration
 		}(&localVectorData, localChunk)
@@ -346,11 +369,20 @@ func (pc *ParallelController) processFile(
 	result.S3Error = nil
 	result.OSError = nil
 
-	if !anyS3Success {
-		result.S3Error = fmt.Errorf("all chunks failed for S3 storage")
+	// Build detailed error messages with all collected errors
+	if !anyS3Success && len(s3Errors) > 0 {
+		if len(s3Errors) == 1 {
+			result.S3Error = fmt.Errorf("S3 storage failed: %w", s3Errors[0])
+		} else {
+			result.S3Error = fmt.Errorf("all %d chunks failed for S3 storage; first error: %w", len(s3Errors), s3Errors[0])
+		}
 	}
-	if !anyOSSuccess {
-		result.OSError = fmt.Errorf("all chunks failed for OpenSearch indexing")
+	if !anyOSSuccess && len(osErrors) > 0 {
+		if len(osErrors) == 1 {
+			result.OSError = fmt.Errorf("OpenSearch indexing failed: %w", osErrors[0])
+		} else {
+			result.OSError = fmt.Errorf("all %d chunks failed for OpenSearch indexing; first error: %w", len(osErrors), osErrors[0])
+		}
 	}
 
 	// Determine overall result

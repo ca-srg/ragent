@@ -93,10 +93,10 @@ var slackCmd = &cobra.Command{
 			cfg.SlackSearchMaxContextMessages = scfg.MaxResults * 5
 		}
 		if cfg.SlackSearchTimeoutSeconds <= 0 {
-			cfg.SlackSearchTimeoutSeconds = 5
+			cfg.SlackSearchTimeoutSeconds = 60
 		}
 
-		bedrockClient := bedrock.NewBedrockClient(awsCfg, cfg.ChatModel)
+		bedrockClient := bedrock.GetSharedBedrockClient(awsCfg, cfg.ChatModel)
 		slackService, err := slacksearch.NewSlackSearchService(cfg, client, bedrockClient, logger)
 		if err != nil {
 			logger.Printf("slack search initialization failed; continuing without Slack search: %v", err)
@@ -108,7 +108,7 @@ var slackCmd = &cobra.Command{
 			}
 		}
 
-		adapter := slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults, convSearcher)
+		adapter := slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults, convSearcher, &awsCfg)
 		threadBuilder := slackbot.NewThreadContextBuilder(client, scfg, logger)
 		processor := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, adapter, &slackbot.Formatter{}, threadBuilder)
 

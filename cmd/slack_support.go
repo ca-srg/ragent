@@ -46,7 +46,7 @@ func performSlackSearch(
 
 	slackClient := slack.New(slackCfg.BotToken)
 
-	chatClient := bedrock.NewBedrockClient(awsCfg, cfg.ChatModel)
+	chatClient := bedrock.GetSharedBedrockClient(awsCfg, cfg.ChatModel)
 
 	slackService, err := slacksearch.NewSlackSearchService(cfg, slackClient, chatClient, log.Default())
 	if err != nil {

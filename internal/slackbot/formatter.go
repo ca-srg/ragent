@@ -97,6 +97,9 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 		fmt.Sprintf("%d 件の参考文献から生成", result.Total),
 		fmt.Sprintf("%.0f ms", result.Elapsed.Seconds()*1000),
 	}
+	if result.ChatModel != "" {
+		metaParts = append(metaParts, fmt.Sprintf("モデル: %s", result.ChatModel))
+	}
 	if result.SearchMethod != "" {
 		metaParts = append(metaParts, fmt.Sprintf("モード: %s", result.SearchMethod))
 	}
@@ -361,6 +364,7 @@ type SearchResult struct {
 	Total             int
 	Elapsed           time.Duration
 	GeneratedResponse string // LLM generated response (for chat-style responses)
+	ChatModel         string
 	SearchMethod      string
 	URLDetected       bool
 	FallbackReason    string

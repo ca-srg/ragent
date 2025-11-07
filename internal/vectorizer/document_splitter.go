@@ -16,7 +16,7 @@ type DocumentSplitter struct {
 // NewDocumentSplitter creates a new document splitter with default settings
 func NewDocumentSplitter() *DocumentSplitter {
 	return &DocumentSplitter{
-		MaxTokens:     7000, // Safe limit for 8192 token model
+		MaxTokens:     6000, // Safe limit for 8192 token model with margin for estimation error
 		OverlapTokens: 200,  // Overlap for context preservation
 		TokensPerChar: 0.7,  // Japanese text typically has ~0.7 tokens per character
 	}

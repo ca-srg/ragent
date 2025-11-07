@@ -115,8 +115,8 @@ type Config struct {
 	AWSS3Region          string        `json:"aws_s3_region" env:"AWS_S3_REGION,default=us-east-1"`
 	ChatModel            string        `json:"chat_model" env:"CHAT_MODEL,default=global.anthropic.claude-sonnet-4-5-20250929-v1:0"`
 	Concurrency          int           `json:"concurrency" env:"VECTORIZER_CONCURRENCY,default=10"`
-	RetryAttempts        int           `json:"retry_attempts" env:"VECTORIZER_RETRY_ATTEMPTS,default=0"`
-	RetryDelay           time.Duration `json:"retry_delay" env:"VECTORIZER_RETRY_DELAY,default=2s"`
+	RetryAttempts        int           `json:"retry_attempts" env:"VECTORIZER_RETRY_ATTEMPTS,default=10"`
+	RetryDelay           time.Duration `json:"retry_delay" env:"VECTORIZER_RETRY_DELAY,default=10s"`
 	ExcludeCategoriesStr string        `json:"-" env:"EXCLUDE_CATEGORIES,default=日報"`
 	ExcludeCategories    []string      `json:"exclude_categories"`
 	// OpenSearch configuration
@@ -183,7 +183,7 @@ type Config struct {
 	SlackSearchContextWindowMinutes int    `json:"slack_search_context_window_minutes" env:"SLACK_SEARCH_CONTEXT_WINDOW_MINUTES,default=30"`
 	SlackSearchMaxIterations        int    `json:"slack_search_max_iterations" env:"SLACK_SEARCH_MAX_ITERATIONS,default=5"`
 	SlackSearchMaxContextMessages   int    `json:"slack_search_max_context_messages" env:"SLACK_SEARCH_MAX_CONTEXT_MESSAGES,default=100"`
-	SlackSearchTimeoutSeconds       int    `json:"slack_search_timeout_seconds" env:"SLACK_SEARCH_TIMEOUT_SECONDS,default=5"`
+	SlackSearchTimeoutSeconds       int    `json:"slack_search_timeout_seconds" env:"SLACK_SEARCH_TIMEOUT_SECONDS,default=60"`
 
 	// Observability (OpenTelemetry) configuration
 	OTelEnabled              bool    `json:"otel_enabled" env:"OTEL_ENABLED,default=false"`

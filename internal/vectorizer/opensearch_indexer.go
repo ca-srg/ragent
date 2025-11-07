@@ -325,6 +325,12 @@ func (osi *OpenSearchIndexerImpl) IndexExists(ctx context.Context, indexName str
 
 		resp, err := osi.client.GetClient().Indices.Exists(ctx, req)
 		if err != nil {
+			// Check if error is 404 (index does not exist) - this is a valid response
+			errStr := strings.ToLower(err.Error())
+			if strings.Contains(errStr, "404") || strings.Contains(errStr, "not found") {
+				exists = false
+				return nil
+			}
 			return osi.classifyOpenSearchError(err, indexName)
 		}
 
@@ -564,7 +570,6 @@ func (osi *OpenSearchIndexerImpl) CreateVectorIndexWithJapanese(ctx context.Cont
 								"kuromoji_stemmer",
 								"cjk_width",
 								"stop",
-								"synonym",
 							},
 						},
 						"kuromoji_search": map[string]interface{}{

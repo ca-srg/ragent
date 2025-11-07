@@ -131,7 +131,7 @@ func (s *HybridSearchService) Initialize(ctx context.Context) error {
 			return fmt.Errorf("failed to initialize Slack search service: %w", err)
 		}
 		if err := s.slackService.HealthCheck(ctx); err != nil {
-			return fmt.Errorf("Slack search health check failed: %w", err)
+			return fmt.Errorf("slack search health check failed: %w", err)
 		}
 	}
 
@@ -209,7 +209,7 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 	s.logger.Printf("Executing hybrid search: query='%s', index='%s'", request.Query, request.IndexName)
 
 	if request.EnableSlackSearch && s.slackService == nil {
-		err := fmt.Errorf("Slack search was requested but the Slack search service is not configured")
+		err := fmt.Errorf("slack search was requested but the slack search service is not configured")
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "slack_service_unavailable")
 		return nil, err

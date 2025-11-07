@@ -2,8 +2,12 @@ package s3vector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"math"
+	"math/rand"
+	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -11,27 +15,48 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3vectors"
 	"github.com/aws/aws-sdk-go-v2/service/s3vectors/document"
 	"github.com/aws/aws-sdk-go-v2/service/s3vectors/types"
+	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+const (
+	defaultS3MaxRetries        = 5
+	defaultS3RetryDelay        = 2 * time.Second
+	defaultS3BackoffMultiplier = 2.0
+)
+
 // S3VectorService implements the S3VectorClient interface
 type S3VectorService struct {
-	client           *s3vectors.Client
-	vectorBucketName string
-	indexName        string
-	region           string
+	client            *s3vectors.Client
+	vectorBucketName  string
+	indexName         string
+	region            string
+	maxRetries        int
+	retryDelay        time.Duration
+	backoffMultiplier float64
 }
 
 // S3Config holds the configuration for S3 Vectors client
 type S3Config struct {
-	VectorBucketName string
-	IndexName        string
-	Region           string
+	VectorBucketName  string
+	IndexName         string
+	Region            string
+	MaxRetries        int
+	RetryDelay        time.Duration
+	BackoffMultiplier float64
 }
 
 // NewS3VectorService creates a new S3 Vectors service
 func NewS3VectorService(cfg *S3Config) (*S3VectorService, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("s3 vector config cannot be nil")
+	}
 	if cfg.VectorBucketName == "" {
 		return nil, fmt.Errorf("vector bucket name is required")
 	}
@@ -50,11 +75,32 @@ func NewS3VectorService(cfg *S3Config) (*S3VectorService, error) {
 	// Create S3 Vectors client
 	s3VectorsClient := s3vectors.NewFromConfig(awsConfig)
 
+	maxRetries := cfg.MaxRetries
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	if maxRetries == 0 {
+		maxRetries = defaultS3MaxRetries
+	}
+
+	retryDelay := cfg.RetryDelay
+	if retryDelay <= 0 {
+		retryDelay = defaultS3RetryDelay
+	}
+
+	backoffMultiplier := cfg.BackoffMultiplier
+	if backoffMultiplier <= 1 {
+		backoffMultiplier = defaultS3BackoffMultiplier
+	}
+
 	return &S3VectorService{
-		client:           s3VectorsClient,
-		vectorBucketName: cfg.VectorBucketName,
-		indexName:        cfg.IndexName,
-		region:           cfg.Region,
+		client:            s3VectorsClient,
+		vectorBucketName:  cfg.VectorBucketName,
+		indexName:         cfg.IndexName,
+		region:            cfg.Region,
+		maxRetries:        maxRetries,
+		retryDelay:        retryDelay,
+		backoffMultiplier: backoffMultiplier,
 	}, nil
 }
 
@@ -127,8 +173,7 @@ func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *commontyp
 
 	vectorMetadata := document.NewLazyDocument(metadataMap)
 
-	// Upload vector to S3 Vectors
-	_, err := s.client.PutVectors(ctx, &s3vectors.PutVectorsInput{
+	input := &s3vectors.PutVectorsInput{
 		VectorBucketName: aws.String(s.vectorBucketName),
 		IndexName:        aws.String(s.indexName),
 		Vectors: []types.PutInputVector{
@@ -140,13 +185,86 @@ func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *commontyp
 				Metadata: vectorMetadata,
 			},
 		},
-	})
+	}
 
-	if err != nil {
-		return fmt.Errorf("failed to upload vector to S3 Vectors: %w", err)
+	for attempt := 0; attempt <= s.maxRetries; attempt++ {
+		_, err := s.client.PutVectors(ctx, input)
+		if err == nil {
+			return nil
+		}
+
+		if !s.isTooManyRequestsError(err) || attempt == s.maxRetries {
+			return fmt.Errorf("failed to upload vector to S3 Vectors after %d attempt(s): %w", attempt+1, err)
+		}
+
+		delay := s.calculateBackoffDelay(attempt + 1)
+		log.Printf("WARN: S3 Vectors throttled on PutVectors (attempt %d/%d). backing off for %s: %v", attempt+1, s.maxRetries+1, delay, err)
+
+		if err := s.waitForRetry(ctx, delay); err != nil {
+			return fmt.Errorf("context cancelled while waiting to retry S3 Vectors upload: %w", err)
+		}
 	}
 
 	return nil
+}
+
+func (s *S3VectorService) isTooManyRequestsError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		if apiErr.ErrorCode() == "TooManyRequestsException" || apiErr.ErrorCode() == "ThrottlingException" {
+			return true
+		}
+	}
+
+	var responseErr *smithyhttp.ResponseError
+	if errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == http.StatusTooManyRequests {
+		return true
+	}
+
+	var tooManyRequests *types.TooManyRequestsException
+	if errors.As(err, &tooManyRequests) {
+		return true
+	}
+
+	return false
+}
+
+func (s *S3VectorService) calculateBackoffDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+
+	baseDelay := float64(s.retryDelay)
+	multiplier := math.Pow(s.backoffMultiplier, float64(attempt-1))
+	delay := time.Duration(baseDelay * multiplier)
+
+	jitterRange := delay / 4
+	if jitterRange <= 0 {
+		jitterRange = time.Millisecond
+	}
+
+	jitter := time.Duration(rand.Int63n(int64(jitterRange)))
+	return delay + jitter
+}
+
+func (s *S3VectorService) waitForRetry(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return ctx.Err()
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // truncateUTF8ByBytes returns a string truncated so that its UTF-8 byte length

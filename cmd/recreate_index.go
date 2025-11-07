@@ -76,13 +76,38 @@ func runRecreateIndex(cmd *cobra.Command, args []string) error {
 			log.Printf("Successfully deleted index: %s", indexName)
 		}
 
-		// Wait a bit for the deletion to propagate
-		time.Sleep(2 * time.Second)
+		// Wait for the deletion to propagate with confirmation loop
+		maxWaitTime := 30 * time.Second
+		checkInterval := 1 * time.Second
+		startTime := time.Now()
+
+		log.Printf("Waiting for index deletion to complete...")
+		for {
+			exists, err := indexer.IndexExists(ctx, indexName)
+			if err != nil {
+				log.Printf("Warning: Could not check if index exists: %v", err)
+				break
+			}
+
+			if !exists {
+				log.Printf("Index deletion confirmed after %v", time.Since(startTime))
+				break
+			}
+
+			if time.Since(startTime) >= maxWaitTime {
+				log.Printf("Warning: Index still exists after %v, proceeding anyway", maxWaitTime)
+				break
+			}
+
+			time.Sleep(checkInterval)
+		}
 	}
 
 	// Create new index with correct mapping
 	log.Printf("Creating new index with proper mapping: %s", indexName)
-	if err := indexer.CreateIndex(ctx, indexName, 1024); err != nil {
+	// Use Japanese-optimized index creation with kuromoji analyzer for better BM25 search
+	err = indexer.CreateVectorIndexWithJapanese(ctx, indexName, 1024)
+	if err != nil {
 		return fmt.Errorf("failed to create index: %w", err)
 	}
 
