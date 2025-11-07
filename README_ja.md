@@ -78,7 +78,7 @@ graph LR
     SL[Slack Workspace] -->|Conversations API| SS[SlackSearch Service]
     SS --> HY
     HY --> CT[Context Builder]
-    CT --> AN[Answer Generation (Claude \/ Bedrock Chat)]
+    CT --> AN[Answer Generation (Claude, Bedrock Chat)]
 ```
 
 ### 詳細アーキテクチャ図
