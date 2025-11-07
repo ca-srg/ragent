@@ -1,7 +1,6 @@
 SHELL := /bin/bash
 
-BUILD_DIR := build
-LINUX_ARM64_BIN := $(BUILD_DIR)/ragent-linux-arm64
+LINUX_ARM64_BIN := ./ragent-linux-arm64
 
 .PHONY: lint fmtvet build-linux-arm64 deploy-ec2
 
@@ -18,11 +17,8 @@ lint: fmtvet
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint が見つかりません。インストール手順: https://golangci-lint.run/"; exit 1; }
 	@golangci-lint run
 
-$(BUILD_DIR):
-	@mkdir -p $(BUILD_DIR)
-
 ## Linux/arm64 向けの単体バイナリをビルド（デプロイ前提）
-build-linux-arm64: $(BUILD_DIR)
+build-linux-arm64:
 	@echo "==> GOOS=linux GOARCH=arm64 go build"
 	@GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64_BIN) .
 

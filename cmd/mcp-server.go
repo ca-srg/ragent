@@ -8,12 +8,14 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/slack-go/slack"
 	"github.com/spf13/cobra"
 
 	appcfg "github.com/ca-srg/ragent/internal/config"
@@ -21,6 +23,7 @@ import (
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/observability"
 	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/slacksearch"
 )
 
 var (
@@ -360,6 +363,31 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	// Initialize Bedrock embedding client
 	embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
 
+	// Optionally initialize Slack search service
+	var slackService *slacksearch.SlackSearchService
+	if cfg.SlackSearchEnabled {
+		slackCfg, slackErr := appcfg.LoadSlack()
+		if slackErr != nil {
+			logger.Printf("Slack configuration not available: %v", slackErr)
+		} else if strings.TrimSpace(slackCfg.BotToken) == "" {
+			logger.Printf("Slack search disabled: SLACK_BOT_TOKEN is not configured")
+		} else if strings.TrimSpace(cfg.SlackUserToken) == "" {
+			logger.Printf("Slack search disabled: SLACK_USER_TOKEN is not configured")
+		} else {
+			slackClient := slack.New(slackCfg.BotToken)
+			slackBedrockClient := bedrock.NewBedrockClient(awsConfig, cfg.ChatModel)
+			service, serr := slacksearch.NewSlackSearchService(cfg, slackClient, slackBedrockClient, logger)
+			if serr != nil {
+				logger.Printf("Slack search initialization failed: %v", serr)
+			} else if err := service.Initialize(ctx); err != nil {
+				logger.Printf("Slack search dependencies not ready: %v", err)
+			} else {
+				slackService = service
+				logger.Printf("Slack search support enabled for MCP hybrid_search tool")
+			}
+		}
+	}
+
 	// Create hybrid search tool configuration
 	hybridSearchConfig := &mcpserver.HybridSearchConfig{
 		DefaultIndexName:      cfg.OpenSearchIndex,
@@ -372,7 +400,7 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create hybrid search tool handler for SDK integration
-	hybridSearchHandler := mcpserver.NewHybridSearchHandler(osClient, embeddingClient, hybridSearchConfig)
+	hybridSearchHandler := mcpserver.NewHybridSearchHandler(osClient, embeddingClient, hybridSearchConfig, slackService)
 
 	// Create function wrapper to match mcp.ToolHandler signature
 	toolHandlerFunc := hybridSearchHandler.HandleSDKToolCall
@@ -460,7 +488,7 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 	toolCopy.Name = toolName
 
 	toolCopy.Description = fmt.Sprintf(
-		"ハイブリッド検索ツール。RAGent の OpenSearch (BM25) と Titan ベクトル検索を組み合わせ、最大 %d 件の候補を融合スコアで返します。日本語・英語いずれの自然文クエリにも対応し、手順書・設計資料・ナレッジノートを横断的に調べる用途を想定しています。レスポンスは JSON テキストで、各ドキュメントのタイトル/抜粋/スコア/パス/メタデータ (任意) を含みます。\n\nEnglish: Run hybrid retrieval across the Markdown knowledge base by blending BM25 and Titan embeddings on Amazon OpenSearch. Returns up to %d ranked documents with fused scores plus optional metadata.",
+		"ハイブリッド検索ツール。RAGent の OpenSearch (BM25) と Titan ベクトル検索を組み合わせ、最大 %d 件の候補を融合スコアで返します。日本語・英語いずれの自然文クエリにも対応し、手順書・設計資料・ナレッジノートを横断的に調べる用途を想定しています。必要に応じて `enable_slack_search` を true にすることで社内 Slack の会話も同時に検索でき、`slack_channels` でチャンネルを絞り込めます。レスポンスは JSON テキストで、各ドキュメントのタイトル/抜粋/スコア/パス/メタデータ (任意) を含みます。\n\nEnglish: Run hybrid retrieval across the Markdown knowledge base by blending BM25 and Titan embeddings on Amazon OpenSearch. Returns up to %d ranked documents with fused scores plus optional metadata. Set `enable_slack_search` to true to enrich the response with Slack conversations and use `slack_channels` to scope the workspace search.",
 		defaults.DefaultSize,
 		defaults.DefaultSize,
 	)
@@ -585,6 +613,16 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 	nlpProp.Description = "日本語の形態素解析を有効にするかどうか。現在はサーバー設定に従って動作し、明示的に変更するオプションはプレビュー扱いです。"
 	nlpProp.Default = toRaw(defaults.DefaultUseJapaneseNLP)
 
+	slackToggleProp := ensureProperty("enable_slack_search", "boolean")
+	slackToggleProp.Title = "Enable Slack Search"
+	slackToggleProp.Description = "Slack のワークスペース会話を同時に検索する場合は true を指定します。サーバー側で Slack の資格情報が設定されている必要があります。"
+	slackToggleProp.Default = toRaw(false)
+
+	slackChannelsProp := ensureProperty("slack_channels", "array")
+	slackChannelsProp.Title = "Slack Channels"
+	slackChannelsProp.Description = "Slack 検索対象のチャンネル名リスト。先頭の # を付けずに指定します。省略した場合は全チャンネルが対象です。"
+	slackChannelsProp.Items = &jsonschema.Schema{Type: "string", Description: "Slack channel name (without '#')."}
+
 	schema.Properties["query"] = queryProp
 	schema.Properties["top_k"] = topKProp
 	schema.Properties["filters"] = filtersProp
@@ -595,6 +633,8 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 	schema.Properties["include_metadata"] = includeMetadataProp
 	schema.Properties["fusion_method"] = fusionMethodProp
 	schema.Properties["use_japanese_nlp"] = nlpProp
+	schema.Properties["enable_slack_search"] = slackToggleProp
+	schema.Properties["slack_channels"] = slackChannelsProp
 
 	schema.Examples = []any{
 		map[string]any{
@@ -606,10 +646,12 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 			"include_metadata": true,
 		},
 		map[string]any{
-			"query":       "Explain the monitoring setup for the embedding pipeline",
-			"search_mode": "vector",
-			"min_score":   0.25,
-			"filters":     map[string]any{"tags": "observability"},
+			"query":               "Explain the monitoring setup for the embedding pipeline",
+			"search_mode":         "vector",
+			"min_score":           0.25,
+			"filters":             map[string]any{"tags": "observability"},
+			"enable_slack_search": true,
+			"slack_channels":      []string{"incident-updates"},
 		},
 	}
 

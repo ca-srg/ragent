@@ -48,9 +48,9 @@ type ChatRequest struct {
 	Messages         []ChatMessage `json:"messages"`
 	MaxTokens        int           `json:"max_tokens,omitempty"`
 	Temperature      float64       `json:"temperature,omitempty"`
-	TopP             float64       `json:"top_p,omitempty"`
 	StopSequences    []string      `json:"stop_sequences,omitempty"`
 	AnthropicVersion string        `json:"anthropic_version,omitempty"`
+	System           string        `json:"system,omitempty"`
 }
 
 // ChatResponse represents the response from chat models
@@ -149,13 +149,31 @@ func (c *BedrockClient) GenerateChatResponse(ctx context.Context, messages []Cha
 		return "", fmt.Errorf("messages cannot be empty")
 	}
 
+	var systemPrompts []string
+	sanitized := make([]ChatMessage, 0, len(messages))
+	for _, msg := range messages {
+		switch strings.ToLower(msg.Role) {
+		case "system":
+			systemPrompts = append(systemPrompts, msg.Content)
+		case "user", "assistant":
+			sanitized = append(sanitized, msg)
+		default:
+			sanitized = append(sanitized, ChatMessage{Role: msg.Role, Content: msg.Content})
+		}
+	}
+	if len(sanitized) == 0 {
+		return "", fmt.Errorf("chat messages must include at least one user or assistant message")
+	}
+
 	// Prepare request payload for Claude models in AWS Bedrock format
 	request := ChatRequest{
-		Messages:         messages,
+		Messages:         sanitized,
 		MaxTokens:        4000,
 		Temperature:      0.7,
-		TopP:             0.9,
 		AnthropicVersion: "bedrock-2023-05-31",
+	}
+	if len(systemPrompts) > 0 {
+		request.System = strings.Join(systemPrompts, "\n\n")
 	}
 
 	requestBody, err := json.Marshal(request)

@@ -222,7 +222,7 @@ func createE2EMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 	}
 
 	// Create hybrid search tool adapter with real dependencies
-	hybridSearchTool := mcpserver.NewHybridSearchToolAdapter(osClient, embeddingClient, hybridConfig)
+	hybridSearchTool := mcpserver.NewHybridSearchToolAdapter(osClient, embeddingClient, hybridConfig, nil)
 
 	// Create MCP server with random port
 	serverConfig := mcpserver.DefaultMCPServerConfig()
@@ -290,7 +290,7 @@ func simulateChatCommand(t *testing.T, query string, cfg *config.Config, embeddi
 	defer cancel()
 
 	// Create and initialize hybrid search service (same as chat command)
-	searchService, err := search.NewHybridSearchService(cfg, embeddingClient)
+	searchService, err := search.NewHybridSearchService(cfg, embeddingClient, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create search service: %w", err)
 	}
@@ -956,7 +956,7 @@ func createSDKE2EServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 		DefaultTimeoutSeconds: 30,
 	}
 
-	hybridSearchHandler := mcpserver.NewHybridSearchHandler(osClient, embeddingClient, hybridConfig)
+	hybridSearchHandler := mcpserver.NewHybridSearchHandler(osClient, embeddingClient, hybridConfig, nil)
 
 	// Register hybrid search tool
 	err = serverWrapper.RegisterTool("hybrid_search", hybridSearchHandler.HandleSDKToolCall)

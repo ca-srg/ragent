@@ -127,6 +127,8 @@ func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.Pr
 			VectorBucketName: cfg.AWSS3VectorBucket,
 			IndexName:        cfg.AWSS3VectorIndex,
 			Region:           cfg.AWSS3Region,
+			MaxRetries:       cfg.RetryAttempts,
+			RetryDelay:       cfg.RetryDelay,
 		}
 		s3Client, err := s3vector.NewS3VectorService(s3Config)
 		if err != nil {
@@ -326,6 +328,8 @@ func createVectorizerService(cfg *types.Config) (*vectorizer.VectorizerService, 
 		VectorBucketName: cfg.AWSS3VectorBucket,
 		IndexName:        cfg.AWSS3VectorIndex,
 		Region:           cfg.AWSS3Region,
+		MaxRetries:       cfg.RetryAttempts,
+		RetryDelay:       cfg.RetryDelay,
 	}
 	s3ClientImpl, err := s3vector.NewS3VectorService(s3Config)
 	if err != nil {

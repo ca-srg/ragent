@@ -12,16 +12,26 @@ import (
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 )
 
+// OpenSearchClient defines the behavior required from an OpenSearch client.
+type OpenSearchClient interface {
+	WaitForRateLimit(context.Context) error
+	GetClient() *opensearchapi.Client
+	ExecuteWithRetry(context.Context, opensearch.RetryableOperation, string) error
+	RecordRequest(time.Duration, bool)
+	HealthCheck(context.Context) error
+	CreateVectorIndex(context.Context, string, int, string, string) error
+}
+
 // OpenSearchIndexerImpl implements the OpenSearchIndexer interface
 type OpenSearchIndexerImpl struct {
-	client           *opensearch.Client
+	client           OpenSearchClient
 	textProcessor    *opensearch.JapaneseTextProcessor
 	defaultIndex     string
 	defaultDimension int
 }
 
 // NewOpenSearchIndexer creates a new OpenSearchIndexer implementation
-func NewOpenSearchIndexer(client *opensearch.Client, defaultIndex string, defaultDimension int) *OpenSearchIndexerImpl {
+func NewOpenSearchIndexer(client OpenSearchClient, defaultIndex string, defaultDimension int) *OpenSearchIndexerImpl {
 	return &OpenSearchIndexerImpl{
 		client:           client,
 		textProcessor:    opensearch.NewJapaneseTextProcessor(),
@@ -315,6 +325,12 @@ func (osi *OpenSearchIndexerImpl) IndexExists(ctx context.Context, indexName str
 
 		resp, err := osi.client.GetClient().Indices.Exists(ctx, req)
 		if err != nil {
+			// Check if error is 404 (index does not exist) - this is a valid response
+			errStr := strings.ToLower(err.Error())
+			if strings.Contains(errStr, "404") || strings.Contains(errStr, "not found") {
+				exists = false
+				return nil
+			}
 			return osi.classifyOpenSearchError(err, indexName)
 		}
 
@@ -554,7 +570,6 @@ func (osi *OpenSearchIndexerImpl) CreateVectorIndexWithJapanese(ctx context.Cont
 								"kuromoji_stemmer",
 								"cjk_width",
 								"stop",
-								"synonym",
 							},
 						},
 						"kuromoji_search": map[string]interface{}{

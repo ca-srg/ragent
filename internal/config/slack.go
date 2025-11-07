@@ -8,7 +8,8 @@ import (
 
 // SlackConfig holds Slack-related settings
 type SlackConfig struct {
-	BotToken string `env:"SLACK_BOT_TOKEN,required=true"`
+	BotToken  string `env:"SLACK_BOT_TOKEN,required=true"`
+	UserToken string `env:"SLACK_USER_TOKEN,required=false"`
 	// App-level token for Socket Mode (xapp-)
 	AppToken string `env:"SLACK_APP_TOKEN,required=false"`
 	// Enable Socket Mode when true (requires AppToken)

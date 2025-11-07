@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/ca-srg/ragent/internal/search"
+	"github.com/ca-srg/ragent/internal/slacksearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
@@ -27,6 +29,19 @@ var (
 	chatVectorWeight   float64
 	chatUseJapaneseNLP bool
 )
+
+type chatResponder interface {
+	GenerateChatResponse(ctx context.Context, messages []bedrock.ChatMessage) (string, error)
+}
+
+type hybridSearchInitializer interface {
+	Initialize(ctx context.Context) error
+	Search(ctx context.Context, request *search.SearchRequest) (*search.SearchResponse, error)
+}
+
+var newHybridSearchServiceFunc = func(cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) (hybridSearchInitializer, error) {
+	return search.NewHybridSearchService(cfg, embeddingClient, nil, nil)
+}
 
 var chatCmd = &cobra.Command{
 	Use:   "chat",
@@ -107,10 +122,10 @@ func runChat(cmd *cobra.Command, args []string) error {
 	fmt.Println("=============================")
 	fmt.Println()
 
-	return startChatLoop(chatClient, embeddingClient, cfg)
+	return startChatLoop(chatClient, embeddingClient, cfg, awsConfig)
 }
 
-func startChatLoop(chatClient, embeddingClient *bedrock.BedrockClient, cfg *commontypes.Config) error {
+func startChatLoop(chatClient chatResponder, embeddingClient *bedrock.BedrockClient, cfg *commontypes.Config, awsCfg aws.Config) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	var conversationHistory []bedrock.ChatMessage
 
@@ -142,7 +157,7 @@ func startChatLoop(chatClient, embeddingClient *bedrock.BedrockClient, cfg *comm
 		}
 
 		// Generate response
-		response, err := generateChatResponse(userInput, conversationHistory, chatClient, embeddingClient, cfg)
+		response, err := generateChatResponse(userInput, conversationHistory, chatClient, embeddingClient, cfg, awsCfg, cfg.SlackSearchEnabled)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
@@ -160,13 +175,19 @@ func startChatLoop(chatClient, embeddingClient *bedrock.BedrockClient, cfg *comm
 	return scanner.Err()
 }
 
-func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient, embeddingClient *bedrock.BedrockClient, cfg *commontypes.Config) (string, error) {
+func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient chatResponder, embeddingClient *bedrock.BedrockClient, cfg *commontypes.Config, awsCfg aws.Config, slackEnabled bool) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	if slackEnabled {
+		fmt.Println("Searching documents and Slack conversations...")
+	} else {
+		fmt.Println("Searching documents...")
+	}
+
 	// Create and initialize hybrid search service
 	log.Printf("Searching for relevant context using hybrid mode...")
-	searchService, err := search.NewHybridSearchService(cfg, embeddingClient)
+	searchService, err := newHybridSearchServiceFunc(cfg, embeddingClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create search service: %w", err)
 	}
@@ -194,6 +215,23 @@ func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 
 	contextParts := searchResponse.ContextParts
 	references := searchResponse.References
+
+	var slackResult *slacksearch.SlackSearchResult
+	if slackEnabled {
+		var slackErr error
+		slackResult, slackErr = slackSearchRunner(ctx, cfg, awsCfg, embeddingClient, userInput, nil, func(iteration, max int) {
+			fmt.Printf("Refining Slack search (iteration %d/%d)...\n", iteration, max)
+		})
+		if slackErr != nil {
+			fmt.Printf("Slack search unavailable: %v\n", slackErr)
+		} else if slackResult != nil {
+			fmt.Printf("Slack search completed in %d iteration(s).\n", slackResult.IterationCount)
+			printSlackResults(slackResult)
+			if slackPrompt := slackContextForPrompt(slackResult); slackPrompt != "" {
+				contextParts = append(contextParts, slackPrompt)
+			}
+		}
+	}
 
 	// Prepare messages with context
 	messages := make([]bedrock.ChatMessage, len(history))
@@ -235,18 +273,33 @@ func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 		return "", fmt.Errorf("failed to generate chat response: %w", err)
 	}
 
-	// Add references to response if any were found
-	if len(references) > 0 {
-		var referenceBuilder strings.Builder
-		referenceBuilder.WriteString(response)
-		referenceBuilder.WriteString("\n\n## 参考文献\n\n")
+	// Append references and Slack context for the user-facing answer
+	if len(references) > 0 || (slackResult != nil && len(slackResult.EnrichedMessages) > 0) || slackEnabled {
+		var builder strings.Builder
+		builder.WriteString(response)
 
-		// Display title: reference format
-		for title, ref := range references {
-			referenceBuilder.WriteString(fmt.Sprintf("- %s: %s\n", title, ref))
+		if len(references) > 0 {
+			builder.WriteString("\n\n## 参考文献\n\n")
+			for title, ref := range references {
+				builder.WriteString(fmt.Sprintf("- %s: %s\n", title, ref))
+			}
 		}
 
-		response = referenceBuilder.String()
+		if slackResult != nil && len(slackResult.EnrichedMessages) > 0 {
+			builder.WriteString("\n\n## Slack Conversations\n\n")
+			for _, msg := range slackResult.EnrichedMessages {
+				orig := msg.OriginalMessage
+				builder.WriteString(fmt.Sprintf("- #%s (%s): %s", channelName(orig.Channel), humanTimestamp(orig.Timestamp), strings.TrimSpace(orig.Text)))
+				if msg.Permalink != "" {
+					builder.WriteString(fmt.Sprintf(" (%s)", msg.Permalink))
+				}
+				builder.WriteString("\n")
+			}
+		} else if slackEnabled {
+			builder.WriteString("\n\n## Slack Conversations\n\n- No Slack conversations found.\n")
+		}
+
+		response = builder.String()
 	}
 
 	return response, nil

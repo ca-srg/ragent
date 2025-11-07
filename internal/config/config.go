@@ -105,11 +105,53 @@ func validateConfig(config *Config) error {
 		}
 	}
 
+	// Validate Slack search configuration (always validate to catch early misconfiguration)
+	if err := validateSlackSearchConfig(config); err != nil {
+		return fmt.Errorf("slack search configuration validation failed: %w", err)
+	}
+
 	// Validate OpenTelemetry configuration if enabled
 	if config.OTelEnabled {
 		if err := validateOTelConfig(config); err != nil {
 			return fmt.Errorf("OpenTelemetry configuration validation failed: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// validateSlackSearchConfig validates configuration for the Slack search feature.
+func validateSlackSearchConfig(config *Config) error {
+	if !config.SlackSearchEnabled {
+		return nil
+	}
+
+	if strings.TrimSpace(config.SlackUserToken) == "" {
+		return fmt.Errorf("SLACK_USER_TOKEN is required when Slack search is enabled")
+	}
+
+	if config.SlackSearchMaxResults <= 0 || config.SlackSearchMaxResults > 100 {
+		return fmt.Errorf("SLACK_SEARCH_MAX_RESULTS must be between 1 and 100 (got %d)", config.SlackSearchMaxResults)
+	}
+
+	if config.SlackSearchMaxRetries < 0 || config.SlackSearchMaxRetries > 10 {
+		return fmt.Errorf("SLACK_SEARCH_MAX_RETRIES must be between 0 and 10 (got %d)", config.SlackSearchMaxRetries)
+	}
+
+	if config.SlackSearchContextWindowMinutes <= 0 || config.SlackSearchContextWindowMinutes > 720 {
+		return fmt.Errorf("SLACK_SEARCH_CONTEXT_WINDOW_MINUTES must be between 1 and 720 (got %d)", config.SlackSearchContextWindowMinutes)
+	}
+
+	if config.SlackSearchMaxIterations <= 0 || config.SlackSearchMaxIterations > 10 {
+		return fmt.Errorf("SLACK_SEARCH_MAX_ITERATIONS must be between 1 and 10 (got %d)", config.SlackSearchMaxIterations)
+	}
+
+	if config.SlackSearchMaxContextMessages <= 0 || config.SlackSearchMaxContextMessages > 500 {
+		return fmt.Errorf("SLACK_SEARCH_MAX_CONTEXT_MESSAGES must be between 1 and 500 (got %d)", config.SlackSearchMaxContextMessages)
+	}
+
+	if config.SlackSearchTimeoutSeconds <= 0 || config.SlackSearchTimeoutSeconds > 60 {
+		return fmt.Errorf("SLACK_SEARCH_TIMEOUT_SECONDS must be between 1 and 60 (got %d)", config.SlackSearchTimeoutSeconds)
 	}
 
 	return nil

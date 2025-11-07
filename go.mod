@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.31.4
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.37.2
 	github.com/aws/aws-sdk-go-v2/service/s3vectors v1.4.3
+	github.com/aws/smithy-go v1.23.0
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/jsonschema-go v0.2.1-0.20250825175020-748c325cec76
@@ -43,7 +44,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.28.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.34.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.1 // indirect
-	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.2 // indirect
@@ -55,6 +55,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.7 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.38.0 // indirect

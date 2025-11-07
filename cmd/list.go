@@ -47,6 +47,8 @@ func runList(cmd *cobra.Command, args []string) error {
 		VectorBucketName: cfg.AWSS3VectorBucket,
 		IndexName:        cfg.AWSS3VectorIndex,
 		Region:           cfg.AWSS3Region,
+		MaxRetries:       cfg.RetryAttempts,
+		RetryDelay:       cfg.RetryDelay,
 	}
 
 	service, err := s3vector.NewS3VectorService(s3Config)

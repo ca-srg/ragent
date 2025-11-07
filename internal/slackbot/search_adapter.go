@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
@@ -16,43 +18,96 @@ import (
 
 // SearchAdapter abstracts the RAG search for Slack
 type SearchAdapter interface {
-	Search(ctx context.Context, query string) *SearchResult
+	Search(ctx context.Context, query string, opts SearchOptions) *SearchResult
+}
+
+type SearchOptions struct {
+	ChannelID       string
+	ThreadTimestamp string
 }
 
 // HybridSearchAdapter uses OpenSearch Hybrid + Bedrock embedding
 type HybridSearchAdapter struct {
-	cfg        *commontypes.Config
-	maxResults int
+	cfg         *commontypes.Config
+	maxResults  int
+	slackSearch SlackConversationSearcher
+
+	awsCfgMu sync.RWMutex
+	awsCfg   *aws.Config
 }
 
-func NewHybridSearchAdapter(cfg *commontypes.Config, maxResults int) *HybridSearchAdapter {
+func NewHybridSearchAdapter(cfg *commontypes.Config, maxResults int, slackSearch SlackConversationSearcher, awsCfg *aws.Config) *HybridSearchAdapter {
 	if maxResults <= 0 {
 		maxResults = 5
 	}
-	return &HybridSearchAdapter{cfg: cfg, maxResults: maxResults}
+
+	adapter := &HybridSearchAdapter{cfg: cfg, maxResults: maxResults, slackSearch: slackSearch}
+	if awsCfg != nil {
+		adapter.awsCfg = awsCfg
+	}
+	return adapter
 }
 
-func (h *HybridSearchAdapter) Search(ctx context.Context, query string) *SearchResult {
+func (h *HybridSearchAdapter) awsConfig(ctx context.Context) (aws.Config, error) {
+	h.awsCfgMu.RLock()
+	if h.awsCfg != nil {
+		cfg := *h.awsCfg
+		h.awsCfgMu.RUnlock()
+		return cfg, nil
+	}
+	h.awsCfgMu.RUnlock()
+
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+	if err != nil {
+		return aws.Config{}, err
+	}
+
+	h.awsCfgMu.Lock()
+	defer h.awsCfgMu.Unlock()
+
+	if h.awsCfg == nil {
+		h.awsCfg = &cfg
+		return cfg, nil
+	}
+
+	return *h.awsCfg, nil
+}
+
+func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts SearchOptions) *SearchResult {
 	start := time.Now()
-	// AWS config fixed to us-east-1 for embedding and chat
-	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+	awsCfg, err := h.awsConfig(ctx)
 	if err != nil {
 		log.Printf("bedrock config error: %v", err)
-		return &SearchResult{Items: nil, Total: 0, Elapsed: time.Since(start)}
+		return &SearchResult{
+			Items:     nil,
+			Total:     0,
+			Elapsed:   time.Since(start),
+			ChatModel: h.cfg.ChatModel,
+		}
 	}
-	embedClient := bedrock.NewBedrockClient(awsCfg, "amazon.titan-embed-text-v2:0")
-	chatClient := bedrock.NewBedrockClient(awsCfg, h.cfg.ChatModel)
+	embedClient := bedrock.GetSharedBedrockClient(awsCfg, "amazon.titan-embed-text-v2:0")
+	chatClient := bedrock.GetSharedBedrockClient(awsCfg, h.cfg.ChatModel)
 
 	// OpenSearch client
 	osCfg, err := opensearch.NewConfigFromTypes(h.cfg)
 	if err != nil {
 		log.Printf("opensearch config error: %v", err)
-		return &SearchResult{Items: nil, Total: 0, Elapsed: time.Since(start)}
+		return &SearchResult{
+			Items:     nil,
+			Total:     0,
+			Elapsed:   time.Since(start),
+			ChatModel: h.cfg.ChatModel,
+		}
 	}
 	osClient, err := opensearch.NewClient(osCfg)
 	if err != nil {
 		log.Printf("opensearch client error: %v", err)
-		return &SearchResult{Items: nil, Total: 0, Elapsed: time.Since(start)}
+		return &SearchResult{
+			Items:     nil,
+			Total:     0,
+			Elapsed:   time.Since(start),
+			ChatModel: h.cfg.ChatModel,
+		}
 	}
 
 	engine := opensearch.NewHybridSearchEngine(osClient, embedClient)
@@ -68,7 +123,12 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string) *SearchR
 	})
 	if err != nil || res == nil || res.FusionResult == nil {
 		log.Printf("hybrid search failed: %v", err)
-		return &SearchResult{Items: nil, Total: 0, Elapsed: time.Since(start)}
+		return &SearchResult{
+			Items:     nil,
+			Total:     0,
+			Elapsed:   time.Since(start),
+			ChatModel: h.cfg.ChatModel,
+		}
 	}
 
 	// Extract context and references from results (same as chat command)
@@ -127,6 +187,16 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string) *SearchR
 		generatedResponse = "関連する情報が見つかりませんでした。"
 	}
 
+	var slackResult *SlackConversationResult
+	if h.slackSearch != nil {
+		var err error
+		slackResult, err = h.slackSearch.SearchConversations(ctx, query, opts)
+		if err != nil {
+			log.Printf("slack search error: %v", err)
+			slackResult = nil
+		}
+	}
+
 	// Add references to response if any were found
 	if len(references) > 0 {
 		var referenceBuilder strings.Builder
@@ -141,13 +211,20 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string) *SearchR
 		generatedResponse = referenceBuilder.String()
 	}
 
+	total := res.FusionResult.TotalHits
+	if slackResult != nil {
+		total += slackResult.TotalMatches
+	}
+
 	// Return the generated response as a single item
 	return &SearchResult{
 		GeneratedResponse: generatedResponse,
-		Total:             len(res.FusionResult.Documents),
+		Total:             total,
 		Elapsed:           time.Since(start),
+		ChatModel:         h.cfg.ChatModel,
 		SearchMethod:      res.SearchMethod,
 		URLDetected:       res.URLDetected,
 		FallbackReason:    res.FallbackReason,
+		Slack:             slackResult,
 	}
 }

@@ -1,8 +1,9 @@
 markdown/*.md
 .env
 .kiro
+.kiri
 .serena
-ragent
+ragent*
 .spec-workflow
 opencode.json
 doc/debug.md

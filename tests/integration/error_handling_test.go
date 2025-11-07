@@ -10,7 +10,7 @@ import (
 
 type failingSearch struct{}
 
-func (f *failingSearch) Search(ctx context.Context, q string) *slackbot.SearchResult {
+func (f *failingSearch) Search(ctx context.Context, q string, opts slackbot.SearchOptions) *slackbot.SearchResult {
 	return &slackbot.SearchResult{}
 }
 

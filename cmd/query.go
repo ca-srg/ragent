@@ -14,6 +14,7 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/slacksearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 
@@ -29,17 +30,19 @@ type openSearchClientFactory func(*opensearch.Config) (QuerySearchClient, error)
 type hybridEngineFactory func(opensearch.SearchClient, opensearch.EmbeddingClient) *opensearch.HybridSearchEngine
 
 var (
-	queryText      string
-	topK           int
-	outputJSON     bool
-	filterQuery    string
-	searchMode     string
-	indexName      string
-	bm25Weight     float64
-	vectorWeight   float64
-	fusionMethod   string
-	useJapaneseNLP bool
-	timeout        int
+	queryText         string
+	topK              int
+	outputJSON        bool
+	filterQuery       string
+	searchMode        string
+	indexName         string
+	bm25Weight        float64
+	vectorWeight      float64
+	fusionMethod      string
+	useJapaneseNLP    bool
+	timeout           int
+	enableSlackSearch bool
+	slackChannels     []string
 )
 
 var (
@@ -93,6 +96,8 @@ func init() {
 	queryCmd.Flags().StringVar(&fusionMethod, "fusion-method", "rrf", "Result fusion method: rrf|weighted_sum|max_score")
 	queryCmd.Flags().BoolVar(&useJapaneseNLP, "japanese-nlp", false, "Enable Japanese text processing and analysis")
 	queryCmd.Flags().IntVar(&timeout, "timeout", 30, "Request timeout in seconds")
+	queryCmd.Flags().BoolVar(&enableSlackSearch, "enable-slack-search", false, "Include Slack conversations in results")
+	queryCmd.Flags().StringSliceVar(&slackChannels, "slack-channels", nil, "Limit Slack search to specific channel names (omit leading #)")
 
 	if err := queryCmd.MarkFlagRequired("query"); err != nil {
 		log.Fatalf("Failed to mark query flag as required: %v", err)
@@ -124,7 +129,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	// Execute search based on mode
 	switch searchMode {
 	case "hybrid":
-		return runHybridSearch(ctx, cfg, embeddingClient)
+		return runHybridSearch(ctx, cfg, awsConfig, embeddingClient)
 	case "opensearch":
 		return runOpenSearchOnly(ctx, cfg, embeddingClient)
 	default:
@@ -132,13 +137,23 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func runHybridSearch(ctx context.Context, cfg *commontypes.Config, embeddingClient opensearch.EmbeddingClient) error {
-	// OpenSearch hybrid search with S3 Vector
-	osResult, osErr := attemptOpenSearchHybrid(ctx, cfg, embeddingClient)
-	if osErr != nil {
-		return fmt.Errorf("hybrid search failed: %w", osErr)
+func runHybridSearch(ctx context.Context, cfg *commontypes.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient) error {
+	// Run document hybrid search first
+	docResult, docErr := attemptOpenSearchHybrid(ctx, cfg, embeddingClient)
+	if docErr != nil {
+		return fmt.Errorf("hybrid search failed: %w", docErr)
 	}
-	return outputHybridResults(osResult, "hybrid")
+
+	var slackResult *slacksearch.SlackSearchResult
+	if enableSlackSearch {
+		var err error
+		slackResult, err = slackSearchRunner(ctx, cfg, awsCfg, embeddingClient, queryText, slackChannels, nil)
+		if err != nil {
+			log.Printf("Slack search unavailable: %v", err)
+		}
+	}
+
+	return outputCombinedResults(docResult, slackResult, "hybrid")
 }
 
 func runOpenSearchOnly(ctx context.Context, cfg *commontypes.Config, embeddingClient opensearch.EmbeddingClient) error {
@@ -262,8 +277,23 @@ func parseFilters(filterJSON string) (map[string]string, error) {
 }
 
 func outputHybridResults(result *opensearch.HybridSearchResult, searchType string) error {
+	return outputCombinedResults(result, nil, searchType)
+}
+
+func outputCombinedResults(result *opensearch.HybridSearchResult, slackResult *slacksearch.SlackSearchResult, searchType string) error {
 	if outputJSON {
-		jsonOutput, err := json.MarshalIndent(result, "", "  ")
+		payload := struct {
+			*opensearch.HybridSearchResult
+			Query        string                         `json:"query"`
+			Mode         string                         `json:"mode"`
+			SlackResults *slacksearch.SlackSearchResult `json:"slack_results,omitempty"`
+		}{
+			HybridSearchResult: result,
+			Query:              queryText,
+			Mode:               searchType,
+			SlackResults:       slackResult,
+		}
+		jsonOutput, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON output: %w", err)
 		}
@@ -272,6 +302,10 @@ func outputHybridResults(result *opensearch.HybridSearchResult, searchType strin
 	}
 
 	printHybridResults(result, searchType)
+	if slackResult != nil {
+		printSlackResults(slackResult)
+	}
+
 	return nil
 }
 

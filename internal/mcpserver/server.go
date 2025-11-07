@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -18,6 +19,7 @@ import (
 // MCPServer represents the MCP server implementation
 type MCPServer struct {
 	server           *http.Server
+	rootHandler      http.Handler
 	toolRegistry     *ToolRegistry
 	ipAuthMiddleware *IPAuthMiddleware
 	authMiddleware   *UnifiedAuthMiddleware
@@ -93,14 +95,7 @@ func NewMCPServer(config *MCPServerConfig) *MCPServer {
 		mux.HandleFunc("/sse/info", server.handleSSEInfo)
 	}
 
-	server.server = &http.Server{
-		Addr:           fmt.Sprintf("%s:%d", config.Host, config.Port),
-		Handler:        mux,
-		ReadTimeout:    config.ReadTimeout,
-		WriteTimeout:   config.WriteTimeout,
-		IdleTimeout:    config.IdleTimeout,
-		MaxHeaderBytes: config.MaxHeaderBytes,
-	}
+	server.rootHandler = mux
 
 	return server
 }
@@ -133,21 +128,37 @@ func (s *MCPServer) Start() error {
 		return fmt.Errorf("server is already running")
 	}
 
+	if s.shutdownChan == nil {
+		s.shutdownChan = make(chan struct{})
+	}
+
 	// Start SSE manager if enabled
 	if s.config.EnableSSE && s.sseManager != nil {
-		ctx := context.Background()
-		s.sseManager.Start(ctx)
+		s.sseManager.Start(context.Background())
 		s.logger.Printf("SSE manager started")
 	}
 
 	// Wrap handler with middleware if available
 	// Prefer unified auth middleware if configured
+	handler := s.rootHandler
+	if handler == nil {
+		handler = http.NewServeMux()
+	}
 	if s.authMiddleware != nil {
-		s.server.Handler = s.authMiddleware.Middleware(s.server.Handler)
+		handler = s.authMiddleware.Middleware(handler)
 		s.logger.Printf("Unified authentication middleware enabled with method: %s", s.authMiddleware.GetAuthMethod())
 	} else if s.ipAuthMiddleware != nil {
-		s.server.Handler = s.ipAuthMiddleware.Middleware(s.server.Handler)
+		handler = s.ipAuthMiddleware.Middleware(handler)
 		s.logger.Printf("IP authentication middleware enabled")
+	}
+
+	s.server = &http.Server{
+		Addr:           fmt.Sprintf("%s:%d", s.config.Host, s.config.Port),
+		Handler:        handler,
+		ReadTimeout:    s.config.ReadTimeout,
+		WriteTimeout:   s.config.WriteTimeout,
+		IdleTimeout:    s.config.IdleTimeout,
+		MaxHeaderBytes: s.config.MaxHeaderBytes,
 	}
 
 	s.logger.Printf("Starting MCP server on %s", s.server.Addr)
@@ -160,6 +171,8 @@ func (s *MCPServer) Start() error {
 		}
 	}()
 
+	s.waitForServerReady()
+
 	s.isRunning = true
 	s.logger.Printf("MCP server started successfully")
 
@@ -168,6 +181,24 @@ func (s *MCPServer) Start() error {
 	}
 
 	return nil
+}
+
+func (s *MCPServer) waitForServerReady() {
+	address := s.server.Addr
+	deadline := time.Now().Add(500 * time.Millisecond)
+
+	for {
+		conn, err := net.DialTimeout("tcp", address, 50*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		if time.Now().After(deadline) {
+			s.logger.Printf("Server readiness check timed out: %v", err)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // Stop gracefully stops the MCP server
@@ -198,6 +229,10 @@ func (s *MCPServer) Stop() error {
 	close(s.shutdownChan)
 	s.wg.Wait()
 	s.isRunning = false
+	s.shutdownChan = nil
+	if s.sseManager != nil {
+		s.sseManager.Stop()
+	}
 	s.logger.Printf("MCP server stopped successfully")
 	return nil
 }
