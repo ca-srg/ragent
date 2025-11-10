@@ -24,7 +24,7 @@ jobs:
         id: tagger
         uses: anothrNick/github-tag-action@1.64.0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           DEFAULT_BUMP: patch   # fallback when commit messages don't specify bump
           WITH_V: "true"        # produce tags like v1.2.3
 
