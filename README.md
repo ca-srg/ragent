@@ -13,7 +13,8 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 - [Architecture Overview](#architecture-overview)
 - [Prerequisites](#prerequisites)
 - [Required Environment Variables](#required-environment-variables)
-- [Installation](#installation)
+ - [Installation](#installation)
+ - [Releases](#releases)
 - [Commands](#commands)
   - [vectorize - Vectorization and S3 Storage](#1-vectorize---vectorization-and-s3-storage)
   - [query - Semantic Search](#2-query---semantic-search)
@@ -555,6 +556,52 @@ go build -o RAGent
 # Add executable to PATH (optional)
 mv RAGent /usr/local/bin/
 ```
+
+## Releases
+
+Prebuilt binaries are published on GitHub Releases for Linux (amd64, arm64).
+
+- Releases page: https://github.com/ca-srg/ragent/releases
+
+### Create a Release (maintainers)
+
+Use semantic versioning (`MAJOR.MINOR.PATCH`) and push a tag to trigger the pipeline:
+
+```bash
+# Example: v1.0.0
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers the GitHub Actions workflow which builds archives via GoReleaser and publishes them to the release.
+
+### Download Binaries
+
+From the Releases page, download the archive for your platform:
+
+- Linux amd64: `ragent_<VERSION>_linux_amd64.tar.gz`
+- Linux arm64: `ragent_<VERSION>_linux_arm64.tar.gz`
+
+Extract and place the binary on your `PATH`:
+
+```bash
+tar -xzf ragent_<VERSION>_linux_amd64.tar.gz
+sudo mv ragent /usr/local/bin/
+```
+
+### Verify Checksums
+
+Each release includes a SHA256 checksum file.
+
+```bash
+# Linux
+sha256sum -c checksums_<VERSION>.txt
+
+# macOS (if verifying from macOS)
+shasum -a 256 -c checksums_<VERSION>.txt
+```
+
+All entries should report `OK`. If a mismatch occurs, re-download the artifact.
 
 ## Commands
 

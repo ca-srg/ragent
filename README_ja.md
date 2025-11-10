@@ -13,6 +13,7 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
 - [前提条件](#前提条件)
 - [必要な環境変数](#必要な環境変数)
 - [インストール](#インストール)
+- [リリース](#リリース)
 - [コマンド一覧](#コマンド一覧)
   - [vectorize - ベクトル化とS3保存](#1-vectorize---ベクトル化とs3保存)
   - [query - セマンティック検索](#2-query---セマンティック検索)
@@ -531,6 +532,52 @@ go build -o RAGent
 # 実行可能ファイルをPATHに追加（オプション）
 mv RAGent /usr/local/bin/
 ```
+
+## リリース
+
+GitHub Releases で Linux (amd64, arm64) 向けのビルド済みバイナリを提供しています。
+
+- Releases ページ: https://github.com/ca-srg/ragent/releases
+
+### リリースの作成（メンテナ向け）
+
+セマンティックバージョニング（`MAJOR.MINOR.PATCH`）に従い、タグを作成してプッシュすると自動的にリリースが行われます。
+
+```bash
+# 例: v1.0.0
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+GitHub Actions がトリガーされ、GoReleaser によりアーカイブが作成・公開されます。
+
+### バイナリのダウンロード
+
+Releases ページから、ご利用のプラットフォームに対応するアーカイブをダウンロードしてください。
+
+- Linux amd64: `ragent_<VERSION>_linux_amd64.tar.gz`
+- Linux arm64: `ragent_<VERSION>_linux_arm64.tar.gz`
+
+展開して `PATH` 上に配置します。
+
+```bash
+tar -xzf ragent_<VERSION>_linux_amd64.tar.gz
+sudo mv ragent /usr/local/bin/
+```
+
+### チェックサムの検証
+
+各リリースには SHA256 チェックサムファイルが含まれます。
+
+```bash
+# Linux
+sha256sum -c checksums_<VERSION>.txt
+
+# macOS（macOS 上で検証する場合）
+shasum -a 256 -c checksums_<VERSION>.txt
+```
+
+すべてのエントリが `OK` と表示されれば検証成功です。誤りがある場合は再ダウンロードしてください。
 
 ## コマンド一覧
 

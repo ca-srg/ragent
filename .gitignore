@@ -7,3 +7,5 @@ ragent*
 .spec-workflow
 opencode.json
 doc/debug.md
+# Added by goreleaser init:
+dist/
