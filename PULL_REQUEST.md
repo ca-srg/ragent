@@ -18,7 +18,7 @@ Slack bot replies now fall back to the parent message timestamp when no thread t
 
 ## Motivation and Context
 Threaded replies were skipped when `thread_ts` was missing, and public channel message events were being processed twice (via `MessageEvent` and `AppMentionEvent`). This change keeps replies threaded and prevents duplicate responses in public channels.
-Fixes #(issue)
+Fixes #N/A
 
 ## How Has This Been Tested?
 - [ ] Unit tests (`go test ./...`)
@@ -112,7 +112,7 @@ Slack Bot の返信で `thread_ts` が無い場合に元メッセージの times
 
 ## 動機と背景
 `thread_ts` が無い投稿でスレッド返信が付かず、公開チャンネルでは `MessageEvent` と `AppMentionEvent` の両方で応答し二重投稿になる問題がありました。スレッド維持と重複応答防止のための修正です。
-Fixes #(issue)
+Fixes #N/A
 
 ## テスト方法
 - [ ] ユニットテスト（`go test ./...`）
