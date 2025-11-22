@@ -175,7 +175,7 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 		return CreateToolCallErrorResult(fmt.Sprintf("Invalid parameters: %v", err)), err
 	}
 	if searchRequest.EnableSlackSearch && hsta.slackService == nil {
-		err := fmt.Errorf("slack search requested but not configured on the server")
+		err := fmt.Errorf("slack search requested but not configured")
 		return CreateToolCallErrorResult(err.Error()), err
 	}
 
