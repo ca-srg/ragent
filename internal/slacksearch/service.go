@@ -288,6 +288,14 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 			return nil, err
 		}
 
+		searchMessages, botFiltered := filterBotMessages(searchMessages)
+		if botFiltered > 0 {
+			iterSpan.SetAttributes(attribute.Int("slack.filtered_bot_messages", botFiltered))
+			s.logger.Printf("Slack search iteration=%d hash=%s filtered_bot_messages=%d", iterationsDone, queryHash, botFiltered)
+		}
+
+		matches = len(searchMessages)
+		previousResults = matches
 		totalMatches = matches
 		iterSpan.SetAttributes(
 			attribute.Int("slack.iteration_matches", matches),
@@ -554,4 +562,40 @@ func (s *SlackSearchService) buildResult(
 	}
 
 	return result
+}
+
+func filterBotMessages(messages []slack.Message) ([]slack.Message, int) {
+	if len(messages) == 0 {
+		return messages, 0
+	}
+
+	filtered := make([]slack.Message, 0, len(messages))
+	dropped := 0
+
+	for _, msg := range messages {
+		if isBotMessage(msg) {
+			dropped++
+			continue
+		}
+		filtered = append(filtered, msg)
+	}
+
+	return filtered, dropped
+}
+
+func isBotMessage(msg slack.Message) bool {
+	if msg.BotID != "" || msg.SubType == "bot_message" {
+		return true
+	}
+
+	user := strings.TrimSpace(msg.User)
+	if user == "" {
+		return strings.TrimSpace(msg.Username) != ""
+	}
+
+	if strings.EqualFold(user, "USLACKBOT") || strings.HasPrefix(user, "B") {
+		return true
+	}
+
+	return false
 }
