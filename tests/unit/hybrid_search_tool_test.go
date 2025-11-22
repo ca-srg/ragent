@@ -236,7 +236,7 @@ func TestHybridSearchToolAdapter_HandleToolCall_ParameterValidation(t *testing.T
 				"enable_slack_search": true,
 			},
 			expectError:    true,
-			errorSubstring: "Slack search requested but not configured",
+			errorSubstring: "slack search requested but not configured",
 		},
 	}
 
