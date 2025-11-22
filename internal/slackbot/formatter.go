@@ -410,46 +410,45 @@ func buildSlackResultBlocks(result *SlackConversationResult) []slack.Block {
 			truncated = true
 			break
 		}
+
 		channel := channelName(msg.Channel)
 		stamp := humanTimestamp(msg.Timestamp)
 		user := displayUser(msg.User, msg.Username)
-		body := strings.TrimSpace(msg.Text)
-		if body == "" {
-			continue
-		}
-
 		header := fmt.Sprintf("*#%s* • %s • %s", channel, stamp, user)
-		blockBudget := maxSlackBlocks - len(blocks)
-		if blockBudget <= 2 { // ensure space for context + section at least
-			truncated = true
-			break
-		}
 		blocks = append(blocks, slack.NewContextBlock(
 			fmt.Sprintf("slack-msg-meta-%d", i),
 			slack.NewTextBlockObject(slack.MarkdownType, header, false, false),
 		))
 
-		text := truncateSlackText(body, 600)
-		section := slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, text, false, false), nil, nil)
+		body := strings.TrimSpace(msg.Text)
+		if body == "" {
+			body = "(本文なし)"
+		}
+
+		blockBudget := maxSlackBlocks - len(blocks)
+		minBlocks := 2 // meta context + action/section block
+		if len(msg.Thread) > 0 {
+			minBlocks++
+		}
+		if blockBudget < minBlocks {
+			truncated = true
+			break
+		}
+
+		text := slack.NewTextBlockObject(slack.MarkdownType, truncateSlackText(body, 600), false, false)
+		section := slack.NewSectionBlock(text, nil, nil)
 		if msg.Permalink != "" {
-			btn := slack.NewButtonBlockElement(fmt.Sprintf("slack-msg-%d", i), "view", slack.NewTextBlockObject(slack.PlainTextType, "View", false, false))
+			btn := slack.NewButtonBlockElement(fmt.Sprintf("slack-msg-%d", i), "view", slack.NewTextBlockObject(slack.PlainTextType, "Open in Slack", false, false))
 			btn.URL = msg.Permalink
 			section.Accessory = slack.NewAccessory(btn)
+		} else {
+			text.Text = fmt.Sprintf("%s\n_(リンクを表示できませんでした)_", text.Text)
 		}
 		blocks = append(blocks, section)
 
 		if len(msg.Thread) > 0 {
-			if len(blocks) >= maxSlackBlocks {
-				truncated = true
-				break
-			}
-			var lines []string
-			for _, reply := range msg.Thread {
-				stamp := humanTimestamp(reply.Timestamp)
-				threadUser := displayUser(reply.User, reply.Username)
-				lines = append(lines, fmt.Sprintf("• %s • %s • %s", stamp, threadUser, truncateSlackText(strings.TrimSpace(reply.Text), 200)))
-			}
-			blocks = append(blocks, slack.NewContextBlock(fmt.Sprintf("slack-thread-%d", i), slack.NewTextBlockObject(slack.MarkdownType, strings.Join(lines, "\n"), false, false)))
+			threadNote := fmt.Sprintf("スレッドの回答: %d （未展開）", len(msg.Thread))
+			blocks = append(blocks, slack.NewContextBlock(fmt.Sprintf("slack-thread-%d", i), slack.NewTextBlockObject(slack.MarkdownType, threadNote, false, false)))
 		}
 
 		displayCount++
