@@ -140,8 +140,12 @@ func (b *Bot) handleEvent(ctx context.Context, ev slack.RTMEvent) {
 		}
 		// send reply
 		for _, opt := range reply.MsgOptions {
-			if b.enableThread && data.ThreadTimestamp != "" {
-				opt = slack.MsgOptionCompose(opt, slack.MsgOptionTS(data.ThreadTimestamp))
+			if b.enableThread {
+				threadTS := data.ThreadTimestamp
+				if threadTS == "" {
+					threadTS = data.Timestamp
+				}
+				opt = slack.MsgOptionCompose(opt, slack.MsgOptionTS(threadTS))
 			}
 			_, _, err := b.client.PostMessage(reply.Channel, opt)
 			if err != nil {

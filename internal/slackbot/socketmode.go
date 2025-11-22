@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -125,6 +126,12 @@ func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
 			if data.SubType != "" { // ignore bot_message, message_changed, etc.
 				return
 			}
+			// Ignore message events in public channels to avoid duplicates with AppMentionEvent
+			// Only process DMs (Direct Messages) via MessageEvent
+			if !strings.HasPrefix(data.Channel, "D") {
+				return
+			}
+
 			msg := &slack.MessageEvent{
 				Msg: slack.Msg{
 					Channel:         data.Channel,
