@@ -267,7 +267,7 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 			err            error
 		)
 
-		searchMessages, matches, executedQueries, previousQueries, previousResults, err = s.runSearchIteration(
+		searchMessages, _, executedQueries, previousQueries, _, err = s.runSearchIteration(
 			iterationCtx,
 			userQuery,
 			channels,
