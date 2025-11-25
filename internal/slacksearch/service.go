@@ -76,6 +76,7 @@ func NewSlackSearchService(
 		MaxIterations:        baseConfig.SlackSearchMaxIterations,
 		MaxContextMessages:   baseConfig.SlackSearchMaxContextMessages,
 		TimeoutSeconds:       baseConfig.SlackSearchTimeoutSeconds,
+		LLMTimeoutSeconds:    baseConfig.SlackSearchLLMTimeoutSeconds,
 	}
 
 	if cfg.Enabled {
@@ -105,7 +106,8 @@ func NewSlackSearchService(
 	searchLimiter := slackbot.NewRateLimiter(20, 20, 20)
 	contextLimiter := slackbot.NewRateLimiter(60, 120, 200)
 
-	queryGenerator := NewQueryGenerator(bedrockClient)
+	llmTimeout := time.Duration(cfg.LLMTimeoutSeconds) * time.Second
+	queryGenerator := NewQueryGenerator(bedrockClient, llmTimeout)
 
 	var (
 		searcher         slackSearcher
@@ -121,7 +123,7 @@ func NewSlackSearchService(
 		}
 	}
 
-	sufficiencyChecker := NewSufficiencyChecker(bedrockClient, logger)
+	sufficiencyChecker := NewSufficiencyChecker(bedrockClient, logger, llmTimeout)
 
 	service := &SlackSearchService{
 		botClient:          botClient,
@@ -278,7 +280,7 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 		)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				err = fmt.Errorf("%w: LLMリクエストがタイムアウトしました (llmRequestTimeout=%s)", err, llmRequestTimeout)
+				err = fmt.Errorf("%w: LLMリクエストがタイムアウトしました (llmRequestTimeout=%ds)", err, s.config.LLMTimeoutSeconds)
 			}
 			iterSpan.RecordError(err)
 			iterSpan.SetStatus(codes.Error, "iteration_failed")

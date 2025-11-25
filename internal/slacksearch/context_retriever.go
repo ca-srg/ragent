@@ -52,6 +52,7 @@ type ContextRetriever struct {
 	contextWindow   time.Duration
 	maxContextMsgs  int
 	slackAPITimeout time.Duration
+	llmTimeout      time.Duration
 }
 
 // NewContextRetriever constructs a new ContextRetriever instance.
@@ -90,6 +91,11 @@ func NewContextRetriever(
 		maxContext = 100
 	}
 
+	llmTimeoutSeconds := config.LLMTimeoutSeconds
+	if llmTimeoutSeconds <= 0 {
+		llmTimeoutSeconds = 60
+	}
+
 	return &ContextRetriever{
 		client:          client,
 		rateLimiter:     rateLimiter,
@@ -98,6 +104,7 @@ func NewContextRetriever(
 		contextWindow:   time.Duration(windowMinutes) * time.Minute,
 		maxContextMsgs:  maxContext,
 		slackAPITimeout: time.Duration(timeoutSeconds) * time.Second,
+		llmTimeout:      time.Duration(llmTimeoutSeconds) * time.Second,
 	}, nil
 }
 
@@ -212,7 +219,7 @@ func (c *ContextRetriever) selectMessagesForContext(ctx context.Context, req *Co
 		{Role: "user", Content: payload},
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, llmRequestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, c.llmTimeout)
 	defer cancel()
 
 	resp, err := c.bedrockClient.GenerateChatResponse(ctx, messages)

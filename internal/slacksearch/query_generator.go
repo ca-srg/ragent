@@ -16,10 +16,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-const (
-	maxGeneratedQueries = 3
-	llmRequestTimeout   = 30 * time.Second
-)
+const maxGeneratedQueries = 3
 
 var (
 	channelRegex    = regexp.MustCompile(`(?i)#([a-z0-9_\-]+)`)
@@ -52,6 +49,7 @@ type QueryGenerator struct {
 	bedrockClient bedrockChatClient
 	logger        *log.Logger
 	nowFunc       func() time.Time
+	llmTimeout    time.Duration
 }
 
 // QueryGenerationRequest captures the inputs needed to generate Slack search queries.
@@ -81,12 +79,13 @@ type llmQueryPayload struct {
 }
 
 // NewQueryGenerator creates a new QueryGenerator instance.
-func NewQueryGenerator(bedrockClient *bedrock.BedrockClient) *QueryGenerator {
+func NewQueryGenerator(bedrockClient *bedrock.BedrockClient, llmTimeout time.Duration) *QueryGenerator {
 	logger := log.New(log.Default().Writer(), "slacksearch/query_generator ", log.LstdFlags)
 	return &QueryGenerator{
 		bedrockClient: bedrockClient,
 		logger:        logger,
 		nowFunc:       time.Now,
+		llmTimeout:    llmTimeout,
 	}
 }
 
@@ -219,13 +218,13 @@ func (g *QueryGenerator) buildUserPrompt(req *QueryGenerationRequest, alternativ
 }
 
 func (g *QueryGenerator) invokeLLM(ctx context.Context, messages []bedrock.ChatMessage) (*llmQueryPayload, error) {
-	ctx, cancel := context.WithTimeout(ctx, llmRequestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, g.llmTimeout)
 	defer cancel()
 
 	responseText, err := g.bedrockClient.GenerateChatResponse(ctx, messages)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("failed to invoke bedrock for query generation: LLMリクエストがタイムアウトしました (llmRequestTimeout=%s): %w", llmRequestTimeout, err)
+			return nil, fmt.Errorf("failed to invoke bedrock for query generation: LLMリクエストがタイムアウトしました (llmRequestTimeout=%s): %w", g.llmTimeout, err)
 		}
 		return nil, fmt.Errorf("failed to invoke bedrock for query generation: %w", err)
 	}

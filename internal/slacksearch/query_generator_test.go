@@ -22,7 +22,7 @@ func (m *mockBedrockClient) GenerateChatResponse(ctx context.Context, messages [
 }
 
 func newTestQueryGenerator(client bedrockChatClient, now time.Time) *QueryGenerator {
-	qg := NewQueryGenerator(nil)
+	qg := NewQueryGenerator(nil, 60*time.Second)
 	qg.bedrockClient = client
 	qg.nowFunc = func() time.Time { return now }
 	qg.logger.SetOutput(io.Discard)
