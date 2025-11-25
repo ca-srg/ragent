@@ -116,7 +116,8 @@ func NewSlackSearchService(
 	)
 
 	if userClient != nil {
-		searcher = NewSearcher(userClient, searchLimiter)
+		requestTimeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+		searcher = NewSearcher(userClient, searchLimiter, requestTimeout)
 		contextRetriever, err = NewContextRetriever(userClient, contextLimiter, bedrockClient, cfg, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create context retriever: %w", err)

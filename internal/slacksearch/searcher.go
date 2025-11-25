@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	searchRequestTimeout     = 5 * time.Second
 	circuitFailureThreshold  = 3
 	circuitCooldownDuration  = 5 * time.Minute
 	slackSearchRateLimitKey  = "slacksearch"
@@ -32,9 +31,10 @@ type slackSearchClient interface {
 }
 
 type Searcher struct {
-	client      slackSearchClient
-	rateLimiter *slackbot.RateLimiter
-	logger      *log.Logger
+	client         slackSearchClient
+	rateLimiter    *slackbot.RateLimiter
+	logger         *log.Logger
+	requestTimeout time.Duration
 
 	mu               sync.Mutex
 	consecutiveError int
@@ -58,12 +58,14 @@ type SearchResponse struct {
 }
 
 // NewSearcher constructs a new Searcher instance.
-func NewSearcher(client *slack.Client, rateLimiter *slackbot.RateLimiter) *Searcher {
+// requestTimeout specifies the timeout for each Slack API call.
+func NewSearcher(client *slack.Client, rateLimiter *slackbot.RateLimiter, requestTimeout time.Duration) *Searcher {
 	logger := log.New(log.Default().Writer(), "slacksearch/searcher ", log.LstdFlags)
 	return &Searcher{
-		client:      client,
-		rateLimiter: rateLimiter,
-		logger:      logger,
+		client:         client,
+		rateLimiter:    rateLimiter,
+		logger:         logger,
+		requestTimeout: requestTimeout,
 	}
 }
 
@@ -132,7 +134,7 @@ func (s *Searcher) Search(ctx context.Context, req *SearchRequest) (*SearchRespo
 
 	span.SetAttributes(attribute.Int("slack.request_limit", params.Count))
 
-	ctx, cancel := context.WithTimeout(ctx, searchRequestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
 	defer cancel()
 
 	s.logger.Printf("Slack search executing hash=%s count=%d", enrichedHash, params.Count)
