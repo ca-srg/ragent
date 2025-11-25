@@ -13,8 +13,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-const sufficiencyLLMTimeout = 10 * time.Second
-
 var sufficiencySystemPrompt = strings.TrimSpace(`
 You evaluate whether Slack conversation snippets contain enough information to answer a user query.
 Respond in JSON using this schema:
@@ -48,10 +46,11 @@ type SufficiencyChecker struct {
 	bedrockClient bedrockChatClient
 	logger        *log.Logger
 	nowFunc       func() time.Time
+	llmTimeout    time.Duration
 }
 
 // NewSufficiencyChecker creates a new SufficiencyChecker.
-func NewSufficiencyChecker(bedrockClient *bedrock.BedrockClient, logger *log.Logger) *SufficiencyChecker {
+func NewSufficiencyChecker(bedrockClient *bedrock.BedrockClient, logger *log.Logger, llmTimeout time.Duration) *SufficiencyChecker {
 	if logger == nil {
 		logger = log.New(log.Default().Writer(), "slacksearch/sufficiency_checker ", log.LstdFlags)
 	}
@@ -59,6 +58,7 @@ func NewSufficiencyChecker(bedrockClient *bedrock.BedrockClient, logger *log.Log
 		bedrockClient: bedrockClient,
 		logger:        logger,
 		nowFunc:       time.Now,
+		llmTimeout:    llmTimeout,
 	}
 }
 
@@ -126,7 +126,7 @@ func (s *SufficiencyChecker) Check(ctx context.Context, req *SufficiencyRequest)
 
 	messages := s.buildPromptMessages(req)
 
-	checkCtx, cancel := context.WithTimeout(ctx, sufficiencyLLMTimeout)
+	checkCtx, cancel := context.WithTimeout(ctx, s.llmTimeout)
 	defer cancel()
 
 	raw, err := s.bedrockClient.GenerateChatResponse(checkCtx, messages)

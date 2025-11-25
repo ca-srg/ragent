@@ -154,6 +154,10 @@ func validateSlackSearchConfig(config *Config) error {
 		return fmt.Errorf("SLACK_SEARCH_TIMEOUT_SECONDS must be between 1 and 60 (got %d)", config.SlackSearchTimeoutSeconds)
 	}
 
+	if config.SlackSearchLLMTimeoutSeconds <= 0 || config.SlackSearchLLMTimeoutSeconds > 300 {
+		return fmt.Errorf("SLACK_SEARCH_LLM_TIMEOUT_SECONDS must be between 1 and 300 (got %d)", config.SlackSearchLLMTimeoutSeconds)
+	}
+
 	return nil
 }
 

@@ -19,6 +19,7 @@ type SlackSearchConfig struct {
 	MaxIterations        int    `json:"max_iterations"`
 	MaxContextMessages   int    `json:"max_context_messages"`
 	TimeoutSeconds       int    `json:"timeout_seconds"`
+	LLMTimeoutSeconds    int    `json:"llm_timeout_seconds"`
 }
 
 // TimeRange represents optional temporal bounds for Slack queries.
@@ -79,6 +80,9 @@ func (c *SlackSearchConfig) Validate() error {
 	}
 	if c.TimeoutSeconds <= 0 || c.TimeoutSeconds > 60 {
 		return fmt.Errorf("timeout_seconds must be between 1 and 60 (got %d)", c.TimeoutSeconds)
+	}
+	if c.LLMTimeoutSeconds <= 0 || c.LLMTimeoutSeconds > 300 {
+		return fmt.Errorf("llm_timeout_seconds must be between 1 and 300 (got %d)", c.LLMTimeoutSeconds)
 	}
 
 	return nil

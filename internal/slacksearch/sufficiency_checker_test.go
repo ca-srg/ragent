@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/slack-go/slack"
@@ -23,7 +24,7 @@ func (m *mockSufficiencyBedrockClient) GenerateChatResponse(ctx context.Context,
 }
 
 func newTestSufficiencyChecker(client bedrockChatClient) *SufficiencyChecker {
-	checker := NewSufficiencyChecker(nil, log.New(io.Discard, "", 0))
+	checker := NewSufficiencyChecker(nil, log.New(io.Discard, "", 0), 60*time.Second)
 	checker.bedrockClient = client
 	return checker
 }

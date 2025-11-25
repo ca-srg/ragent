@@ -184,6 +184,7 @@ type Config struct {
 	SlackSearchMaxIterations        int    `json:"slack_search_max_iterations" env:"SLACK_SEARCH_MAX_ITERATIONS,default=5"`
 	SlackSearchMaxContextMessages   int    `json:"slack_search_max_context_messages" env:"SLACK_SEARCH_MAX_CONTEXT_MESSAGES,default=100"`
 	SlackSearchTimeoutSeconds       int    `json:"slack_search_timeout_seconds" env:"SLACK_SEARCH_TIMEOUT_SECONDS,default=60"`
+	SlackSearchLLMTimeoutSeconds    int    `json:"slack_search_llm_timeout_seconds" env:"SLACK_SEARCH_LLM_TIMEOUT_SECONDS,default=60"`
 
 	// Observability (OpenTelemetry) configuration
 	OTelEnabled              bool    `json:"otel_enabled" env:"OTEL_ENABLED,default=false"`
