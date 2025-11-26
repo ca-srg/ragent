@@ -165,9 +165,27 @@ func (hsta *HybridSearchToolAdapter) GetToolDefinition() types.MCPToolDefinition
 	}
 }
 
+// ProgressCallback is a function that sends progress notifications during tool execution.
+type ProgressCallback func(progress, total float64, message string)
+
 // HandleToolCall executes the hybrid search tool
 func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+	return hsta.HandleToolCallWithProgress(ctx, params, nil)
+}
+
+// HandleToolCallWithProgress executes the hybrid search tool with optional progress notifications.
+// If progressFn is non-nil, it will be called at key phases of the search process.
+func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Context, params map[string]interface{}, progressFn ProgressCallback) (*types.MCPToolCallResult, error) {
 	hsta.logger.Printf("Executing hybrid search tool with params: %+v", params)
+
+	// Helper to send progress if callback is set
+	sendProgress := func(progress, total float64, message string) {
+		if progressFn != nil {
+			progressFn(progress, total, message)
+		}
+	}
+
+	sendProgress(0.0, 1.0, "Validating parameters...")
 
 	// Extract and validate parameters
 	searchRequest, err := hsta.parseParams(params)
@@ -179,12 +197,16 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 		return CreateToolCallErrorResult(err.Error()), err
 	}
 
+	sendProgress(0.05, 1.0, "Checking OpenSearch connection...")
+
 	// Test OpenSearch connection
 	if err := hsta.searchClient.HealthCheck(ctx); err != nil {
 		errorMsg := fmt.Sprintf("OpenSearch connection failed: %v", err)
 		hsta.logger.Printf("Health check failed: %v", err)
 		return CreateToolCallErrorResult(errorMsg), fmt.Errorf("%s", errorMsg)
 	}
+
+	sendProgress(0.1, 1.0, fmt.Sprintf("Executing %s search...", searchRequest.SearchMode))
 
 	// Execute search based on mode
 	var result *opensearch.HybridSearchResult
@@ -205,8 +227,21 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 		return CreateToolCallErrorResult(errorMsg), err
 	}
 
+	sendProgress(0.3, 1.0, fmt.Sprintf("OpenSearch completed (%d results)", result.FusionResult.TotalHits))
+
 	var slackResult *slacksearch.SlackSearchResult
 	if searchRequest.EnableSlackSearch && hsta.slackService != nil {
+		sendProgress(0.35, 1.0, "Starting Slack search...")
+
+		// Set up progress handler for Slack search iterations
+		if progressFn != nil {
+			hsta.slackService.SetProgressHandler(func(iteration, maxIterations int) {
+				// Map Slack iterations to progress range 0.35 - 0.9
+				slackProgress := 0.35 + (float64(iteration)/float64(maxIterations))*0.55
+				sendProgress(slackProgress, 1.0, fmt.Sprintf("Slack search iteration %d/%d", iteration, maxIterations))
+			})
+		}
+
 		timeout := hsta.defaultConfig.DefaultTimeoutSeconds
 		if timeout <= 0 {
 			timeout = 10
@@ -214,11 +249,19 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 		slackCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 		slackResult, err = hsta.slackService.Search(slackCtx, searchRequest.Query, searchRequest.SlackChannels)
 		cancel()
+
+		// Clear progress handler after search
+		if progressFn != nil {
+			hsta.slackService.SetProgressHandler(nil)
+		}
+
 		if err != nil {
 			hsta.logger.Printf("Slack search error: %v", err)
 			slackResult = nil
 		}
 	}
+
+	sendProgress(0.95, 1.0, "Preparing response...")
 
 	// Convert to MCP format
 	mcpResponse := hsta.convertToMCPResponse(searchRequest, result, slackResult)
@@ -230,6 +273,8 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 
 	hsta.logger.Printf("Search completed successfully - found %d results in %v",
 		mcpResponse.Total, result.ExecutionTime)
+
+	sendProgress(1.0, 1.0, "Search completed")
 
 	return CreateToolCallResult(string(responseJSON)), nil
 }

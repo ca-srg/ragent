@@ -42,7 +42,8 @@ func NewHybridSearchHandlerFromAdapter(adapter *HybridSearchToolAdapter) *Hybrid
 }
 
 // HandleSDKToolCall implements SDK tool handler interface
-// Converts SDK request to RAGent format, executes search, and converts response back
+// Converts SDK request to RAGent format, executes search, and converts response back.
+// If the client provides a progressToken, progress notifications are sent during execution.
 func (hsh *HybridSearchHandler) HandleSDKToolCall(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	toolName := ""
 	rawArguments := ""
@@ -104,8 +105,29 @@ func (hsh *HybridSearchHandler) HandleSDKToolCall(ctx context.Context, req *mcp.
 		metricAttrs = append(metricAttrs, attribute.Int("mcp.search.slack_channel_filters", channelFilters))
 	}
 
-	// Execute using existing adapter
-	ragentResult, err := hsh.adapter.HandleToolCall(ctx, params)
+	// Create progress callback if client requested progress notifications
+	var progressFn ProgressCallback
+	if req != nil && req.Params != nil {
+		if token := req.Params.GetProgressToken(); token != nil {
+			span.SetAttributes(attribute.Bool("mcp.progress.enabled", true))
+			progressFn = func(progress, total float64, message string) {
+				if req.Session == nil {
+					return
+				}
+				notifyParams := &mcp.ProgressNotificationParams{
+					ProgressToken: token,
+					Progress:      progress,
+					Total:         total,
+					Message:       message,
+				}
+				// Ignore error - progress notifications are best-effort
+				_ = req.Session.NotifyProgress(ctx, notifyParams)
+			}
+		}
+	}
+
+	// Execute using existing adapter with progress callback
+	ragentResult, err := hsh.adapter.HandleToolCallWithProgress(ctx, params, progressFn)
 	if err != nil {
 		errType = "tool_call_failed"
 		span.RecordError(err)
