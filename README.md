@@ -50,18 +50,18 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 
 Slack search extends every retrieval workflow by streaming recent conversations, threads, and channel timelines directly from Slack’s Web API. When `SLACK_SEARCH_ENABLED=true`, the following behavior is enabled automatically:
 
-- `query` exposes `--enable-slack-search` and `--slack-channels` flags to opt in per request.
+- `query` exposes `--enable-slack-search` flag to opt in per request.
 - `chat` surfaces Slack context in addition to documents without requiring extra flags.
 - `slack-bot` responds with combined document + Slack answers inside Block Kit messages.
-- `mcp-server` adds `enable_slack_search` and `slack_channels` parameters to the `hybrid_search` tool.
+- `mcp-server` adds `enable_slack_search` parameter to the `hybrid_search` tool.
 
 Each Slack lookup performs iterative query refinement, merges timeline context from threads, and runs a sufficiency check before the final answer is generated. Results include permalinks so operators can pivot back to the original conversation instantly.
 
 Quick example:
 
 ```bash
-# Search across documents and Slack channels in one command
-RAGent query -q "incident timeline" --enable-slack-search --slack-channels "prod-incident,devops"
+# Search across documents and Slack in one command
+RAGent query -q "incident timeline" --enable-slack-search
 ```
 
 ## Embedding-Agnostic RAG
@@ -646,7 +646,6 @@ RAGent query -q "error handling" --filter '{"category":"programming"}'
 - `-j, --json`: Output results in JSON format
 - `-f, --filter`: JSON metadata filter (e.g., `'{"category":"docs"}'`)
 - `--enable-slack-search`: Include Slack conversations alongside document results when Slack search is enabled
-- `--slack-channels`: Comma-separated channel names to scope Slack search (omit the leading '#')
 
 **Usage Examples:**
 ```bash
@@ -660,7 +659,7 @@ RAGent query -q "authentication" --filter '{"type":"security"}' --json
 RAGent query -q "database optimization" --top-k 20
 
 # Merge Slack context for incident reviews
-RAGent query -q "on-call handoff" --enable-slack-search --slack-channels "oncall,incident-review"
+RAGent query -q "on-call handoff" --enable-slack-search
 ```
 
 #### URL-Aware Search
@@ -794,7 +793,6 @@ RAGent mcp-server --auth-method ip
 The `hybrid_search` MCP tool accepts two new parameters when the server is launched with `SLACK_SEARCH_ENABLED=true`:
 
 - `enable_slack_search` (boolean, default `false`): opt in per request from your MCP client.
-- `slack_channels` (string array): optional list of channel names to narrow the Slack search scope.
 
 Responses include a `slack_results` array with message metadata and permalinks so downstream tools can render conversation context alongside document references.
 
@@ -1044,7 +1042,7 @@ RAGent/
    ```
    slack search failed: not_in_channel
    ```
-   → Invite the bot user to the private channels you reference or remove them from `--slack-channels`.
+   → Invite the bot user to the channels you want to search.
 
 ### Debugging Methods
 

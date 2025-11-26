@@ -45,7 +45,6 @@ type Searcher struct {
 type SearchRequest struct {
 	Query      string
 	TimeRange  *TimeRange
-	Channels   []string
 	MaxResults int
 }
 
@@ -102,7 +101,6 @@ func (s *Searcher) Search(ctx context.Context, req *SearchRequest) (*SearchRespo
 	span.SetAttributes(
 		attribute.String("slack.query_hash", queryHash),
 		attribute.Int("slack.max_results_requested", req.MaxResults),
-		attribute.Int("slack.channel_filter_count", len(req.Channels)),
 	)
 
 	if err := s.ensureCircuitAvailable(); err != nil {
@@ -119,7 +117,7 @@ func (s *Searcher) Search(ctx context.Context, req *SearchRequest) (*SearchRespo
 		return nil, err
 	}
 
-	enrichedQuery := s.buildQuery(query, req.TimeRange, req.Channels)
+	enrichedQuery := s.buildQuery(query, req.TimeRange)
 	enrichedHash := telemetryFingerprint(enrichedQuery)
 	span.SetAttributes(
 		attribute.String("slack.enriched_query_hash", enrichedHash),
@@ -264,25 +262,9 @@ func (s *Searcher) recordFailure() {
 	}
 }
 
-func (s *Searcher) buildQuery(base string, timeRange *TimeRange, channels []string) string {
+func (s *Searcher) buildQuery(base string, timeRange *TimeRange) string {
 	builder := strings.Builder{}
 	builder.WriteString(strings.TrimSpace(base))
-
-	if len(channels) > 0 {
-		for _, ch := range uniqueStrings(channels) {
-			channelName := strings.TrimSpace(ch)
-			if channelName == "" {
-				continue
-			}
-			if strings.HasPrefix(channelName, "#") {
-				builder.WriteString(" in:")
-				builder.WriteString(channelName)
-			} else {
-				builder.WriteString(" in:#")
-				builder.WriteString(channelName)
-			}
-		}
-	}
 
 	if timeRange != nil {
 		if timeRange.Start != nil {

@@ -46,16 +46,16 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
 
 `SLACK_SEARCH_ENABLED=true` を設定すると、以下のワークフローでSlack検索が自動的に動作します。
 
-- `query` コマンドは `--enable-slack-search` と `--slack-channels` フラグでリクエスト単位の制御が可能。
+- `query` コマンドは `--enable-slack-search` フラグでリクエスト単位の制御が可能。
 - `chat` コマンドは追加フラグなしで最新のSlack会話を取り込み、進捗を表示します。
 - `slack-bot` は回答内に「Conversations from Slack」セクションを追加し、各メッセージへのパーマリンクを提供します。
-- `mcp-server` の `hybrid_search` ツールは `enable_slack_search` と `slack_channels` パラメータを受け付けます。
+- `mcp-server` の `hybrid_search` ツールは `enable_slack_search` パラメータを受け付けます。
 
 各検索ではクエリの言い換え、タイムライン展開、十分性判定を行い、ドキュメント結果と一体化したレスポンスを生成します。
 
 ```bash
 # ドキュメントとSlackを同時に検索
-RAGent query -q "インシデントタイムライン" --enable-slack-search --slack-channels "prod-incident,devops"
+RAGent query -q "インシデントタイムライン" --enable-slack-search
 ```
 
 ## Embedding非依存RAG
@@ -622,7 +622,6 @@ RAGent query -q "error handling" --filter '{"category":"programming"}'
 - `-j, --json`: 結果をJSON形式で出力
 - `-f, --filter`: JSONメタデータフィルター（例: `'{"category":"docs"}'`）
 - `--enable-slack-search`: Slack検索を有効化し、ドキュメント結果と併せて表示
-- `--slack-channels`: Slack検索対象のチャンネル名をカンマ区切りで指定（先頭の`#`は不要）
 
 **使用例:**
 ```bash
@@ -636,7 +635,7 @@ RAGent query -q "authentication" --filter '{"type":"security"}' --json
 RAGent query -q "database optimization" --top-k 20
 
 # Slackと併せてインシデントレビューを検索
-RAGent query -q "オンコール引き継ぎ" --enable-slack-search --slack-channels "oncall,incident-review"
+RAGent query -q "オンコール引き継ぎ" --enable-slack-search
 ```
 
 #### URL対応検索
@@ -884,7 +883,7 @@ RAGent/
    ```
    slack search failed: not_in_channel
    ```
-   → Botユーザーを対象チャンネルに招待するか、`--slack-channels` から当該チャンネルを除外してください。
+   → Botユーザーを検索対象のチャンネルに招待してください。
 
 ### デバッグ方法
 
@@ -1091,7 +1090,6 @@ RAGent mcp-server --auth-method ip
 `SLACK_SEARCH_ENABLED=true` の場合、MCPツール `ragent-hybrid_search` は以下のパラメータを追加で受け付けます:
 
 - `enable_slack_search` (bool, デフォルト `false`): リクエスト単位でSlack検索を有効化。
-- `slack_channels` (string[]): Slack検索対象チャンネル名の配列（省略可）。
 
 レスポンスには `slack_results` フィールドが含まれ、メッセージのメタデータとパーマリンクをMCPクライアント側でレンダリングできます。
 

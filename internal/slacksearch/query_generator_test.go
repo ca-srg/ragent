@@ -34,7 +34,7 @@ func TestQueryGeneratorGenerateQueriesExtractsMetadata(t *testing.T) {
 	now := time.Date(2025, 10, 21, 12, 0, 0, 0, time.UTC)
 
 	mockClient.On("GenerateChatResponse", mock.Anything, mock.Anything).
-		Return(`{"queries":["deployment summary timeline","deployment incidents"],"channels":["devops"],"time_filter":null,"reasoning":"focus on deployment updates"}`, nil).
+		Return(`{"queries":["deployment summary timeline","deployment incidents"],"time_filter":null,"reasoning":"focus on deployment updates"}`, nil).
 		Once()
 
 	gen := newTestQueryGenerator(mockClient, now)
@@ -54,7 +54,6 @@ func TestQueryGeneratorGenerateQueriesExtractsMetadata(t *testing.T) {
 	assert.WithinDuration(t, expectedStart, *resp.TimeFilter.Start, time.Second)
 	assert.WithinDuration(t, expectedEnd, *resp.TimeFilter.End, time.Second)
 
-	assert.ElementsMatch(t, []string{"deployments", "devops"}, resp.ChannelFilter)
 	assert.Equal(t, "focus on deployment updates", resp.Reasoning)
 
 	mockClient.AssertExpectations(t)
@@ -65,7 +64,7 @@ func TestQueryGeneratorGenerateAlternativeQueriesSkipsPrevious(t *testing.T) {
 	now := time.Date(2025, 10, 21, 12, 0, 0, 0, time.UTC)
 
 	mockClient.On("GenerateChatResponse", mock.Anything, mock.Anything).
-		Return(`{"queries":["deployments summary","rollout checklist","deployments summary"],"channels":[],"time_filter":null,"reasoning":""}`, nil).
+		Return(`{"queries":["deployments summary","rollout checklist","deployments summary"],"time_filter":null,"reasoning":""}`, nil).
 		Once()
 
 	gen := newTestQueryGenerator(mockClient, now)

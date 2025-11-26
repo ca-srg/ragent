@@ -123,7 +123,7 @@ func TestSlackSearchService_SearchSuccess(t *testing.T) {
 
 	qg.On("GenerateQueries", mock.Anything, mock.AnythingOfType("*slacksearch.QueryGenerationRequest")).Return(genResp, nil).Once()
 	searcher.On("SearchWithRetry", mock.Anything, mock.MatchedBy(func(req *SearchRequest) bool {
-		return len(req.Channels) == 1 && req.Channels[0] == "general"
+		return req.Query == "deployment summary"
 	}), cfg.MaxRetries).Return(searchResp, nil).Once()
 	context.On("RetrieveContext", mock.Anything, mock.AnythingOfType("*slacksearch.ContextRequest")).
 		Return(&ContextResponse{EnrichedMessages: enriched, TotalRetrieved: 1}, nil).Once()

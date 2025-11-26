@@ -443,48 +443,33 @@ func (s *SlackSearchService) runSearchIteration(
 	)
 	queryHash := telemetryFingerprint(userQuery)
 
-	maxAttempts := s.config.MaxRetries
-	if maxAttempts < 0 {
-		maxAttempts = 0
+	genReq := &QueryGenerationRequest{
+		UserQuery:       userQuery,
+		PreviousQueries: previousQueries,
+		PreviousResults: previousResults,
 	}
 
-	for attempt := 0; attempt <= maxAttempts; attempt++ {
-		genReq := &QueryGenerationRequest{
-			UserQuery:       userQuery,
-			PreviousQueries: previousQueries,
-			PreviousResults: previousResults,
-		}
-
-		if iteration == 0 && attempt == 0 {
-			genResp, err = s.queryGenerator.GenerateQueries(ctx, genReq)
-		} else {
-			genResp, err = s.queryGenerator.GenerateAlternativeQueries(ctx, genReq)
-		}
-		if err != nil {
-			return nil, 0, executedQueries, previousQueries, previousResults, fmt.Errorf("failed to generate Slack queries: %w", err)
-		}
-
-		if len(channels) > 0 {
-			genResp.ChannelFilter = append(genResp.ChannelFilter, channels...)
-			genResp.ChannelFilter = uniqueStrings(genResp.ChannelFilter)
-		}
-
-		if len(genResp.Queries) == 0 {
-			s.logger.Printf("Slack search iteration=%d hash=%s attempt=%d generated_zero_queries", iteration+1, queryHash, attempt+1)
-			continue
-		}
-
-		s.logger.Printf("Slack search iteration=%d hash=%s attempt=%d generated_queries=%d channel_filters=%d time_filter=%t",
-			iteration+1, queryHash, attempt+1, len(genResp.Queries), len(genResp.ChannelFilter), genResp.TimeFilter != nil)
-
-		searchMessages, totalMatches, executedQueries = s.executeSlackSearch(ctx, genResp, executedQueries)
-		previousQueries = append(previousQueries, genResp.Queries...)
-		previousResults = totalMatches
-
-		if len(searchMessages) > 0 {
-			break
-		}
+	// First iteration uses initial query generation, subsequent iterations use alternative queries
+	if iteration == 0 {
+		genResp, err = s.queryGenerator.GenerateQueries(ctx, genReq)
+	} else {
+		genResp, err = s.queryGenerator.GenerateAlternativeQueries(ctx, genReq)
 	}
+	if err != nil {
+		return nil, 0, executedQueries, previousQueries, previousResults, fmt.Errorf("failed to generate Slack queries: %w", err)
+	}
+
+	if len(genResp.Queries) == 0 {
+		s.logger.Printf("Slack search iteration=%d hash=%s generated_zero_queries", iteration+1, queryHash)
+		return searchMessages, totalMatches, executedQueries, previousQueries, previousResults, nil
+	}
+
+	s.logger.Printf("Slack search iteration=%d hash=%s generated_queries=%d time_filter=%t",
+		iteration+1, queryHash, len(genResp.Queries), genResp.TimeFilter != nil)
+
+	searchMessages, totalMatches, executedQueries = s.executeSlackSearch(ctx, genResp, executedQueries)
+	previousQueries = append(previousQueries, genResp.Queries...)
+	previousResults = totalMatches
 
 	return searchMessages, totalMatches, executedQueries, previousQueries, previousResults, nil
 }
@@ -516,7 +501,6 @@ func (s *SlackSearchService) executeSlackSearch(
 		request := &SearchRequest{
 			Query:      query,
 			TimeRange:  genResp.TimeFilter,
-			Channels:   genResp.ChannelFilter,
 			MaxResults: s.config.MaxResults,
 		}
 

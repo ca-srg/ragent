@@ -41,7 +41,7 @@ func TestSearcherSearchSuccessWithFilters(t *testing.T) {
 	end := time.Date(2025, 10, 21, 0, 0, 0, 0, time.UTC)
 
 	mockClient.On("SearchMessagesContext", mock.Anything, mock.MatchedBy(func(q string) bool {
-		return strings.Contains(q, "in:#general") && strings.Contains(q, "after:2025-10-01") && strings.Contains(q, "before:2025-10-21")
+		return strings.Contains(q, "after:2025-10-01") && strings.Contains(q, "before:2025-10-21")
 	}), mock.MatchedBy(func(params slack.SearchParameters) bool {
 		return params.Count == 50
 	})).Return(&slack.SearchMessages{
@@ -65,7 +65,6 @@ func TestSearcherSearchSuccessWithFilters(t *testing.T) {
 			Start: &start,
 			End:   &end,
 		},
-		Channels:   []string{"general"},
 		MaxResults: 50,
 	}
 
@@ -73,7 +72,6 @@ func TestSearcherSearchSuccessWithFilters(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Messages, 1)
 	assert.Equal(t, "Deployment completed", resp.Messages[0].Text)
-	assert.True(t, strings.Contains(resp.Query, "in:#general"))
 
 	mockClient.AssertExpectations(t)
 }

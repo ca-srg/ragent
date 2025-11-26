@@ -19,7 +19,6 @@ import (
 const maxGeneratedQueries = 3
 
 var (
-	channelRegex    = regexp.MustCompile(`(?i)#([a-z0-9_\-]+)`)
 	lastNDaysRegex  = regexp.MustCompile(`(?i)(?:last|past)\s+(\d+)\s+day`)
 	lastNWeeksRegex = regexp.MustCompile(`(?i)(?:last|past)\s+(\d+)\s+week`)
 )
@@ -29,12 +28,10 @@ You are an assistant that creates precise Slack search queries.
 Always respond with a JSON object using this schema:
 {
   "queries": ["string"],
-  "channels": ["channel-name"],
   "time_filter": {"start": "ISO8601", "end": "ISO8601"} | null,
   "reasoning": "string"
 }
 - Generate 1-3 distinct queries optimized for Slack's search syntax.
-- Include channel names without the leading '#'.
 - If no specific time filter is appropriate, set "time_filter" to null.
 - Reasoning should summarize why the queries were chosen.
 - Do not include Markdown code fences; return pure JSON.
@@ -62,16 +59,14 @@ type QueryGenerationRequest struct {
 
 // QueryGenerationResponse encapsulates the generated queries and metadata.
 type QueryGenerationResponse struct {
-	Queries       []string
-	TimeFilter    *TimeRange
-	ChannelFilter []string
-	Reasoning     string
+	Queries    []string
+	TimeFilter *TimeRange
+	Reasoning  string
 }
 
 type llmQueryPayload struct {
-	Queries    []string `json:"queries"`
-	Channels   []string `json:"channels"`
-	Reasoning  string   `json:"reasoning"`
+	Queries   []string `json:"queries"`
+	Reasoning string   `json:"reasoning"`
 	TimeFilter *struct {
 		Start string `json:"start"`
 		End   string `json:"end"`
@@ -151,28 +146,21 @@ func (g *QueryGenerator) generate(ctx context.Context, req *QueryGenerationReque
 		queries = queries[:maxGeneratedQueries]
 	}
 
-	// Merge channel hints from LLM and heuristics
-	channelHints := extractChannels(req.UserQuery)
-	channelHints = append(channelHints, payload.Channels...)
-	channelHints = uniqueStrings(channelHints)
-
 	// Determine time range
 	timeRange := g.determineTimeRange(payload.TimeFilter, req.UserQuery)
 
 	response := &QueryGenerationResponse{
-		Queries:       queries,
-		TimeFilter:    timeRange,
-		ChannelFilter: channelHints,
-		Reasoning:     payload.Reasoning,
+		Queries:    queries,
+		TimeFilter: timeRange,
+		Reasoning:  payload.Reasoning,
 	}
 
 	span.SetAttributes(
 		attribute.Int("slack.generated_queries", len(response.Queries)),
-		attribute.Int("slack.channel_filters", len(response.ChannelFilter)),
 		attribute.Bool("slack.time_filter_present", response.TimeFilter != nil),
 	)
-	g.logger.Printf("QueryGenerator: completed hash=%s alternative=%t queries=%d channels=%d time_filter=%t",
-		queryHash, alternative, len(response.Queries), len(response.ChannelFilter), response.TimeFilter != nil)
+	g.logger.Printf("QueryGenerator: completed hash=%s alternative=%t queries=%d time_filter=%t",
+		queryHash, alternative, len(response.Queries), response.TimeFilter != nil)
 
 	return response, nil
 }
@@ -340,26 +328,6 @@ func normalizeQueries(queries []string, previous []string) []string {
 		unique = append(unique, trimmed)
 	}
 	return unique
-}
-
-func extractChannels(text string) []string {
-	matches := channelRegex.FindAllStringSubmatch(text, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-
-	channels := make([]string, 0, len(matches))
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		name := strings.ToLower(strings.TrimSpace(match[1]))
-		if name == "" {
-			continue
-		}
-		channels = append(channels, name)
-	}
-	return uniqueStrings(channels)
 }
 
 func uniqueStrings(values []string) []string {
