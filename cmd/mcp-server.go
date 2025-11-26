@@ -390,13 +390,14 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 
 	// Create hybrid search tool configuration
 	hybridSearchConfig := &mcpserver.HybridSearchConfig{
-		DefaultIndexName:      cfg.OpenSearchIndex,
-		DefaultSize:           cfg.MCPDefaultSearchSize,
-		DefaultBM25Weight:     cfg.MCPDefaultBM25Weight,
-		DefaultVectorWeight:   cfg.MCPDefaultVectorWeight,
-		DefaultFusionMethod:   "weighted_sum",
-		DefaultUseJapaneseNLP: cfg.MCPDefaultUseJapaneseNLP,
-		DefaultTimeoutSeconds: cfg.MCPDefaultTimeoutSeconds,
+		DefaultIndexName:            cfg.OpenSearchIndex,
+		DefaultSize:                 cfg.MCPDefaultSearchSize,
+		DefaultBM25Weight:           cfg.MCPDefaultBM25Weight,
+		DefaultVectorWeight:         cfg.MCPDefaultVectorWeight,
+		DefaultFusionMethod:         "weighted_sum",
+		DefaultUseJapaneseNLP:       cfg.MCPDefaultUseJapaneseNLP,
+		DefaultTimeoutSeconds:       cfg.MCPDefaultTimeoutSeconds,
+		SlackPipelineTimeoutSeconds: cfg.SlackSearchPipelineTimeoutSeconds,
 	}
 
 	// Create hybrid search tool handler for SDK integration

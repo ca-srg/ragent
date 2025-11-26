@@ -120,7 +120,7 @@ func applyServerWrapperDefaults(cfg *types.Config) {
 		cfg.MCPDefaultVectorWeight = 0.5
 	}
 	if cfg.MCPDefaultTimeoutSeconds <= 0 {
-		cfg.MCPDefaultTimeoutSeconds = 30
+		cfg.MCPDefaultTimeoutSeconds = 300
 	}
 	if cfg.OpenSearchIndex == "" {
 		cfg.OpenSearchIndex = "docs-index"

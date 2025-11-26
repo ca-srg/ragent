@@ -158,6 +158,10 @@ func validateSlackSearchConfig(config *Config) error {
 		return fmt.Errorf("SLACK_SEARCH_LLM_TIMEOUT_SECONDS must be between 1 and 300 (got %d)", config.SlackSearchLLMTimeoutSeconds)
 	}
 
+	if config.SlackSearchPipelineTimeoutSeconds <= 0 || config.SlackSearchPipelineTimeoutSeconds > 1800 {
+		return fmt.Errorf("SLACK_SEARCH_PIPELINE_TIMEOUT_SECONDS must be between 1 and 1800 (got %d)", config.SlackSearchPipelineTimeoutSeconds)
+	}
+
 	return nil
 }
 

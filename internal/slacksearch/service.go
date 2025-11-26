@@ -260,7 +260,17 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 			iterSpan.End()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "context_cancelled")
-			return nil, err
+
+			// Return partial results instead of error on timeout
+			result := s.buildResult(startTime, executedQueries, iterationsDone, totalMatches, enrichedMessages, &SufficiencyResponse{
+				IsSufficient: false,
+				MissingInfo:  []string{"Search was interrupted by timeout"},
+				Reasoning:    fmt.Sprintf("Context cancelled after %d iterations: %v", iterationsDone, err),
+				Confidence:   0,
+			})
+			result.TimedOut = true
+			s.logger.Printf("Slack search timed out hash=%s iterations=%d enriched=%d", queryHash, iterationsDone, len(enrichedMessages))
+			return result, nil
 		default:
 		}
 

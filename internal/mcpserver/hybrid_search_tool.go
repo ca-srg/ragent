@@ -32,26 +32,28 @@ type HybridSearchToolAdapter struct {
 
 // HybridSearchConfig contains configuration for hybrid search
 type HybridSearchConfig struct {
-	DefaultIndexName      string
-	DefaultSize           int
-	DefaultBM25Weight     float64
-	DefaultVectorWeight   float64
-	DefaultFusionMethod   string
-	DefaultUseJapaneseNLP bool
-	DefaultTimeoutSeconds int
+	DefaultIndexName            string
+	DefaultSize                 int
+	DefaultBM25Weight           float64
+	DefaultVectorWeight         float64
+	DefaultFusionMethod         string
+	DefaultUseJapaneseNLP       bool
+	DefaultTimeoutSeconds       int
+	SlackPipelineTimeoutSeconds int
 }
 
 // NewHybridSearchToolAdapter creates a new hybrid search tool adapter
 func NewHybridSearchToolAdapter(searchClient SearchClient, embeddingClient opensearch.EmbeddingClient, config *HybridSearchConfig, slackService *slacksearch.SlackSearchService) *HybridSearchToolAdapter {
 	if config == nil {
 		config = &HybridSearchConfig{
-			DefaultIndexName:      "ragent-docs",
-			DefaultSize:           10,
-			DefaultBM25Weight:     0.5,
-			DefaultVectorWeight:   0.5,
-			DefaultFusionMethod:   string(opensearch.FusionMethodWeightedSum),
-			DefaultUseJapaneseNLP: true,
-			DefaultTimeoutSeconds: 30,
+			DefaultIndexName:            "ragent-docs",
+			DefaultSize:                 10,
+			DefaultBM25Weight:           0.5,
+			DefaultVectorWeight:         0.5,
+			DefaultFusionMethod:         string(opensearch.FusionMethodWeightedSum),
+			DefaultUseJapaneseNLP:       true,
+			DefaultTimeoutSeconds:       30,
+			SlackPipelineTimeoutSeconds: 600,
 		}
 	}
 
@@ -207,16 +209,19 @@ func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params 
 
 	var slackResult *slacksearch.SlackSearchResult
 	if searchRequest.EnableSlackSearch && hsta.slackService != nil {
-		timeout := hsta.defaultConfig.DefaultTimeoutSeconds
-		if timeout <= 0 {
-			timeout = 10
+		pipelineTimeout := hsta.defaultConfig.SlackPipelineTimeoutSeconds
+		if pipelineTimeout <= 0 {
+			pipelineTimeout = 600
 		}
-		slackCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+
+		// Use context.Background() to make Slack search independent of parent context timeout
+		slackCtx, cancel := context.WithTimeout(context.Background(), time.Duration(pipelineTimeout)*time.Second)
+		hsta.logger.Printf("Slack search started with independent context (timeout=%ds)", pipelineTimeout)
 		slackResult, err = hsta.slackService.Search(slackCtx, searchRequest.Query, searchRequest.SlackChannels)
 		cancel()
 		if err != nil {
 			hsta.logger.Printf("Slack search error: %v", err)
-			slackResult = nil
+			// slackResult may contain partial results even on error (due to graceful timeout handling)
 		}
 	}
 

@@ -166,7 +166,7 @@ type Config struct {
 	MCPDefaultBM25Weight     float64 `json:"mcp_default_bm25_weight" env:"MCP_DEFAULT_BM25_WEIGHT,default=0.5"`
 	MCPDefaultVectorWeight   float64 `json:"mcp_default_vector_weight" env:"MCP_DEFAULT_VECTOR_WEIGHT,default=0.5"`
 	MCPDefaultUseJapaneseNLP bool    `json:"mcp_default_use_japanese_nlp" env:"MCP_DEFAULT_USE_JAPANESE_NLP,default=true"`
-	MCPDefaultTimeoutSeconds int     `json:"mcp_default_timeout_seconds" env:"MCP_DEFAULT_TIMEOUT_SECONDS,default=30"`
+	MCPDefaultTimeoutSeconds int     `json:"mcp_default_timeout_seconds" env:"MCP_DEFAULT_TIMEOUT_SECONDS,default=300"`
 
 	// MCP SSE (Server-Sent Events) configuration
 	MCPSSEEnabled           bool          `json:"mcp_sse_enabled" env:"MCP_SSE_ENABLED,default=true"`
@@ -183,8 +183,9 @@ type Config struct {
 	SlackSearchContextWindowMinutes int    `json:"slack_search_context_window_minutes" env:"SLACK_SEARCH_CONTEXT_WINDOW_MINUTES,default=30"`
 	SlackSearchMaxIterations        int    `json:"slack_search_max_iterations" env:"SLACK_SEARCH_MAX_ITERATIONS,default=5"`
 	SlackSearchMaxContextMessages   int    `json:"slack_search_max_context_messages" env:"SLACK_SEARCH_MAX_CONTEXT_MESSAGES,default=100"`
-	SlackSearchTimeoutSeconds       int    `json:"slack_search_timeout_seconds" env:"SLACK_SEARCH_TIMEOUT_SECONDS,default=60"`
-	SlackSearchLLMTimeoutSeconds    int    `json:"slack_search_llm_timeout_seconds" env:"SLACK_SEARCH_LLM_TIMEOUT_SECONDS,default=60"`
+	SlackSearchTimeoutSeconds         int    `json:"slack_search_timeout_seconds" env:"SLACK_SEARCH_TIMEOUT_SECONDS,default=60"`
+	SlackSearchLLMTimeoutSeconds      int    `json:"slack_search_llm_timeout_seconds" env:"SLACK_SEARCH_LLM_TIMEOUT_SECONDS,default=60"`
+	SlackSearchPipelineTimeoutSeconds int    `json:"slack_search_pipeline_timeout_seconds" env:"SLACK_SEARCH_PIPELINE_TIMEOUT_SECONDS,default=600"`
 
 	// Observability (OpenTelemetry) configuration
 	OTelEnabled              bool    `json:"otel_enabled" env:"OTEL_ENABLED,default=false"`

@@ -383,7 +383,7 @@ SLACK_SEARCH_MAX_RETRIES=5                     # Retry count for Slack API rate 
 SLACK_SEARCH_CONTEXT_WINDOW_MINUTES=30         # Time window (minutes) of surrounding message context
 SLACK_SEARCH_MAX_ITERATIONS=5                  # Iterative refinements performed when answers insufficient
 SLACK_SEARCH_MAX_CONTEXT_MESSAGES=100          # Max messages assembled into enriched context
-SLACK_SEARCH_TIMEOUT_SECONDS=5                 # Slack API request timeout in seconds (1-60)
+SLACK_SEARCH_TIMEOUT_SECONDS=60                 # Slack API request timeout in seconds (1-60)
 
 # OpenTelemetry Configuration (optional)
 OTEL_ENABLED=false

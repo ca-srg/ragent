@@ -47,6 +47,7 @@ type SlackSearchResult struct {
 	IsSufficient     bool              `json:"is_sufficient"`
 	MissingInfo      []string          `json:"missing_info,omitempty"`
 	Sources          map[string]string `json:"sources,omitempty"`
+	TimedOut         bool              `json:"timed_out"`
 }
 
 // Validate ensures the Slack search configuration values are within supported ranges.
