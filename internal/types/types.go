@@ -179,9 +179,9 @@ type Config struct {
 	SlackSearchEnabled              bool   `json:"slack_search_enabled" env:"SLACK_SEARCH_ENABLED,default=false"`
 	SlackUserToken                  string `json:"slack_user_token" env:"SLACK_USER_TOKEN"`
 	SlackSearchMaxResults           int    `json:"slack_search_max_results" env:"SLACK_SEARCH_MAX_RESULTS,default=20"`
-	SlackSearchMaxRetries           int    `json:"slack_search_max_retries" env:"SLACK_SEARCH_MAX_RETRIES,default=5"`
+	SlackSearchMaxRetries           int    `json:"slack_search_max_retries" env:"SLACK_SEARCH_MAX_RETRIES,default=3"`
 	SlackSearchContextWindowMinutes int    `json:"slack_search_context_window_minutes" env:"SLACK_SEARCH_CONTEXT_WINDOW_MINUTES,default=30"`
-	SlackSearchMaxIterations        int    `json:"slack_search_max_iterations" env:"SLACK_SEARCH_MAX_ITERATIONS,default=5"`
+	SlackSearchMaxIterations        int    `json:"slack_search_max_iterations" env:"SLACK_SEARCH_MAX_ITERATIONS,default=3"`
 	SlackSearchMaxContextMessages   int    `json:"slack_search_max_context_messages" env:"SLACK_SEARCH_MAX_CONTEXT_MESSAGES,default=100"`
 	SlackSearchTimeoutSeconds       int    `json:"slack_search_timeout_seconds" env:"SLACK_SEARCH_TIMEOUT_SECONDS,default=60"`
 	SlackSearchLLMTimeoutSeconds    int    `json:"slack_search_llm_timeout_seconds" env:"SLACK_SEARCH_LLM_TIMEOUT_SECONDS,default=60"`

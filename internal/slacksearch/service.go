@@ -230,13 +230,15 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 	}
 
 	var (
-		executedQueries  []string
-		enrichedMessages []EnrichedMessage
-		totalMatches     int
-		suffResult       *SufficiencyResponse
-		previousQueries  []string
-		previousResults  int
-		iterationsDone   int
+		executedQueries       []string
+		enrichedMessages      []EnrichedMessage
+		totalMatches          int
+		suffResult            *SufficiencyResponse
+		previousQueries       []string
+		previousResults       int
+		iterationsDone        int
+		previousEnrichedCount int
+		stagnationCount       int
 	)
 
 	for iteration := 0; iteration < maxIterations; iteration++ {
@@ -348,6 +350,17 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 			attribute.Int("slack.context_total_retrieved", contextResp.TotalRetrieved),
 		)
 
+		// Stagnation detection: if no new enriched messages found, increment stagnation counter
+		currentEnrichedCount := len(enrichedMessages)
+		if iteration > 0 && currentEnrichedCount <= previousEnrichedCount {
+			stagnationCount++
+			s.logger.Printf("Slack search stagnation detected hash=%s iteration=%d current=%d previous=%d stagnation_count=%d",
+				queryHash, iterationsDone, currentEnrichedCount, previousEnrichedCount, stagnationCount)
+		} else {
+			stagnationCount = 0
+		}
+		previousEnrichedCount = currentEnrichedCount
+
 		sufficiencyReq := &SufficiencyRequest{
 			UserQuery:     userQuery,
 			Messages:      enrichedMessages,
@@ -373,10 +386,25 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 		s.logger.Printf("Slack sufficiency evaluated hash=%s iteration=%d sufficient=%t confidence=%.2f missing=%d",
 			queryHash, iterationsDone, suffResult.IsSufficient, suffResult.Confidence, len(suffResult.MissingInfo))
 
-		if suffResult.IsSufficient || iteration+1 >= maxIterations {
-			iterSpan.AddEvent("sufficiency_reached", trace.WithAttributes(
+		// Early termination conditions:
+		// 1. Sufficient information found
+		// 2. Max iterations reached
+		// 3. Stagnation detected (no progress for 2 consecutive iterations)
+		shouldTerminate := suffResult.IsSufficient || iteration+1 >= maxIterations || stagnationCount >= 2
+		if shouldTerminate {
+			reason := "max_iterations"
+			if suffResult.IsSufficient {
+				reason = "sufficient"
+			} else if stagnationCount >= 2 {
+				reason = "stagnation"
+				s.logger.Printf("Slack search early termination due to stagnation hash=%s iteration=%d stagnation_count=%d",
+					queryHash, iterationsDone, stagnationCount)
+			}
+			iterSpan.AddEvent("search_terminated", trace.WithAttributes(
 				attribute.Bool("slack.is_sufficient", suffResult.IsSufficient),
 				attribute.Int("slack.iteration", iteration+1),
+				attribute.String("slack.termination_reason", reason),
+				attribute.Int("slack.stagnation_count", stagnationCount),
 			))
 			iterSpan.End()
 			break
