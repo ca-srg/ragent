@@ -618,7 +618,6 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 	slackToggleProp.Description = "Slack のワークスペース会話を同時に検索する場合は true を指定します。サーバー側で Slack の資格情報が設定されている必要があります。"
 	slackToggleProp.Default = toRaw(false)
 
-
 	schema.Properties["query"] = queryProp
 	schema.Properties["top_k"] = topKProp
 	schema.Properties["filters"] = filtersProp
