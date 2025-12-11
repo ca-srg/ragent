@@ -488,7 +488,7 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 	toolCopy.Name = toolName
 
 	toolCopy.Description = fmt.Sprintf(
-		"ハイブリッド検索ツール。RAGent の OpenSearch (BM25) と Titan ベクトル検索を組み合わせ、最大 %d 件の候補を融合スコアで返します。日本語・英語いずれの自然文クエリにも対応し、手順書・設計資料・ナレッジノートを横断的に調べる用途を想定しています。必要に応じて `enable_slack_search` を true にすることで社内 Slack の会話も同時に検索でき、`slack_channels` でチャンネルを絞り込めます。レスポンスは JSON テキストで、各ドキュメントのタイトル/抜粋/スコア/パス/メタデータ (任意) を含みます。\n\nEnglish: Run hybrid retrieval across the Markdown knowledge base by blending BM25 and Titan embeddings on Amazon OpenSearch. Returns up to %d ranked documents with fused scores plus optional metadata. Set `enable_slack_search` to true to enrich the response with Slack conversations and use `slack_channels` to scope the workspace search.",
+		"ハイブリッド検索ツール。RAGent の OpenSearch (BM25) と Titan ベクトル検索を組み合わせ、最大 %d 件の候補を融合スコアで返します。日本語・英語いずれの自然文クエリにも対応し、手順書・設計資料・ナレッジノートを横断的に調べる用途を想定しています。必要に応じて `enable_slack_search` を true にすることで社内 Slack の会話も同時に検索できます。レスポンスは JSON テキストで、各ドキュメントのタイトル/抜粋/スコア/パス/メタデータ (任意) を含みます。\n\nEnglish: Run hybrid retrieval across the Markdown knowledge base by blending BM25 and Titan embeddings on Amazon OpenSearch. Returns up to %d ranked documents with fused scores plus optional metadata. Set `enable_slack_search` to true to enrich the response with Slack conversations.",
 		defaults.DefaultSize,
 		defaults.DefaultSize,
 	)
@@ -618,10 +618,6 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 	slackToggleProp.Description = "Slack のワークスペース会話を同時に検索する場合は true を指定します。サーバー側で Slack の資格情報が設定されている必要があります。"
 	slackToggleProp.Default = toRaw(false)
 
-	slackChannelsProp := ensureProperty("slack_channels", "array")
-	slackChannelsProp.Title = "Slack Channels"
-	slackChannelsProp.Description = "Slack 検索対象のチャンネル名リスト。先頭の # を付けずに指定します。省略した場合は全チャンネルが対象です。"
-	slackChannelsProp.Items = &jsonschema.Schema{Type: "string", Description: "Slack channel name (without '#')."}
 
 	schema.Properties["query"] = queryProp
 	schema.Properties["top_k"] = topKProp
@@ -634,7 +630,6 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 	schema.Properties["fusion_method"] = fusionMethodProp
 	schema.Properties["use_japanese_nlp"] = nlpProp
 	schema.Properties["enable_slack_search"] = slackToggleProp
-	schema.Properties["slack_channels"] = slackChannelsProp
 
 	schema.Examples = []any{
 		map[string]any{
@@ -651,7 +646,6 @@ func buildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 			"min_score":           0.25,
 			"filters":             map[string]any{"tags": "observability"},
 			"enable_slack_search": true,
-			"slack_channels":      []string{"incident-updates"},
 		},
 	}
 
