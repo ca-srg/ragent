@@ -65,8 +65,8 @@ type QueryGenerationResponse struct {
 }
 
 type llmQueryPayload struct {
-	Queries   []string `json:"queries"`
-	Reasoning string   `json:"reasoning"`
+	Queries    []string `json:"queries"`
+	Reasoning  string   `json:"reasoning"`
 	TimeFilter *struct {
 		Start string `json:"start"`
 		End   string `json:"end"`
@@ -328,26 +328,6 @@ func normalizeQueries(queries []string, previous []string) []string {
 		unique = append(unique, trimmed)
 	}
 	return unique
-}
-
-func uniqueStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, v := range values {
-		key := strings.ToLower(strings.TrimSpace(v))
-		if key == "" {
-			continue
-		}
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, key)
-	}
-	return result
 }
 
 func startOfDay(t time.Time) time.Time {
