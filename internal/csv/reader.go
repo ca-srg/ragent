@@ -39,7 +39,7 @@ func (r *Reader) ReadFile(filePath string) ([]*types.FileInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open CSV file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	return r.readWithConfig(file, filePath, fileConfig)
 }
@@ -381,7 +381,7 @@ func (r *Reader) GetDetectedColumns(filePath string) (*DetectedColumnsInfo, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to open CSV file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	csvReader := csv.NewReader(file)
 	records, err := csvReader.ReadAll()

@@ -313,7 +313,7 @@ func TestReader_ReadFile_HeaderOnly(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if files != nil && len(files) != 0 {
+	if len(files) != 0 {
 		t.Errorf("expected nil or empty files for header-only CSV, got %d files", len(files))
 	}
 }

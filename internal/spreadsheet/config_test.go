@@ -179,9 +179,9 @@ func TestGetCredentialsFile(t *testing.T) {
 	// Test fallback to environment variable
 	cfg.GCP.CredentialsFile = ""
 	originalEnv := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
-	defer os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", originalEnv)
+	defer func() { _ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", originalEnv) }()
 
-	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/env/path/creds.json")
+	_ = os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/env/path/creds.json")
 	if cfg.GetCredentialsFile() != "/env/path/creds.json" {
 		t.Errorf("Expected '/env/path/creds.json', got: %s", cfg.GetCredentialsFile())
 	}
