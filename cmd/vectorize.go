@@ -50,9 +50,11 @@ var (
 	csvConfigPath string
 
 	// S3 source mode
-	enableS3 bool
-	s3Bucket string
-	s3Prefix string
+	enableS3       bool
+	s3Bucket       string
+	s3Prefix       string
+	s3VectorRegion string
+	s3SourceRegion string
 )
 
 var vectorizationRunner = executeVectorizationOnce
@@ -89,6 +91,10 @@ func init() {
 	vectorizeCmd.Flags().BoolVar(&enableS3, "enable-s3", false, "Enable S3 source file fetching")
 	vectorizeCmd.Flags().StringVar(&s3Bucket, "s3-bucket", "", "S3 bucket name for source files (required when --enable-s3 is set)")
 	vectorizeCmd.Flags().StringVar(&s3Prefix, "s3-prefix", "", "S3 prefix (directory) to scan (optional, defaults to bucket root)")
+
+	// S3 region options
+	vectorizeCmd.Flags().StringVar(&s3VectorRegion, "s3-vector-region", "", "AWS region for S3 Vector bucket (overrides S3_VECTOR_REGION, default: us-east-1)")
+	vectorizeCmd.Flags().StringVar(&s3SourceRegion, "s3-source-region", "", "AWS region for source S3 bucket (overrides S3_SOURCE_REGION, default: us-east-1)")
 }
 
 func runVectorize(cmd *cobra.Command, args []string) error {
@@ -171,7 +177,7 @@ func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.Pr
 		s3Config := &s3vector.S3Config{
 			VectorBucketName: cfg.AWSS3VectorBucket,
 			IndexName:        cfg.AWSS3VectorIndex,
-			Region:           cfg.AWSS3Region,
+			Region:           resolveS3VectorRegion(cfg),
 			MaxRetries:       cfg.RetryAttempts,
 			RetryDelay:       cfg.RetryDelay,
 		}
@@ -283,7 +289,7 @@ func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.Pr
 		log.Printf("Scanning S3 bucket: s3://%s/%s", s3Bucket, s3Prefix)
 
 		// Validate S3 bucket access first (unless dry run)
-		s3Scanner, err := scanner.NewS3Scanner(s3Bucket, s3Prefix, cfg.AWSS3Region)
+		s3Scanner, err := scanner.NewS3Scanner(s3Bucket, s3Prefix, resolveS3SourceRegion(cfg))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create S3 scanner: %w", err)
 		}
@@ -468,7 +474,7 @@ func createVectorizerServiceWithCSVConfig(cfg *types.Config, csvCfg *csv.Config)
 	s3Config := &s3vector.S3Config{
 		VectorBucketName: cfg.AWSS3VectorBucket,
 		IndexName:        cfg.AWSS3VectorIndex,
-		Region:           cfg.AWSS3Region,
+		Region:           resolveS3VectorRegion(cfg),
 		MaxRetries:       cfg.RetryAttempts,
 		RetryDelay:       cfg.RetryDelay,
 	}
@@ -837,7 +843,7 @@ func createVectorizerServiceForSpreadsheet(cfg *types.Config) (*vectorizer.Vecto
 	s3Config := &s3vector.S3Config{
 		VectorBucketName: cfg.AWSS3VectorBucket,
 		IndexName:        cfg.AWSS3VectorIndex,
-		Region:           cfg.AWSS3Region,
+		Region:           resolveS3VectorRegion(cfg),
 		MaxRetries:       cfg.RetryAttempts,
 		RetryDelay:       cfg.RetryDelay,
 	}
@@ -1049,4 +1055,20 @@ func formatHeadersDisplay(headers []string, maxLen int) string {
 
 	result += "]"
 	return result
+}
+
+// resolveS3VectorRegion returns the S3 Vector region with priority: flag > env > default
+func resolveS3VectorRegion(cfg *types.Config) string {
+	if s3VectorRegion != "" {
+		return s3VectorRegion
+	}
+	return cfg.S3VectorRegion
+}
+
+// resolveS3SourceRegion returns the S3 Source region with priority: flag > env > default
+func resolveS3SourceRegion(cfg *types.Config) string {
+	if s3SourceRegion != "" {
+		return s3SourceRegion
+	}
+	return cfg.S3SourceRegion
 }

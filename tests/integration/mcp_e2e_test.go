@@ -168,7 +168,7 @@ func setupE2EEnvironment(t *testing.T) (*config.Config, *bedrock.BedrockClient, 
 
 	// Create real embedding client (need AWS config first)
 	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(),
-		awsconfig.WithRegion(cfg.AWSS3Region),
+		awsconfig.WithRegion(cfg.S3VectorRegion),
 	)
 	if err != nil {
 		t.Skipf("Skipping E2E test: failed to create AWS config: %v", err)
@@ -833,7 +833,7 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 
 		// Verify SDK server can be created with existing config
 		mcpConfig := &types.Config{
-			AWSS3Region:        originalConfig.AWSS3Region,
+			S3VectorRegion:     originalConfig.S3VectorRegion,
 			OpenSearchEndpoint: originalConfig.OpenSearchEndpoint,
 			OpenSearchRegion:   originalConfig.OpenSearchRegion,
 			MCPServerHost:      "127.0.0.1",
@@ -929,7 +929,7 @@ func createSDKE2EServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 
 	// Create MCP server configuration for SDK server
 	mcpConfig := &types.Config{
-		AWSS3Region:        cfg.AWSS3Region,
+		S3VectorRegion:     cfg.S3VectorRegion,
 		OpenSearchEndpoint: cfg.OpenSearchEndpoint,
 		OpenSearchRegion:   cfg.OpenSearchRegion,
 		MCPServerHost:      "127.0.0.1",

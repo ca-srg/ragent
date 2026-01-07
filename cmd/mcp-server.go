@@ -355,7 +355,7 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	logger.Printf("OpenSearch connection established: %s", cfg.OpenSearchEndpoint)
 
 	// Load AWS configuration
-	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.AWSS3Region))
+	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.S3VectorRegion))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}

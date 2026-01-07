@@ -379,6 +379,8 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 # S3 Vector Configuration
 S3_VECTOR_INDEX_NAME=your_vector_index_name
 S3_BUCKET_NAME=your_s3_bucket_name
+S3_VECTOR_REGION=us-east-1           # AWS region for S3 Vector bucket
+S3_SOURCE_REGION=ap-northeast-1      # AWS region for source S3 bucket (--enable-s3)
 
 # OpenSearch Configuration (for Hybrid RAG)
 OPENSEARCH_ENDPOINT=your_opensearch_endpoint
@@ -660,6 +662,8 @@ RAGent vectorize
 - `--enable-s3`: Enable S3 source file fetching
 - `--s3-bucket`: S3 bucket name for source files (required when `--enable-s3` is set)
 - `--s3-prefix`: S3 prefix (directory) to scan (optional, defaults to bucket root)
+- `--s3-vector-region`: AWS region for S3 Vector bucket (overrides S3_VECTOR_REGION, default: us-east-1)
+- `--s3-source-region`: AWS region for source S3 bucket (overrides S3_SOURCE_REGION, default: us-east-1)
 
 **S3 Source Examples:**
 ```bash

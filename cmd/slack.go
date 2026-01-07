@@ -77,7 +77,7 @@ var slackCmd = &cobra.Command{
 		}
 
 		var convSearcher slackbot.SlackConversationSearcher
-		awsCfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(cfg.AWSS3Region))
+		awsCfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(cfg.S3VectorRegion))
 		if err != nil {
 			return fmt.Errorf("failed to load AWS config for Slack search: %w", err)
 		}

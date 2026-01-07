@@ -188,7 +188,7 @@ func setupSDKTestEnvironment(t *testing.T) (*config.Config, *bedrock.BedrockClie
 
 	// Create real AWS config and embedding client
 	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(),
-		awsconfig.WithRegion(cfg.AWSS3Region),
+		awsconfig.WithRegion(cfg.S3VectorRegion),
 	)
 	if err != nil {
 		t.Skipf("Skipping SDK test: failed to create AWS config: %v", err)
@@ -232,7 +232,7 @@ func createSDKMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 
 	// Create MCP server configuration from existing config
 	mcpConfig := &types.Config{
-		AWSS3Region:        cfg.AWSS3Region,
+		S3VectorRegion:     cfg.S3VectorRegion,
 		OpenSearchEndpoint: cfg.OpenSearchEndpoint,
 		OpenSearchRegion:   cfg.OpenSearchRegion,
 		OpenSearchIndex:    cfg.OpenSearchIndex,
