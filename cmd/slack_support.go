@@ -113,27 +113,7 @@ func printSlackResults(result *slacksearch.SlackSearchResult) {
 }
 
 func slackContextForPrompt(result *slacksearch.SlackSearchResult) string {
-	if result == nil || len(result.EnrichedMessages) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("Slack Conversations:\n")
-	for _, msg := range result.EnrichedMessages {
-		orig := msg.OriginalMessage
-		sb.WriteString(fmt.Sprintf("- #%s at %s: %s\n",
-			channelName(orig.Channel),
-			humanTimestamp(orig.Timestamp),
-			strings.TrimSpace(orig.Text),
-		))
-		for _, reply := range msg.ThreadMessages {
-			sb.WriteString(fmt.Sprintf("    • Reply at %s: %s\n",
-				humanTimestamp(reply.Timestamp),
-				strings.TrimSpace(reply.Text),
-			))
-		}
-	}
-	return sb.String()
+	return result.ForPrompt()
 }
 
 func channelName(id string) string {

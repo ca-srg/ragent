@@ -20,15 +20,17 @@ type DocumentMetadata struct {
 	CustomFields map[string]interface{} `json:"custom_fields"`
 }
 
-// FileInfo represents information about a markdown file to be processed
+// FileInfo represents information about a file to be processed (markdown or CSV)
 type FileInfo struct {
-	Path       string           `json:"path"`
-	Name       string           `json:"name"`
-	Size       int64            `json:"size"`
-	ModTime    time.Time        `json:"mod_time"`
-	IsMarkdown bool             `json:"is_markdown"`
-	Content    string           `json:"content"`
-	Metadata   DocumentMetadata `json:"metadata"`
+	Path        string           `json:"path"`
+	Name        string           `json:"name"`
+	Size        int64            `json:"size"`
+	ModTime     time.Time        `json:"mod_time"`
+	IsMarkdown  bool             `json:"is_markdown"`
+	IsCSV       bool             `json:"is_csv"`
+	CSVRowIndex int              `json:"csv_row_index,omitempty"` // Row index for CSV files (1-based, excluding header)
+	Content     string           `json:"content"`
+	Metadata    DocumentMetadata `json:"metadata"`
 }
 
 // VectorData represents the embedding vector data for a document

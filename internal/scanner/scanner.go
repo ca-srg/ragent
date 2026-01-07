@@ -21,7 +21,7 @@ func NewFileScanner() *FileScanner {
 	return &FileScanner{}
 }
 
-// ScanDirectory scans a directory for markdown files
+// ScanDirectory scans a directory for supported files (markdown and CSV)
 func (s *FileScanner) ScanDirectory(dirPath string) ([]*FileInfo, error) {
 	if err := s.ValidateDirectory(dirPath); err != nil {
 		return nil, fmt.Errorf("directory validation failed: %w", err)
@@ -40,8 +40,8 @@ func (s *FileScanner) ScanDirectory(dirPath string) ([]*FileInfo, error) {
 			return nil
 		}
 
-		// Check if it's a markdown file
-		if !s.IsMarkdownFile(path) {
+		// Check if it's a supported file type
+		if !s.IsSupportedFile(path) {
 			return nil
 		}
 
@@ -57,7 +57,8 @@ func (s *FileScanner) ScanDirectory(dirPath string) ([]*FileInfo, error) {
 			Name:       d.Name(),
 			Size:       info.Size(),
 			ModTime:    info.ModTime(),
-			IsMarkdown: true,
+			IsMarkdown: s.IsMarkdownFile(path),
+			IsCSV:      s.IsCSVFile(path),
 		}
 
 		files = append(files, fileInfo)
@@ -111,6 +112,17 @@ func (s *FileScanner) ReadFileContent(filePath string) (string, error) {
 func (s *FileScanner) IsMarkdownFile(filePath string) bool {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	return ext == ".md" || ext == ".markdown"
+}
+
+// IsCSVFile checks if a file is a CSV file
+func (s *FileScanner) IsCSVFile(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	return ext == ".csv"
+}
+
+// IsSupportedFile checks if a file is a supported file type (markdown or CSV)
+func (s *FileScanner) IsSupportedFile(filePath string) bool {
+	return s.IsMarkdownFile(filePath) || s.IsCSVFile(filePath)
 }
 
 // LoadFileWithContent loads file info and reads its content

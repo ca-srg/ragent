@@ -1,0 +1,62 @@
+# Google Spreadsheet Vectorization Configuration
+# Copy this file to spreadsheet-config.yaml and customize for your use case
+
+# GCP Authentication
+# Supports Workload Identity Federation (AWS → GCP) or Service Account
+gcp:
+  # Path to credentials file (Workload Identity Federation config or Service Account JSON)
+  # If not set, falls back to GOOGLE_APPLICATION_CREDENTIALS environment variable
+  credentials_file: "/path/to/workload-identity-config.json"
+
+# Spreadsheet definitions
+spreadsheets:
+  # First spreadsheet
+  - id: "1ABC123xyz_your_spreadsheet_id_here"  # Required: Google Spreadsheet ID
+    sheet: "Sheet1"  # Optional: Sheet name (defaults to first sheet)
+    
+    # Content configuration (optional)
+    content:
+      # Columns to use for vectorization content
+      # If not specified, auto-detection will be used
+      columns: ["詳細", "タイトル"]  # Optional: Explicit column names
+      
+      # Custom template for combining multiple columns (optional)
+      # Use {{column_name}} placeholders
+      template: "{{タイトル}}\n\n{{詳細}}"
+      
+      # Enable/disable auto-detection (default: true)
+      auto_detect: true
+    
+    # Metadata mapping (optional)
+    # Maps spreadsheet columns to document metadata fields
+    metadata:
+      title: "タイトル"        # Document title
+      category: "カテゴリ"     # Document category
+      tags: ["トラック", "ランク"]  # Tags (multiple columns)
+      id: "#"                  # Document ID
+      created_at: "起票日"     # Creation date
+      updated_at: "完了日"     # Update date
+      reference: "BTS#"        # Reference information
+
+  # Additional spreadsheets (optional)
+  # - id: "2DEF456..."
+  #   sheet: "データ"
+  #   content:
+  #     auto_detect: true
+
+# Auto-detection behavior:
+# - Content columns: Looks for columns named "詳細", "本文", "content", "description", etc.
+#   Falls back to column with highest average text length
+# - Title column: Looks for "タイトル", "title", "件名", "subject", etc.
+# - Category column: Looks for "カテゴリ", "category", "分類", "種別", etc.
+# - ID column: Looks for "ID", "#", "番号", "No", etc.
+
+# Date parsing supports multiple formats:
+# - YYYY/MM/DD, YYYY-MM-DD
+# - YYYY/M/D, YYYY-M-D
+# - YYYY/MM/DD HH:MM:SS, YYYY-MM-DD HH:MM:SS
+# - RFC3339
+
+# Usage:
+#   go run main.go vectorize --spreadsheet-config spreadsheet-config.yaml
+#   go run main.go vectorize --spreadsheet-config spreadsheet-config.yaml --dry-run

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ca-srg/ragent/internal/csv"
 )
 
 // VectorizerService orchestrates the vectorization process
@@ -23,6 +25,7 @@ type VectorizerService struct {
 	stats               *ProcessingStats
 	enableOpenSearch    bool
 	opensearchIndexName string
+	csvReader           *csv.Reader
 }
 
 // ProcessingStats tracks processing statistics
@@ -49,6 +52,7 @@ type ServiceConfig struct {
 	ErrorHandler        *DualBackendErrorHandler
 	EnableOpenSearch    bool
 	OpenSearchIndexName string
+	CSVConfig           *csv.Config
 }
 
 // NewVectorizerService creates a new vectorizer service with the given configuration
@@ -79,6 +83,14 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 		)
 	}
 
+	// Initialize CSV reader
+	var csvReader *csv.Reader
+	if serviceConfig.CSVConfig != nil {
+		csvReader = csv.NewReader(serviceConfig.CSVConfig)
+	} else {
+		csvReader = csv.NewReader(nil) // Use default config with auto-detection
+	}
+
 	service := &VectorizerService{
 		embeddingClient:     serviceConfig.EmbeddingClient,
 		s3Client:            serviceConfig.S3Client,
@@ -90,6 +102,7 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 		config:              serviceConfig.Config,
 		enableOpenSearch:    serviceConfig.EnableOpenSearch,
 		opensearchIndexName: serviceConfig.OpenSearchIndexName,
+		csvReader:           csvReader,
 		stats: &ProcessingStats{
 			StartTime: time.Now(),
 			Errors:    make([]ProcessingError, 0),
@@ -129,7 +142,7 @@ func (vs *VectorizerService) ValidateConfiguration(ctx context.Context) error {
 	return nil
 }
 
-// VectorizeMarkdownFiles processes all markdown files in a directory
+// VectorizeMarkdownFiles processes all supported files (markdown and CSV) in a directory
 func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directory string, dryRun bool) (*ProcessingResult, error) {
 	vs.stats.StartTime = time.Now()
 
@@ -140,11 +153,68 @@ func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directo
 	}
 
 	if len(files) == 0 {
-		log.Println("No markdown files found")
+		log.Println("No supported files found (markdown or CSV)")
 		return vs.createEmptyResult(), nil
 	}
 
-	log.Printf("Found %d markdown files to process", len(files))
+	// Count file types
+	mdCount, csvCount := 0, 0
+	for _, f := range files {
+		if f.IsMarkdown {
+			mdCount++
+		} else if f.IsCSV {
+			csvCount++
+		}
+	}
+	log.Printf("Found %d files to process (%d markdown, %d CSV)", len(files), mdCount, csvCount)
+
+	// Expand CSV files into individual rows
+	expandedFiles, err := vs.expandCSVFiles(files)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand CSV files: %w", err)
+	}
+
+	if len(expandedFiles) != len(files) {
+		log.Printf("After CSV expansion: %d total documents to process", len(expandedFiles))
+	}
+
+	return vs.VectorizeFiles(ctx, expandedFiles, dryRun)
+}
+
+// expandCSVFiles expands CSV files into individual FileInfo entries (one per row)
+func (vs *VectorizerService) expandCSVFiles(files []*FileInfo) ([]*FileInfo, error) {
+	var result []*FileInfo
+
+	for _, file := range files {
+		if file.IsCSV {
+			// Expand CSV file into rows
+			log.Printf("Expanding CSV file: %s", file.Path)
+			csvFiles, err := vs.csvReader.ReadFile(file.Path)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read CSV file %s: %w", file.Path, err)
+			}
+			log.Printf("  Expanded to %d rows", len(csvFiles))
+			result = append(result, csvFiles...)
+		} else {
+			// Keep markdown files as-is
+			result = append(result, file)
+		}
+	}
+
+	return result, nil
+}
+
+// VectorizeFiles processes a slice of FileInfo objects
+// This can be used for both markdown files and spreadsheet rows
+func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*FileInfo, dryRun bool) (*ProcessingResult, error) {
+	vs.stats.StartTime = time.Now()
+
+	if len(files) == 0 {
+		log.Println("No files to process")
+		return vs.createEmptyResult(), nil
+	}
+
+	log.Printf("Processing %d files", len(files))
 
 	// Determine processing mode
 	if vs.enableOpenSearch && vs.parallelController != nil {

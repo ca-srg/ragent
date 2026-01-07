@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/ca-srg/ragent/internal/csv"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/ca-srg/ragent/internal/types"
 )
@@ -225,6 +226,27 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithDefaults(
 	enableOpenSearch bool,
 	opensearchIndexName string,
 ) (*VectorizerService, error) {
+	return sf.CreateVectorizerServiceWithCSVConfig(
+		embeddingClient,
+		s3Client,
+		metadataExtractor,
+		fileScanner,
+		enableOpenSearch,
+		opensearchIndexName,
+		nil, // No CSV config
+	)
+}
+
+// CreateVectorizerServiceWithCSVConfig creates a VectorizerService with CSV configuration
+func (sf *ServiceFactory) CreateVectorizerServiceWithCSVConfig(
+	embeddingClient EmbeddingClient,
+	s3Client S3VectorClient,
+	metadataExtractor MetadataExtractor,
+	fileScanner FileScanner,
+	enableOpenSearch bool,
+	opensearchIndexName string,
+	csvConfig *csv.Config,
+) (*VectorizerService, error) {
 
 	serviceConfig, err := sf.CreateServiceConfig(
 		embeddingClient,
@@ -237,6 +259,9 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithDefaults(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service config: %w", err)
 	}
+
+	// Add CSV configuration
+	serviceConfig.CSVConfig = csvConfig
 
 	service, err := NewVectorizerService(serviceConfig)
 	if err != nil {

@@ -32,7 +32,7 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
 
 ## 機能
 
-- **ベクトル化**: markdownファイルをAmazon Bedrockを使用してembeddingに変換
+- **ベクトル化**: ソースファイル（markdownおよびCSV）をAmazon Bedrockを使用してembeddingに変換
 - **S3 Vector統合**: 生成されたベクトルをAmazon S3 Vectorsに保存
 - **ハイブリッド検索**: OpenSearchを使用したBM25 + ベクトル検索の組み合わせ
 - **Slack検索統合**: Slack会話とドキュメント検索結果を統合する反復型パイプライン
@@ -305,17 +305,56 @@ flowchart TD
 
 ## 前提条件
 
-### Markdownドキュメントの準備
+### ソースドキュメントの準備
 
-RAGentを使用する前に、`markdown/` ディレクトリにMarkdownドキュメントを準備する必要があります。これらのドキュメントがRAGシステムで検索可能なコンテンツとなります。
+RAGentを使用する前に、`source/` ディレクトリにソースドキュメントを準備する必要があります。これらのドキュメントがRAGシステムで検索可能なコンテンツとなります。
+
+**対応ファイル形式:**
+- **Markdown (.md, .markdown)**: 各ファイルが1つのドキュメントになります
+- **CSV (.csv)**: 各行が1つのドキュメントになります（ヘッダー行が必須）
 
 ```bash
-# markdownディレクトリを作成
-mkdir markdown
+# sourceディレクトリを作成
+mkdir source
 
-# markdownファイルをディレクトリに配置
-cp /path/to/your/documents/*.md markdown/
+# ファイルをディレクトリに配置
+cp /path/to/your/documents/*.md source/
+cp /path/to/your/data/*.csv source/
 ```
+
+CSVファイルの場合、カラムマッピングを指定する設定ファイルを任意で提供できます:
+```bash
+# サンプル設定をコピー
+cp csv-config.yaml.example csv-config.yaml
+
+# CSV設定を指定して実行
+RAGent vectorize --csv-config csv-config.yaml
+```
+
+#### CSV設定オプション
+
+`csv-config.yaml` では以下のオプションが設定可能です：
+
+**header_row（ヘッダー行の指定）:**
+
+メタデータや集計行がヘッダー行の前に存在するCSVファイルに対応できます。
+`header_row` を指定すると、その行をヘッダー（カラム名）として使用し、それ以前の行はスキップされます。
+
+```yaml
+csv:
+  files:
+    - pattern: "sample.csv"
+      header_row: 7  # 7行目をヘッダーとして使用（1から始まる行番号）
+                     # 1〜6行目はスキップ、8行目以降がデータ行
+      content:
+        columns: ["施作", "機能"]
+      metadata:
+        title: "施作"
+        category: "機能"
+```
+
+- `header_row` を指定しない場合、デフォルトは `1`（1行目がヘッダー）
+- 行番号は1から始まる（1-indexed）
 
 Kibelaからノートをエクスポートする場合は、`export/` ディレクトリにある別ツールをご利用ください。
 
@@ -583,20 +622,41 @@ shasum -a 256 -c checksums_<VERSION>.txt
 
 ### 1. vectorize - ベクトル化とS3保存
 
-markdownファイルを読み込み、メタデータを抽出し、Amazon Bedrockを使用してembeddingを生成してAmazon S3 Vectorsに保存します。
+ソースファイル（markdownおよびCSV）を読み込み、メタデータを抽出し、Amazon Bedrockを使用してembeddingを生成してAmazon S3 Vectorsに保存します。
 
 ```bash
 RAGent vectorize
 ```
 
 **オプション:**
-- `-d, --directory`: 処理するmarkdownファイルのディレクトリ（デフォルト: `./markdown`）
+- `-d, --directory`: 処理するソースファイルのディレクトリ（デフォルト: `./source`）
 - `--dry-run`: 実際のAPI呼び出しを行わずに処理内容を表示
 - `-c, --concurrency`: 並行処理数（0 = 設定ファイルのデフォルト値を使用）
+- `--csv-config`: CSVカラムマッピング用の設定YAMLファイルのパス
+- `--enable-s3`: S3からのソースファイル取得を有効化
+- `--s3-bucket`: ソースファイル用のS3バケット名（`--enable-s3` 指定時は必須）
+- `--s3-prefix`: スキャンするS3プレフィックス（ディレクトリ）（オプション、デフォルトはバケットルート）
+
+**S3ソースの使用例:**
+```bash
+# S3のみ（プレフィックス指定）
+RAGent vectorize --enable-s3 --s3-bucket my-docs-bucket --s3-prefix source/
+
+# S3のみ（フラット構造）
+RAGent vectorize --enable-s3 --s3-bucket my-docs-bucket
+
+# ローカル + S3 両方
+RAGent vectorize --directory ./local-docs --enable-s3 --s3-bucket my-docs-bucket --s3-prefix remote/
+
+# S3ソースでドライラン
+RAGent vectorize --enable-s3 --s3-bucket my-docs-bucket --dry-run
+```
 
 **機能:**
-- markdownファイルの再帰的スキャン
+- markdownおよびCSVファイルの再帰的スキャン
 - メタデータの自動抽出
+- CSV行の展開（各行が1つのドキュメントになる）
+- CSVファイルの自動カラム検出（または明示的な設定）
 - Amazon Titan Text Embedding v2モデルを使用したembedding生成
 - S3 Vectorsへの安全な保存
 - 並行処理による高速化
@@ -760,11 +820,12 @@ RAGent/
 │   └── vectorize.go       # vectorizeコマンド
 ├── internal/              # 内部ライブラリ
 │   ├── config/           # 設定管理
+│   ├── csv/              # CSVファイル処理
 │   ├── embedding/        # Embedding生成
 │   ├── s3vector/         # S3 Vector統合
 │   ├── opensearch/       # OpenSearch統合
 │   └── vectorizer/       # ベクトル化サービス
-├── markdown/             # Markdownドキュメント（使用前に準備）
+├── source/               # ソースドキュメント（markdownおよびCSV、使用前に準備）
 ├── export/               # Kibela用エクスポートツール（別ツール）
 ├── .envrc                # direnv設定
 ├── .env                  # 環境変数ファイル
@@ -799,12 +860,19 @@ RAGent/
    # .envファイルを編集
    ```
 
-2. **Markdownドキュメントの準備**
+2. **ソースドキュメントの準備**
    ```bash
-   # markdownディレクトリを作成（存在しない場合）
-   mkdir -p markdown
+   # sourceディレクトリを作成（存在しない場合）
+   mkdir -p source
    
-   # markdownファイルをディレクトリに配置
+   # ファイルをディレクトリに配置（markdownおよび/またはCSV）
+   cp /path/to/docs/*.md source/
+   cp /path/to/data/*.csv source/
+   
+   # CSVファイルの場合、任意でカラムマッピングを設定:
+   cp csv-config.yaml.example csv-config.yaml
+   # csv-config.yaml を編集してカラムを指定
+   
    # または、Kibelaノート用のエクスポートツールを使用：
    cd export
    go build -o RAGent-export
@@ -819,6 +887,9 @@ RAGent/
    
    # 実際のベクトル化実行
    RAGent vectorize
+
+   # CSV設定を指定してベクトル化
+   RAGent vectorize --csv-config csv-config.yaml
 
    # フォローモードで継続的にベクトル化（デフォルト30分間隔）
    RAGent vectorize --follow

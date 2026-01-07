@@ -160,13 +160,31 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		}
 	}
 
+	// Execute Slack search BEFORE LLM call to include Slack context in prompt
+	var slackResult *SlackConversationResult
+	if h.slackSearch != nil {
+		var err error
+		slackResult, err = h.slackSearch.SearchConversations(ctx, query, opts)
+		if err != nil {
+			log.Printf("slack search error: %v", err)
+			slackResult = nil
+		}
+		// Add Slack context to prompt parts
+		if slackResult != nil {
+			if slackContext := slackResult.ForPrompt(); slackContext != "" {
+				contextParts = append(contextParts, slackContext)
+			}
+		}
+	}
+
 	// Generate chat response using LLM (same as chat command)
 	var generatedResponse string
 	if len(contextParts) > 0 {
 		// Create a strong instruction to use the retrieved context
-		ragInstruction := "以下の参考文献は、あなたの質問に関連する社内ドキュメントから検索されたものです。" +
+		ragInstruction := "以下の参考文献は、あなたの質問に関連する社内ドキュメントやSlack会話から検索されたものです。" +
 			"必ずこれらの参考文献の内容に基づいて回答してください。" +
-			"一般的な知識ではなく、提供された参考文献の具体的な内容を優先して使用してください。"
+			"一般的な知識ではなく、提供された参考文献の具体的な内容を優先して使用してください。" +
+			"Slack会話が含まれている場合は、その内容も参照して回答してください。"
 
 		contextualPrompt := fmt.Sprintf("%s\n\n参考文献:\n%s\n\nユーザーの質問: %s",
 			ragInstruction, strings.Join(contextParts, "\n\n---\n\n"), query)
@@ -185,16 +203,6 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		}
 	} else {
 		generatedResponse = "関連する情報が見つかりませんでした。"
-	}
-
-	var slackResult *SlackConversationResult
-	if h.slackSearch != nil {
-		var err error
-		slackResult, err = h.slackSearch.SearchConversations(ctx, query, opts)
-		if err != nil {
-			log.Printf("slack search error: %v", err)
-			slackResult = nil
-		}
 	}
 
 	// Add references to response if any were found

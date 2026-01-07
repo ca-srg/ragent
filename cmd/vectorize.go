@@ -16,10 +16,12 @@ import (
 	"github.com/spf13/cobra"
 
 	appconfig "github.com/ca-srg/ragent/internal/config"
+	"github.com/ca-srg/ragent/internal/csv"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/metadata"
 	"github.com/ca-srg/ragent/internal/s3vector"
 	"github.com/ca-srg/ragent/internal/scanner"
+	"github.com/ca-srg/ragent/internal/spreadsheet"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/ca-srg/ragent/internal/vectorizer"
 )
@@ -40,31 +42,53 @@ var (
 	followInterval         string
 	followIntervalDuration time.Duration
 	followModeProcessing   atomic.Bool
+
+	// Spreadsheet mode
+	spreadsheetConfigPath string
+
+	// CSV mode
+	csvConfigPath string
+
+	// S3 source mode
+	enableS3 bool
+	s3Bucket string
+	s3Prefix string
 )
 
 var vectorizationRunner = executeVectorizationOnce
 
 var vectorizeCmd = &cobra.Command{
 	Use:   "vectorize",
-	Short: "Convert markdown files to vectors and store in S3",
+	Short: "Convert source files (markdown and CSV) to vectors and store in S3",
 	Long: `
-The vectorize command processes markdown files in a directory,
+The vectorize command processes source files (markdown and CSV) in a directory,
 extracts metadata, generates embeddings using Amazon Bedrock,
 and stores the vectors in Amazon S3.
 
-This enables the creation of a vector database from your markdown
-documentation for RAG (Retrieval Augmented Generation) applications.
+Supported file types:
+  - Markdown (.md, .markdown): Each file becomes one document
+  - CSV (.csv): Each row becomes one document (header row required)
+
+This enables the creation of a vector database from your documentation
+and data files for RAG (Retrieval Augmented Generation) applications.
 `,
 	RunE: runVectorize,
 }
 
 func init() {
-	vectorizeCmd.Flags().StringVarP(&directory, "directory", "d", "./markdown", "Directory containing markdown files to process")
+	vectorizeCmd.Flags().StringVarP(&directory, "directory", "d", "./source", "Directory containing source files to process (markdown and CSV)")
 	vectorizeCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be processed without making API calls")
 	vectorizeCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0, "Number of concurrent operations (0 = use config default)")
 	vectorizeCmd.Flags().BoolVar(&clearVectors, "clear", false, "Delete all existing vectors before processing new ones")
 	vectorizeCmd.Flags().BoolVarP(&followMode, "follow", "f", false, "Continuously vectorize at a fixed interval")
 	vectorizeCmd.Flags().StringVar(&followInterval, "interval", defaultFollowInterval, "Interval between vectorization runs in follow mode (e.g. 30m, 1h)")
+	vectorizeCmd.Flags().StringVar(&spreadsheetConfigPath, "spreadsheet-config", "", "Path to spreadsheet configuration YAML file (enables spreadsheet mode)")
+	vectorizeCmd.Flags().StringVar(&csvConfigPath, "csv-config", "", "Path to CSV configuration YAML file (for column mapping)")
+
+	// S3 source options
+	vectorizeCmd.Flags().BoolVar(&enableS3, "enable-s3", false, "Enable S3 source file fetching")
+	vectorizeCmd.Flags().StringVar(&s3Bucket, "s3-bucket", "", "S3 bucket name for source files (required when --enable-s3 is set)")
+	vectorizeCmd.Flags().StringVar(&s3Prefix, "s3-prefix", "", "S3 prefix (directory) to scan (optional, defaults to bucket root)")
 }
 
 func runVectorize(cmd *cobra.Command, args []string) error {
@@ -92,6 +116,11 @@ func runVectorize(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 
+	// Check for spreadsheet mode
+	if spreadsheetConfigPath != "" {
+		return runSpreadsheetVectorize(ctx, cfg)
+	}
+
 	if followMode {
 		return runFollowMode(ctx, cfg)
 	}
@@ -113,8 +142,24 @@ func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.Pr
 		ctx = context.Background()
 	}
 
-	if _, err := os.Stat(directory); os.IsNotExist(err) {
-		return nil, fmt.Errorf("directory does not exist: %s", directory)
+	// Validate S3 flags
+	if enableS3 && s3Bucket == "" {
+		return nil, fmt.Errorf("--s3-bucket is required when --enable-s3 is set")
+	}
+
+	// Validate at least one source is specified
+	hasLocalSource := directory != ""
+	hasS3Source := enableS3
+
+	if !hasLocalSource && !hasS3Source {
+		return nil, fmt.Errorf("at least one source must be specified: --directory or --enable-s3 with --s3-bucket")
+	}
+
+	// Validate local directory if specified
+	if hasLocalSource {
+		if _, err := os.Stat(directory); os.IsNotExist(err) {
+			return nil, fmt.Errorf("directory does not exist: %s", directory)
+		}
 	}
 
 	if clearVectors && !dryRun {
@@ -191,7 +236,19 @@ func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.Pr
 		return nil, nil
 	}
 
-	service, err := createVectorizerService(cfg)
+	// Load CSV configuration if provided
+	var csvCfg *csv.Config
+	if csvConfigPath != "" {
+		log.Printf("Loading CSV configuration: %s", csvConfigPath)
+		var err error
+		csvCfg, err = csv.LoadConfig(csvConfigPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load CSV config: %w", err)
+		}
+		log.Println("CSV configuration loaded successfully")
+	}
+
+	service, err := createVectorizerServiceWithCSVConfig(cfg, csvCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vectorizer service: %w", err)
 	}
@@ -207,12 +264,91 @@ func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.Pr
 		log.Println("Configuration validation successful")
 	}
 
-	result, err := service.VectorizeMarkdownFiles(ctx, directory, dryRun)
+	// Collect files from all sources
+	var allFiles []*types.FileInfo
+
+	// 1. Scan local directory if specified
+	if hasLocalSource {
+		log.Printf("Scanning local directory: %s", directory)
+		localFiles, err := scanLocalDirectory(directory)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan local directory: %w", err)
+		}
+		log.Printf("Found %d files in local directory", len(localFiles))
+		allFiles = append(allFiles, localFiles...)
+	}
+
+	// 2. Scan S3 bucket if enabled
+	if hasS3Source {
+		log.Printf("Scanning S3 bucket: s3://%s/%s", s3Bucket, s3Prefix)
+
+		// Validate S3 bucket access first (unless dry run)
+		s3Scanner, err := scanner.NewS3Scanner(s3Bucket, s3Prefix, cfg.AWSS3Region)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create S3 scanner: %w", err)
+		}
+
+		if !dryRun {
+			if err := s3Scanner.ValidateBucket(ctx); err != nil {
+				return nil, fmt.Errorf("S3 bucket validation failed: %w", err)
+			}
+		}
+
+		s3Files, err := s3Scanner.ScanBucket(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan S3 bucket: %w", err)
+		}
+		log.Printf("Found %d files in S3 bucket", len(s3Files))
+
+		// Download content for S3 files
+		// For CSV files, download even in dry-run mode to show configuration preview
+		for _, f := range s3Files {
+			shouldDownload := !dryRun || f.IsCSV
+			if shouldDownload {
+				content, err := s3Scanner.DownloadFile(ctx, f.Path)
+				if err != nil {
+					log.Printf("Warning: Failed to download S3 file %s: %v", f.Path, err)
+					if !dryRun {
+						continue
+					}
+					// In dry-run, still add file but without content
+				} else {
+					f.Content = content
+				}
+			}
+			allFiles = append(allFiles, f)
+		}
+	}
+
+	if len(allFiles) == 0 {
+		log.Println("No supported files found")
+		return &types.ProcessingResult{
+			ProcessedFiles: 0,
+			SuccessCount:   0,
+			FailureCount:   0,
+		}, nil
+	}
+
+	log.Printf("Total files to process: %d", len(allFiles))
+
+	// Print CSV configuration info in dry-run mode
+	if dryRun {
+		printCSVConfigInfo(allFiles, csvCfg)
+	}
+
+	// Use VectorizeFiles for combined processing
+	result, err := service.VectorizeFiles(ctx, allFiles, dryRun)
 	if err != nil {
 		return nil, fmt.Errorf("vectorization failed: %w", err)
 	}
 
 	return result, nil
+}
+
+// scanLocalDirectory scans a local directory for supported files
+func scanLocalDirectory(dirPath string) ([]*types.FileInfo, error) {
+	fileScanner := scanner.NewFileScanner()
+	return fileScanner.ScanDirectory(dirPath)
 }
 
 func startFollowProcessing() bool {
@@ -313,6 +449,11 @@ func runFollowMode(ctx context.Context, cfg *types.Config) error {
 
 // createVectorizerService creates a vectorizer service with concrete implementations
 func createVectorizerService(cfg *types.Config) (*vectorizer.VectorizerService, error) {
+	return createVectorizerServiceWithCSVConfig(cfg, nil)
+}
+
+// createVectorizerServiceWithCSVConfig creates a vectorizer service with CSV configuration
+func createVectorizerServiceWithCSVConfig(cfg *types.Config, csvCfg *csv.Config) (*vectorizer.VectorizerService, error) {
 	// Load AWS configuration with fixed region
 	awsConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
 	if err != nil {
@@ -353,14 +494,15 @@ func createVectorizerService(cfg *types.Config) (*vectorizer.VectorizerService, 
 		return nil, fmt.Errorf("OpenSearch index name is not set")
 	}
 
-	// Create vectorizer service with all dependencies
-	return serviceFactory.CreateVectorizerServiceWithDefaults(
+	// Create vectorizer service with all dependencies including CSV config
+	return serviceFactory.CreateVectorizerServiceWithCSVConfig(
 		embeddingClient,
 		s3Client,
 		metadataExtractor,
 		fileScanner,
 		enableOpenSearch,
 		indexName,
+		csvCfg,
 	)
 }
 
@@ -563,4 +705,348 @@ func validateOpenSearchFlags() error {
 	log.Printf("Target OpenSearch index: %s", openSearchIndexName)
 
 	return nil
+}
+
+// runSpreadsheetVectorize handles spreadsheet mode vectorization
+func runSpreadsheetVectorize(ctx context.Context, cfg *types.Config) error {
+	log.Printf("Loading spreadsheet configuration: %s", spreadsheetConfigPath)
+
+	// Load spreadsheet configuration
+	spreadsheetCfg, err := spreadsheet.LoadConfig(spreadsheetConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to load spreadsheet config: %w", err)
+	}
+
+	log.Println("Authenticating with GCP...")
+	fetcher, err := spreadsheet.NewFetcher(ctx, spreadsheetCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create spreadsheet fetcher: %w", err)
+	}
+
+	// Validate connection
+	log.Println("Validating spreadsheet access...")
+	if err := fetcher.ValidateConnection(ctx); err != nil {
+		return fmt.Errorf("spreadsheet validation failed: %w", err)
+	}
+	log.Println("✓ Authentication successful")
+
+	// Dry-run mode
+	if dryRun {
+		return runSpreadsheetDryRun(ctx, fetcher)
+	}
+
+	// Fetch data from spreadsheets
+	log.Println("Fetching data from spreadsheets...")
+	files, err := fetcher.Fetch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch spreadsheet data: %w", err)
+	}
+
+	if len(files) == 0 {
+		log.Println("No data rows found in spreadsheets")
+		return nil
+	}
+
+	log.Printf("Found %d rows to process", len(files))
+
+	// Create vectorizer service
+	service, err := createVectorizerServiceForSpreadsheet(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create vectorizer service: %w", err)
+	}
+
+	// Validate configuration
+	log.Println("Validating configuration and service connections...")
+	validationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	if err := service.ValidateConfiguration(validationCtx); err != nil {
+		return fmt.Errorf("configuration validation failed: %w", err)
+	}
+	log.Println("Configuration validation successful")
+
+	// Process files using the vectorizer service
+	result, err := service.VectorizeFiles(ctx, files, false)
+	if err != nil {
+		return fmt.Errorf("vectorization failed: %w", err)
+	}
+
+	printResults(result, false)
+	return nil
+}
+
+// runSpreadsheetDryRun shows preview of what would be processed
+func runSpreadsheetDryRun(ctx context.Context, fetcher *spreadsheet.Fetcher) error {
+	log.Println("DRY RUN: Fetching spreadsheet data for preview...")
+
+	infos, err := fetcher.FetchWithDryRun(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch spreadsheet data: %w", err)
+	}
+
+	if len(infos) == 0 {
+		log.Println("No data rows found in spreadsheets")
+		return nil
+	}
+
+	fmt.Println("\n" + strings.Repeat("=", 60))
+	fmt.Println("DRY RUN: Spreadsheet Processing Preview")
+	fmt.Println(strings.Repeat("=", 60))
+
+	for i, info := range infos {
+		if i >= 10 {
+			fmt.Printf("\n... and %d more rows\n", len(infos)-10)
+			break
+		}
+
+		fmt.Printf("\n[Row %d]\n", info.RowIndex)
+		fmt.Printf("  ID: %s\n", info.ID)
+		fmt.Printf("  Title: %s\n", truncateString(info.Title, 60))
+		if info.Category != "" {
+			fmt.Printf("  Category: %s\n", info.Category)
+		}
+		fmt.Printf("  Content Preview: %s\n", truncateString(info.ContentPreview, 80))
+		fmt.Printf("  Content Length: %d characters\n", info.ContentLength)
+		fmt.Printf("  Content Column(s): %v\n", info.ContentColumns)
+	}
+
+	fmt.Println("\n" + strings.Repeat("=", 60))
+	fmt.Println("Summary:")
+	fmt.Printf("  Total rows: %d\n", len(infos))
+	fmt.Printf("  Would generate: %d embeddings\n", len(infos))
+	fmt.Printf("  Estimated processing time: ~%d minutes\n", estimateProcessingTime(len(infos)))
+	fmt.Println(strings.Repeat("=", 60))
+	fmt.Println("\nThis was a dry run. No embeddings were created.")
+	fmt.Println("To process, run without --dry-run flag.")
+
+	return nil
+}
+
+// createVectorizerServiceForSpreadsheet creates a vectorizer service for spreadsheet processing
+func createVectorizerServiceForSpreadsheet(cfg *types.Config) (*vectorizer.VectorizerService, error) {
+	// Load AWS configuration with fixed region
+	awsConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+	}
+
+	// Create embedding client using Bedrock
+	embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
+
+	// Create S3 Vectors client
+	s3Config := &s3vector.S3Config{
+		VectorBucketName: cfg.AWSS3VectorBucket,
+		IndexName:        cfg.AWSS3VectorIndex,
+		Region:           cfg.AWSS3Region,
+		MaxRetries:       cfg.RetryAttempts,
+		RetryDelay:       cfg.RetryDelay,
+	}
+	s3Client, err := s3vector.NewS3VectorService(s3Config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create S3 client: %w", err)
+	}
+	log.Println("S3 Vector client initialized")
+
+	// Create metadata extractor (reuse from existing)
+	metadataExtractor := metadata.NewMetadataExtractor()
+
+	// Create a no-op file scanner since we're using spreadsheet data
+	fileScanner := scanner.NewFileScanner()
+
+	// Create service factory for dependency injection
+	serviceFactory := vectorizer.NewServiceFactory(cfg)
+
+	// OpenSearch is always enabled
+	enableOpenSearch := true
+	indexName := openSearchIndexName
+
+	// Create vectorizer service with all dependencies
+	return serviceFactory.CreateVectorizerServiceWithDefaults(
+		embeddingClient,
+		s3Client,
+		metadataExtractor,
+		fileScanner,
+		enableOpenSearch,
+		indexName,
+	)
+}
+
+// truncateString truncates a string to maxLen characters
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// estimateProcessingTime estimates processing time in minutes based on row count
+func estimateProcessingTime(rowCount int) int {
+	// Rough estimate: ~2 seconds per row (embedding + storage)
+	seconds := rowCount * 2
+	minutes := seconds / 60
+	if minutes < 1 {
+		return 1
+	}
+	return minutes
+}
+
+// printCSVConfigInfo prints CSV configuration details for dry-run mode
+func printCSVConfigInfo(files []*types.FileInfo, csvCfg *csv.Config) {
+	// Filter CSV files
+	var csvFiles []*types.FileInfo
+	for _, f := range files {
+		if f.IsCSV {
+			csvFiles = append(csvFiles, f)
+		}
+	}
+
+	if len(csvFiles) == 0 {
+		return
+	}
+
+	// Create reader to get detected columns
+	reader := csv.NewReader(csvCfg)
+
+	fmt.Println("\n" + strings.Repeat("=", 60))
+	fmt.Println("CSV CONFIGURATION PREVIEW")
+	fmt.Println(strings.Repeat("=", 60))
+
+	// Show loaded configuration patterns
+	if csvCfg != nil {
+		fmt.Println("\nLoaded Patterns from csv-config:")
+		for i, fc := range csvCfg.CSV.Files {
+			fmt.Printf("  [%d] %s (header_row: %d)\n", i+1, fc.Pattern, fc.GetHeaderRow())
+		}
+	} else {
+		fmt.Println("\nUsing default configuration (*.csv)")
+	}
+
+	for _, f := range csvFiles {
+		fmt.Printf("\nFile: %s\n", f.Name)
+		fmt.Println(strings.Repeat("-", 30))
+
+		// Use content-based detection for S3 files (Content is already downloaded)
+		// Use file-based detection for local files
+		var info *csv.DetectedColumnsInfo
+		var err error
+		if f.Content != "" {
+			info, err = reader.GetDetectedColumnsFromContent(f.Path, f.Content)
+		} else {
+			info, err = reader.GetDetectedColumns(f.Path)
+		}
+		if err != nil {
+			fmt.Printf("  Error: %v\n", err)
+			continue
+		}
+
+		// Show matched pattern
+		fmt.Printf("  Matched Pattern:  %s\n", info.MatchedPattern)
+
+		// Show header row position
+		fmt.Printf("  Header Row:       %d\n", info.HeaderRow)
+
+		// Show headers (truncate if too many)
+		if len(info.Headers) > 0 {
+			headerDisplay := formatHeadersDisplay(info.Headers, 60)
+			fmt.Printf("  Headers:          %s\n", headerDisplay)
+		}
+
+		// Show content columns with source indication
+		if len(info.ContentColumns) > 0 {
+			source := "from config"
+			if info.IsAutoDetected {
+				source = "auto-detected"
+			}
+			fmt.Printf("  Content Columns:  %v (%s)\n", info.ContentColumns, source)
+		}
+
+		// Show template if configured
+		if csvCfg != nil {
+			fileConfig := csvCfg.GetConfigForFile(f.Path)
+			if fileConfig != nil && fileConfig.Content.Template != "" {
+				templatePreview := truncateString(fileConfig.Content.Template, 50)
+				fmt.Printf("  Template:         %s\n", templatePreview)
+
+				// Show metadata mappings
+				fmt.Println("\n  Metadata Mappings:")
+				if fileConfig.Metadata.Title != "" {
+					fmt.Printf("    Title:      %s\n", fileConfig.Metadata.Title)
+				}
+				if fileConfig.Metadata.Category != "" {
+					fmt.Printf("    Category:   %s\n", fileConfig.Metadata.Category)
+				}
+				if fileConfig.Metadata.ID != "" {
+					fmt.Printf("    ID:         %s\n", fileConfig.Metadata.ID)
+				}
+				if len(fileConfig.Metadata.Tags) > 0 {
+					fmt.Printf("    Tags:       %v\n", fileConfig.Metadata.Tags)
+				}
+				if fileConfig.Metadata.CreatedAt != "" {
+					fmt.Printf("    CreatedAt:  %s\n", fileConfig.Metadata.CreatedAt)
+				}
+				if fileConfig.Metadata.UpdatedAt != "" {
+					fmt.Printf("    UpdatedAt:  %s\n", fileConfig.Metadata.UpdatedAt)
+				}
+				if fileConfig.Metadata.Reference != "" {
+					fmt.Printf("    Reference:  %s\n", fileConfig.Metadata.Reference)
+				}
+
+				// Show auto-detect status
+				autoDetect := "enabled"
+				if !fileConfig.Content.IsAutoDetectEnabled() {
+					autoDetect = "disabled"
+				}
+				fmt.Printf("\n  Auto Detection:   %s\n", autoDetect)
+			}
+		} else {
+			// Show auto-detected metadata columns
+			fmt.Println("\n  Detected Metadata (auto):")
+			if info.TitleColumn != "" {
+				fmt.Printf("    Title:      %s\n", info.TitleColumn)
+			}
+			if info.CategoryColumn != "" {
+				fmt.Printf("    Category:   %s\n", info.CategoryColumn)
+			}
+			if info.IDColumn != "" {
+				fmt.Printf("    ID:         %s\n", info.IDColumn)
+			}
+			fmt.Printf("\n  Auto Detection:   enabled (no config file)\n")
+		}
+
+		// Show data rows count
+		fmt.Printf("  Data Rows:        %d\n", info.TotalRows)
+	}
+
+	fmt.Println("\n" + strings.Repeat("=", 60))
+}
+
+// formatHeadersDisplay formats headers for display, truncating if necessary
+func formatHeadersDisplay(headers []string, maxLen int) string {
+	if len(headers) == 0 {
+		return "[]"
+	}
+
+	// Build header string
+	result := "["
+	currentLen := 1 // Starting bracket
+
+	for i, h := range headers {
+		addition := h
+		if i > 0 {
+			addition = ", " + h
+		}
+
+		// Check if adding this would exceed max length
+		if currentLen+len(addition)+4 > maxLen && i < len(headers)-1 {
+			remaining := len(headers) - i
+			result += fmt.Sprintf(", ... +%d more]", remaining)
+			return result
+		}
+
+		result += addition
+		currentLen += len(addition)
+	}
+
+	result += "]"
+	return result
 }
