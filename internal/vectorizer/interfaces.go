@@ -48,7 +48,7 @@ type MetadataExtractor interface {
 
 // FileScanner defines the interface for scanning and processing files
 type FileScanner interface {
-	// ScanDirectory scans a directory for markdown files
+	// ScanDirectory scans a directory for supported files (markdown and CSV)
 	ScanDirectory(dirPath string) ([]*FileInfo, error)
 
 	// ValidateDirectory checks if the directory exists and is readable
@@ -59,6 +59,12 @@ type FileScanner interface {
 
 	// IsMarkdownFile checks if a file is a markdown file
 	IsMarkdownFile(filePath string) bool
+
+	// IsCSVFile checks if a file is a CSV file
+	IsCSVFile(filePath string) bool
+
+	// IsSupportedFile checks if a file is a supported file type (markdown or CSV)
+	IsSupportedFile(filePath string) bool
 }
 
 // ConcurrencyController defines the interface for managing concurrent processing

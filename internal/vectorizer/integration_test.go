@@ -418,6 +418,14 @@ func (m *MockFileScanner) IsMarkdownFile(filePath string) bool {
 	return strings.HasSuffix(filePath, ".md")
 }
 
+func (m *MockFileScanner) IsCSVFile(filePath string) bool {
+	return strings.HasSuffix(filePath, ".csv")
+}
+
+func (m *MockFileScanner) IsSupportedFile(filePath string) bool {
+	return m.IsMarkdownFile(filePath) || m.IsCSVFile(filePath)
+}
+
 type MockEmbeddingClient struct {
 	embedding  []float64
 	shouldFail bool

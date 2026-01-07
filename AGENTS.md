@@ -35,11 +35,15 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
   - 環境変数からの設定読み込み
   - 設定検証とデフォルト値
 - **internal/scanner/**: ファイルスキャナー
-  - markdownファイルの再帰的発見
+  - ソースファイル（markdown/CSV）の再帰的発見
   - ファイルフィルタリング機能
 - **internal/metadata/**: メタデータ抽出
   - FrontMatter解析
   - ファイル情報抽出
+- **internal/csv/**: CSVファイル処理
+  - `config.go`: CSV設定構造体（YAMLベース）
+  - `reader.go`: CSVファイル読み込み・行展開
+  - `column_detector.go`: 自動カラム検出
 - **internal/filter/**: フィルタ機能
   - RAG検索時の除外フィルタロジック
   - S3 Vector対応フィルタ構築
@@ -70,7 +74,7 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
   - ハイブリッド検索ツール提供
 
 ### Directories
-- **markdown/**: RAGシステムで使用するMarkdownドキュメントを配置（使用前に準備が必要）
+- **source/**: RAGシステムで使用するソースドキュメント（MarkdownおよびCSV）を配置（使用前に準備が必要）
 - **export/**: Kibelaノートエクスポート用の別ツール（独立したツール）
 - **doc/**: プロジェクト文書（S3 Vector設定推奨など）
 - **reference/**: 参考実装とサンプルコード
@@ -146,6 +150,7 @@ go vet ./...
 # 各コマンドの実行例
 go run main.go vectorize --dry-run       # ベクトル化（ドライラン）
 go run main.go vectorize                 # ベクトル化実行
+go run main.go vectorize --csv-config csv-config.yaml  # CSV設定を指定してベクトル化
 go run main.go vectorize --follow        # フォローモード（30分間隔）
 go run main.go vectorize --follow --interval 15m # カスタム間隔のフォローモード
 go run main.go query -q "検索クエリ"      # セマンティック検索
@@ -165,18 +170,28 @@ go run main.go mcp-server                # MCP Server起動 [NEW]
 
 ## Prerequisites
 
-Markdownドキュメントを`markdown/`ディレクトリに準備する必要があります。Kibelaからのエクスポートには`export/`ディレクトリの別ツールを使用してください。
+ソースドキュメント（MarkdownまたはCSV）を`source/`ディレクトリに準備する必要があります。
+
+**対応ファイル形式:**
+- Markdown (.md, .markdown): 各ファイルが1つのドキュメントになります
+- CSV (.csv): 各行が1つのドキュメントになります（ヘッダー行が必須）
+
+CSVファイルのカラムマッピングは `--csv-config` オプションで設定できます。
+Kibelaからのエクスポートには`export/`ディレクトリの別ツールを使用してください。
 
 ## Usage Examples
 
 ```bash
 # 1. ベクトル化とS3保存
-./RAGent vectorize --directory ./markdown --concurrency 10
+./RAGent vectorize --directory ./source --concurrency 10
 
-# 1a. フォローモードで継続的にベクトル化（30分間隔）
+# 1a. CSV設定を指定してベクトル化
+./RAGent vectorize --csv-config csv-config.yaml
+
+# 1b. フォローモードで継続的にベクトル化（30分間隔）
 ./RAGent vectorize --follow
 
-# 1b. フォローモードで15分間隔に設定
+# 1c. フォローモードで15分間隔に設定
 ./RAGent vectorize --follow --interval 15m
 # ※ `--follow` は `--dry-run` および `--clear` と併用不可
 

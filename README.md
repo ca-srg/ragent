@@ -33,7 +33,7 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 
 ## Features
 
-- **Vectorization**: Convert markdown files to embeddings using Amazon Bedrock
+- **Vectorization**: Convert source files (markdown and CSV) to embeddings using Amazon Bedrock
 - **S3 Vector Integration**: Store generated vectors in Amazon S3 Vectors
 - **Hybrid Search**: Combined BM25 + vector search using OpenSearch
 - **Slack Search Integration**: Blend document results with Slack conversations via an iterative enrichment pipeline
@@ -313,17 +313,56 @@ flowchart TD
 
 ## Prerequisites
 
-### Prepare Markdown Documents
+### Prepare Source Documents
 
-Before using RAGent, you need to prepare markdown documents in a `markdown/` directory. These documents should contain the content you want to make searchable through the RAG system.
+Before using RAGent, you need to prepare source documents in a `source/` directory. These documents should contain the content you want to make searchable through the RAG system.
+
+**Supported file types:**
+- **Markdown (.md, .markdown)**: Each file becomes one document
+- **CSV (.csv)**: Each row becomes one document (header row required)
 
 ```bash
-# Create markdown directory
-mkdir markdown
+# Create source directory
+mkdir source
 
-# Place your markdown files in this directory
-cp /path/to/your/documents/*.md markdown/
+# Place your files in this directory
+cp /path/to/your/documents/*.md source/
+cp /path/to/your/data/*.csv source/
 ```
+
+For CSV files, you can optionally provide a configuration file to specify column mappings:
+```bash
+# Copy example configuration
+cp csv-config.yaml.example csv-config.yaml
+
+# Run with CSV configuration
+RAGent vectorize --csv-config csv-config.yaml
+```
+
+#### CSV Configuration Options
+
+The `csv-config.yaml` supports the following options:
+
+**header_row (Header Row Position):**
+
+Use this option when your CSV file has metadata or summary rows before the actual header row.
+When `header_row` is specified, that row is used as the column headers, and all preceding rows are skipped.
+
+```yaml
+csv:
+  files:
+    - pattern: "sample.csv"
+      header_row: 7  # Row 7 is the header (1-indexed)
+                     # Rows 1-6 are skipped, data starts from row 8
+      content:
+        columns: ["task", "category"]
+      metadata:
+        title: "task"
+        category: "category"
+```
+
+- If `header_row` is not specified, the default is `1` (first row is the header)
+- Row numbers are 1-indexed
 
 For exporting notes from Kibela, use the separate export tool available in the `export/` directory.
 
@@ -607,20 +646,41 @@ All entries should report `OK`. If a mismatch occurs, re-download the artifact.
 
 ### 1. vectorize - Vectorization and S3 Storage
 
-Read markdown files, extract metadata, generate embeddings using Amazon Bedrock, and store them in Amazon S3 Vectors.
+Read source files (markdown and CSV), extract metadata, generate embeddings using Amazon Bedrock, and store them in Amazon S3 Vectors.
 
 ```bash
 RAGent vectorize
 ```
 
 **Options:**
-- `-d, --directory`: Directory containing markdown files to process (default: `./markdown`)
+- `-d, --directory`: Directory containing source files to process (default: `./source`)
 - `--dry-run`: Display processing details without making actual API calls
 - `-c, --concurrency`: Number of concurrent processes (0 = use default value from config file)
+- `--csv-config`: Path to CSV configuration YAML file (for column mapping)
+- `--enable-s3`: Enable S3 source file fetching
+- `--s3-bucket`: S3 bucket name for source files (required when `--enable-s3` is set)
+- `--s3-prefix`: S3 prefix (directory) to scan (optional, defaults to bucket root)
+
+**S3 Source Examples:**
+```bash
+# S3 only (with prefix)
+RAGent vectorize --enable-s3 --s3-bucket my-docs-bucket --s3-prefix source/
+
+# S3 only (flat structure)
+RAGent vectorize --enable-s3 --s3-bucket my-docs-bucket
+
+# Local + S3 combined
+RAGent vectorize --directory ./local-docs --enable-s3 --s3-bucket my-docs-bucket --s3-prefix remote/
+
+# Dry run with S3 source
+RAGent vectorize --enable-s3 --s3-bucket my-docs-bucket --dry-run
+```
 
 **Features:**
-- Recursive scanning of markdown files
+- Recursive scanning of markdown and CSV files
 - Automatic metadata extraction
+- CSV row expansion (each row becomes a document)
+- Automatic column detection for CSV files (or explicit configuration)
 - Embedding generation using Amazon Titan Text Embedding v2
 - Safe storage to S3 Vectors
 - High-speed processing through concurrency
@@ -879,13 +939,14 @@ RAGent/
 │   └── vectorize.go       # vectorize command
 ├── internal/              # Internal libraries
 │   ├── config/           # Configuration management
+│   ├── csv/              # CSV file processing
 │   ├── embedding/        # Embedding generation
 │   ├── s3vector/         # S3 Vector integration
 │   ├── opensearch/       # OpenSearch integration
 │   ├── vectorizer/       # Vectorization service
 │   ├── slackbot/         # Slack Bot integration
 │   └── mcpserver/        # MCP Server integration (new)
-├── markdown/             # Markdown documents (prepare before use)
+├── source/               # Source documents (markdown and CSV, prepare before use)
 ├── export/               # Separate export tool for Kibela
 ├── doc/                  # Project documentation
 │   ├── mcp-server.md     # MCP Server setup guide
@@ -933,12 +994,19 @@ RAGent/
    # Edit .env file
    ```
 
-2. **Prepare Markdown Documents**
+2. **Prepare Source Documents**
    ```bash
-   # Create markdown directory if not exists
-   mkdir -p markdown
+   # Create source directory if not exists
+   mkdir -p source
    
-   # Place your markdown files in the directory
+   # Place your files in the directory (markdown and/or CSV)
+   cp /path/to/docs/*.md source/
+   cp /path/to/data/*.csv source/
+   
+   # For CSV files, optionally configure column mapping:
+   cp csv-config.yaml.example csv-config.yaml
+   # Edit csv-config.yaml to specify columns
+   
    # Or use the export tool for Kibela notes:
    cd export
    go build -o RAGent-export
@@ -953,6 +1021,9 @@ RAGent/
    
    # Execute actual vectorization
    RAGent vectorize
+
+   # Vectorize with CSV configuration
+   RAGent vectorize --csv-config csv-config.yaml
 
    # Continuously vectorize using follow mode (default 30m interval)
    RAGent vectorize --follow
