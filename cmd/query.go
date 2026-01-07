@@ -118,7 +118,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Load AWS configuration
-	awsConfig, err := loadAWSConfig(ctx, config.WithRegion(cfg.AWSS3Region))
+	awsConfig, err := loadAWSConfig(ctx, config.WithRegion(cfg.S3VectorRegion))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}

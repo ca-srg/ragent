@@ -371,6 +371,8 @@ AWS_SECRET_ACCESS_KEY=your_secret_key
 # S3 Vector設定
 S3_VECTOR_INDEX_NAME=your_vector_index_name
 S3_BUCKET_NAME=your_s3_bucket_name
+S3_VECTOR_REGION=us-east-1           # S3 Vectorバケット用AWSリージョン
+S3_SOURCE_REGION=ap-northeast-1      # ソースファイル用S3バケットのAWSリージョン（--enable-s3）
 
 # OpenSearch設定（ハイブリッドRAG用）
 OPENSEARCH_ENDPOINT=your_opensearch_endpoint
@@ -636,6 +638,8 @@ RAGent vectorize
 - `--enable-s3`: S3からのソースファイル取得を有効化
 - `--s3-bucket`: ソースファイル用のS3バケット名（`--enable-s3` 指定時は必須）
 - `--s3-prefix`: スキャンするS3プレフィックス（ディレクトリ）（オプション、デフォルトはバケットルート）
+- `--s3-vector-region`: S3 Vectorバケット用AWSリージョン（S3_VECTOR_REGION を上書き、デフォルト: us-east-1）
+- `--s3-source-region`: ソースファイル用S3バケットのAWSリージョン（S3_SOURCE_REGION を上書き、デフォルト: us-east-1）
 
 **S3ソースの使用例:**
 ```bash

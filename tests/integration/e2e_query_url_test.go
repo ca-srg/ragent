@@ -146,7 +146,7 @@ func TestQueryCommandURLAwareSearch(t *testing.T) {
 					OpenSearchEndpoint: "http://localhost:9200",
 					OpenSearchRegion:   "us-west-2",
 					OpenSearchIndex:    "docs-index",
-					AWSS3Region:        "us-west-2",
+					S3VectorRegion:     "us-west-2",
 				}, nil),
 				LoadAWSConfig: cmd.DefaultAWSConfigOverride(aws.Config{Region: "us-west-2"}, nil),
 				NewEmbeddingClient: func(cfg aws.Config, modelID string) opensearch.EmbeddingClient {

@@ -85,7 +85,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load AWS configuration - FIXED to us-east-1 for Bedrock chat functionality
-	// Note: This is intentionally hardcoded and does not use cfg.AWSS3Region
+	// Note: This is intentionally hardcoded and does not use cfg.S3VectorRegion
 	awsConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)

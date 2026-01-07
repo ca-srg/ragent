@@ -91,6 +91,8 @@ RAGent は Markdownドキュメントからハイブリッド検索（BM25 + ベ
 ### S3 Vector設定
 - `S3_VECTOR_INDEX_NAME`: S3 Vector インデックス名
 - `S3_BUCKET_NAME`: S3バケット名
+- `S3_VECTOR_REGION`: S3 Vectorバケット用AWSリージョン（デフォルト: us-east-1）
+- `S3_SOURCE_REGION`: ソースファイル用S3バケットのAWSリージョン（デフォルト: us-east-1）
 
 ### OpenSearch設定（Hybrid RAG用）
 - `OPENSEARCH_ENDPOINT`: OpenSearchエンドポイントURL

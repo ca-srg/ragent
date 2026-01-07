@@ -46,7 +46,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	s3Config := &s3vector.S3Config{
 		VectorBucketName: cfg.AWSS3VectorBucket,
 		IndexName:        cfg.AWSS3VectorIndex,
-		Region:           cfg.AWSS3Region,
+		Region:           cfg.S3VectorRegion,
 		MaxRetries:       cfg.RetryAttempts,
 		RetryDelay:       cfg.RetryDelay,
 	}
@@ -76,7 +76,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\nFound %d vectors in S3 Vector Index:\n", len(vectors))
 	fmt.Printf("Bucket: %s\n", cfg.AWSS3VectorBucket)
 	fmt.Printf("Index: %s\n", cfg.AWSS3VectorIndex)
-	fmt.Printf("Region: %s\n", cfg.AWSS3Region)
+	fmt.Printf("Region: %s\n", cfg.S3VectorRegion)
 
 	if prefix != "" {
 		fmt.Printf("Prefix filter: %s\n", prefix)
