@@ -55,9 +55,7 @@ var (
 	mcpBypassVerboseLog bool
 	mcpBypassAuditLog   bool
 	mcpTrustedProxies   []string
-
-	// Only-Slack mode flag
-	mcpOnlySlack bool
+	mcpOnlySlack        bool
 )
 
 var mcpServerCmd = &cobra.Command{
@@ -114,8 +112,6 @@ func init() {
 	mcpServerCmd.Flags().BoolVar(&mcpBypassVerboseLog, "bypass-verbose-log", false, "Enable verbose logging for bypass authentication")
 	mcpServerCmd.Flags().BoolVar(&mcpBypassAuditLog, "bypass-audit-log", true, "Enable audit logging for bypass authentication")
 	mcpServerCmd.Flags().StringSliceVar(&mcpTrustedProxies, "trusted-proxies", []string{}, "Comma-separated list of trusted proxy IPs for X-Forwarded-For processing")
-
-	// Only-Slack mode flag
 	mcpServerCmd.Flags().BoolVar(&mcpOnlySlack, "only-slack", false, "Run in Slack-only mode (skip OpenSearch, provide only slack_search tool)")
 }
 

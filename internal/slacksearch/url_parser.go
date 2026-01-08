@@ -9,10 +9,10 @@ import (
 
 // SlackURLInfo contains parsed Slack URL information.
 type SlackURLInfo struct {
-	ChannelID   string // Channel ID (e.g., C01234567)
-	MessageTS   string // Message timestamp (e.g., 1234567890.123456)
-	ThreadTS    string // Thread timestamp if present
-	OriginalURL string // Original URL string
+	ChannelID   string
+	MessageTS   string
+	ThreadTS    string
+	OriginalURL string
 }
 
 // Slack URL patterns:
