@@ -15,6 +15,7 @@ import (
 
 	appconfig "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/metrics"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/ca-srg/ragent/internal/search"
 	"github.com/ca-srg/ragent/internal/slacksearch"
@@ -73,6 +74,7 @@ func init() {
 }
 
 func runChat(cmd *cobra.Command, args []string) error {
+	metrics.RecordInvocation(metrics.ModeChat)
 	log.Println("Starting chat session...")
 
 	// Load configuration

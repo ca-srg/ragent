@@ -21,6 +21,7 @@ import (
 	appcfg "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/mcpserver"
+	"github.com/ca-srg/ragent/internal/metrics"
 	"github.com/ca-srg/ragent/internal/observability"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/ca-srg/ragent/internal/slacksearch"
@@ -116,6 +117,8 @@ func init() {
 }
 
 func runMCPServer(cmd *cobra.Command, args []string) error {
+	metrics.RecordInvocation(metrics.ModeMCP)
+
 	// Load configuration
 	cfg, err := appcfg.Load()
 	if err != nil {
@@ -177,6 +180,9 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	shutdown, obsErr := observability.Init(cfg)
 	if obsErr != nil {
 		logger.Printf("observability initialization error: %v", obsErr)
+	}
+	if err := metrics.InitOTelMetrics(); err != nil {
+		logger.Printf("metrics OTel initialization error: %v", err)
 	}
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
