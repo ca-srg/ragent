@@ -26,24 +26,24 @@ func TestOTelMetricsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Set global store for testing
 	SetStoreForTesting(store)
 
 	// Add test data to SQLite
-	store.Increment(ModeMCP)
-	store.Increment(ModeMCP)
-	store.Increment(ModeMCP)
-	store.Increment(ModeSlack)
-	store.Increment(ModeQuery)
-	store.Increment(ModeQuery)
+	_ = store.Increment(ModeMCP)
+	_ = store.Increment(ModeMCP)
+	_ = store.Increment(ModeMCP)
+	_ = store.Increment(ModeSlack)
+	_ = store.Increment(ModeQuery)
+	_ = store.Increment(ModeQuery)
 
 	// Create a manual reader for testing
 	reader := metric.NewManualReader()
 	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	otel.SetMeterProvider(provider)
-	defer provider.Shutdown(context.Background())
+	defer func() { _ = provider.Shutdown(context.Background()) }()
 
 	// Initialize OTel metrics (this will register the callback)
 	err = InitOTelMetrics()
@@ -119,7 +119,7 @@ func TestOTelMetricsAfterIncrement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Set global store for testing
 	SetStoreForTesting(store)
@@ -128,7 +128,7 @@ func TestOTelMetricsAfterIncrement(t *testing.T) {
 	reader := metric.NewManualReader()
 	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	otel.SetMeterProvider(provider)
-	defer provider.Shutdown(context.Background())
+	defer func() { _ = provider.Shutdown(context.Background()) }()
 
 	// Initialize OTel metrics
 	err = InitOTelMetrics()
@@ -152,9 +152,9 @@ func TestOTelMetricsAfterIncrement(t *testing.T) {
 	})
 
 	// Add data after OTel initialization
-	store.Increment(ModeMCP)
-	store.Increment(ModeMCP)
-	store.Increment(ModeSlack)
+	_ = store.Increment(ModeMCP)
+	_ = store.Increment(ModeMCP)
+	_ = store.Increment(ModeSlack)
 
 	// Second collection - should reflect the increments
 	var rm2 metricdata.ResourceMetrics
@@ -172,10 +172,10 @@ func TestOTelMetricsAfterIncrement(t *testing.T) {
 	})
 
 	// Add more data
-	store.Increment(ModeQuery)
-	store.Increment(ModeQuery)
-	store.Increment(ModeQuery)
-	store.Increment(ModeChat)
+	_ = store.Increment(ModeQuery)
+	_ = store.Increment(ModeQuery)
+	_ = store.Increment(ModeQuery)
+	_ = store.Increment(ModeChat)
 
 	// Third collection
 	var rm3 metricdata.ResourceMetrics
@@ -209,14 +209,14 @@ func TestOTelMetricDescription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	SetStoreForTesting(store)
 
 	// Create a manual reader for testing
 	reader := metric.NewManualReader()
 	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	otel.SetMeterProvider(provider)
-	defer provider.Shutdown(context.Background())
+	defer func() { _ = provider.Shutdown(context.Background()) }()
 
 	// Initialize OTel metrics
 	err = InitOTelMetrics()
@@ -266,7 +266,7 @@ func TestOTelMetricsWithoutStore(t *testing.T) {
 	reader := metric.NewManualReader()
 	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	otel.SetMeterProvider(provider)
-	defer provider.Shutdown(context.Background())
+	defer func() { _ = provider.Shutdown(context.Background()) }()
 
 	// Initialize OTel metrics without a store
 	err := InitOTelMetrics()
@@ -306,18 +306,18 @@ func TestOTelMetricAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	SetStoreForTesting(store)
 
 	// Add some data
-	store.Increment(ModeMCP)
-	store.Increment(ModeSlack)
+	_ = store.Increment(ModeMCP)
+	_ = store.Increment(ModeSlack)
 
 	// Create a manual reader for testing
 	reader := metric.NewManualReader()
 	provider := metric.NewMeterProvider(metric.WithReader(reader))
 	otel.SetMeterProvider(provider)
-	defer provider.Shutdown(context.Background())
+	defer func() { _ = provider.Shutdown(context.Background()) }()
 
 	// Initialize OTel metrics
 	err = InitOTelMetrics()

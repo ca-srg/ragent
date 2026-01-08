@@ -12,7 +12,6 @@ import (
 
 var (
 	otelMetricsOnce       sync.Once
-	invocationTotalGauge  metric.Int64ObservableGauge
 	otelRegistrationError error
 )
 
@@ -23,8 +22,7 @@ func InitOTelMetrics() error {
 	otelMetricsOnce.Do(func() {
 		meter := otel.Meter("ragent/metrics")
 
-		var err error
-		invocationTotalGauge, err = meter.Int64ObservableGauge(
+		_, err := meter.Int64ObservableGauge(
 			"ragent.invocations.total",
 			metric.WithDescription("Cumulative total invocations by mode (mcp, slack, query, chat)"),
 			metric.WithUnit("{invocations}"),
@@ -66,6 +64,5 @@ func invocationCallback(_ context.Context, observer metric.Int64Observer) error 
 // This should only be used in tests.
 func ResetOTelForTesting() {
 	otelMetricsOnce = sync.Once{}
-	invocationTotalGauge = nil
 	otelRegistrationError = nil
 }

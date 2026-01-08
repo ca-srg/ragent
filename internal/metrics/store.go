@@ -60,7 +60,7 @@ func NewStoreWithPath(dbPath string) (*Store, error) {
 		);
 	`
 	if _, err := db.Exec(createTableSQL); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to create table: %w", err)
 	}
 
@@ -113,7 +113,7 @@ func (s *Store) GetAllTotals() (map[Mode]int64, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query totals: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var modeStr string

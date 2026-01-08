@@ -16,7 +16,7 @@ func TestNewStoreWithPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStoreWithPath failed: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Verify database file was created
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
@@ -32,7 +32,7 @@ func TestIncrement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStoreWithPath failed: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Test increment
 	if err := store.Increment(ModeMCP); err != nil {
@@ -71,7 +71,7 @@ func TestGetTotalByMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStoreWithPath failed: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Increment multiple times for MCP
 	for i := 0; i < 5; i++ {
@@ -113,16 +113,16 @@ func TestGetAllTotals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStoreWithPath failed: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Increment various modes
-	store.Increment(ModeMCP)
-	store.Increment(ModeMCP)
-	store.Increment(ModeSlack)
-	store.Increment(ModeQuery)
-	store.Increment(ModeQuery)
-	store.Increment(ModeQuery)
-	store.Increment(ModeChat)
+	_ = store.Increment(ModeMCP)
+	_ = store.Increment(ModeMCP)
+	_ = store.Increment(ModeSlack)
+	_ = store.Increment(ModeQuery)
+	_ = store.Increment(ModeQuery)
+	_ = store.Increment(ModeQuery)
+	_ = store.Increment(ModeChat)
 
 	totals, err := store.GetAllTotals()
 	if err != nil {

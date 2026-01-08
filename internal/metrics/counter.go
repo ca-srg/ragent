@@ -97,7 +97,7 @@ func SetStoreForTesting(store *Store) {
 // This should only be used in tests.
 func ResetForTesting() {
 	if globalStore != nil {
-		globalStore.Close()
+		_ = globalStore.Close()
 	}
 	globalStore = nil
 	initOnce = sync.Once{}
