@@ -197,6 +197,19 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 		return CreateToolCallErrorResult(err.Error()), err
 	}
 
+	// Fetch messages from Slack URLs in the query (if any)
+	var slackURLMessages []slacksearch.EnrichedMessage
+	if hsta.slackService != nil && slacksearch.HasSlackURL(searchRequest.Query) {
+		sendProgress(0.02, 1.0, "Fetching referenced Slack messages...")
+		fetchResp, fetchErr := hsta.slackService.FetchMessagesFromQuery(ctx, searchRequest.Query)
+		if fetchErr != nil {
+			hsta.logger.Printf("Slack URL fetch warning: %v", fetchErr)
+		} else if fetchResp != nil && len(fetchResp.EnrichedMessages) > 0 {
+			slackURLMessages = fetchResp.EnrichedMessages
+			hsta.logger.Printf("Fetched %d message(s) from Slack URL(s)", len(slackURLMessages))
+		}
+	}
+
 	sendProgress(0.05, 1.0, "Checking OpenSearch connection...")
 
 	// Test OpenSearch connection
@@ -264,7 +277,7 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 	sendProgress(0.95, 1.0, "Preparing response...")
 
 	// Convert to MCP format
-	mcpResponse := hsta.convertToMCPResponse(searchRequest, result, slackResult)
+	mcpResponse := hsta.convertToMCPResponse(searchRequest, result, slackResult, slackURLMessages)
 	responseJSON, err := json.MarshalIndent(mcpResponse, "", "  ")
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to serialize response: %v", err)
@@ -448,7 +461,7 @@ func (hsta *HybridSearchToolAdapter) buildHybridQuery(request *types.HybridSearc
 }
 
 // convertToMCPResponse converts HybridSearchResult to MCP response format
-func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridSearchRequest, result *opensearch.HybridSearchResult, slackResult *slacksearch.SlackSearchResult) *types.HybridSearchResponse {
+func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridSearchRequest, result *opensearch.HybridSearchResult, slackResult *slacksearch.SlackSearchResult, urlMessages []slacksearch.EnrichedMessage) *types.HybridSearchResponse {
 	response := &types.HybridSearchResponse{
 		Query:          request.Query,
 		Total:          result.FusionResult.TotalHits,
@@ -541,6 +554,25 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridS
 		}
 	}
 
+	// Add referenced Slack URL messages
+	if len(urlMessages) > 0 {
+		urlItems := convertEnrichedMessages(urlMessages)
+		if len(urlItems) > 0 {
+			response.ReferencedSlackURLs = urlItems
+			// Add to sources if not already included
+			hasSlackURLSource := false
+			for _, s := range sources {
+				if s == "slack_urls" {
+					hasSlackURLSource = true
+					break
+				}
+			}
+			if !hasSlackURLSource {
+				sources = append(sources, "slack_urls")
+			}
+		}
+	}
+
 	if len(sources) > 0 {
 		response.SearchSources = sources
 	}
@@ -629,8 +661,15 @@ func convertSlackResult(src *slacksearch.SlackSearchResult) []types.HybridSearch
 	if src == nil {
 		return nil
 	}
-	results := make([]types.HybridSearchSlackResult, 0, len(src.EnrichedMessages))
-	for _, msg := range src.EnrichedMessages {
+	return convertEnrichedMessages(src.EnrichedMessages)
+}
+
+func convertEnrichedMessages(messages []slacksearch.EnrichedMessage) []types.HybridSearchSlackResult {
+	if len(messages) == 0 {
+		return nil
+	}
+	results := make([]types.HybridSearchSlackResult, 0, len(messages))
+	for _, msg := range messages {
 		primary := msg.OriginalMessage
 		text := strings.TrimSpace(primary.Text)
 		if text == "" && len(msg.ThreadMessages) > 0 {

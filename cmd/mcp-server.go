@@ -55,6 +55,7 @@ var (
 	mcpBypassVerboseLog bool
 	mcpBypassAuditLog   bool
 	mcpTrustedProxies   []string
+	mcpOnlySlack        bool
 )
 
 var mcpServerCmd = &cobra.Command{
@@ -111,6 +112,7 @@ func init() {
 	mcpServerCmd.Flags().BoolVar(&mcpBypassVerboseLog, "bypass-verbose-log", false, "Enable verbose logging for bypass authentication")
 	mcpServerCmd.Flags().BoolVar(&mcpBypassAuditLog, "bypass-audit-log", true, "Enable audit logging for bypass authentication")
 	mcpServerCmd.Flags().StringSliceVar(&mcpTrustedProxies, "trusted-proxies", []string{}, "Comma-separated list of trusted proxy IPs for X-Forwarded-For processing")
+	mcpServerCmd.Flags().BoolVar(&mcpOnlySlack, "only-slack", false, "Run in Slack-only mode (skip OpenSearch, provide only slack_search tool)")
 }
 
 func runMCPServer(cmd *cobra.Command, args []string) error {
@@ -161,9 +163,15 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 		cfg.MCPTrustedProxies = mcpTrustedProxies
 	}
 
-	// Validate OpenSearch configuration (required for MCP server)
-	if cfg.OpenSearchEndpoint == "" {
-		return fmt.Errorf("OpenSearch is required for MCP server: set OPENSEARCH_ENDPOINT and related settings")
+	// Validate OpenSearch configuration (required for MCP server unless --only-slack is used)
+	if !mcpOnlySlack && cfg.OpenSearchEndpoint == "" {
+		return fmt.Errorf("OpenSearch is required for MCP server: set OPENSEARCH_ENDPOINT and related settings (use --only-slack to skip)")
+	}
+
+	// In --only-slack mode, force enable Slack search
+	if mcpOnlySlack {
+		cfg.SlackSearchEnabled = true
+		logger.Printf("Running in Slack-only mode (OpenSearch disabled)")
 	}
 
 	shutdown, obsErr := observability.Init(cfg)
@@ -332,27 +340,7 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 		logger.Printf("WARNING: No authentication middleware enabled (auth-method=%s)", method)
 	}
 
-	// Initialize OpenSearch client
-	osConfig, err := opensearch.NewConfigFromTypes(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to create OpenSearch config: %w", err)
-	}
-
-	if err := osConfig.Validate(); err != nil {
-		return fmt.Errorf("OpenSearch config validation failed: %w", err)
-	}
-
-	osClient, err := opensearch.NewClient(osConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create OpenSearch client: %w", err)
-	}
-
-	// Test OpenSearch connection
 	ctx := context.Background()
-	if err := osClient.HealthCheck(ctx); err != nil {
-		return fmt.Errorf("OpenSearch health check failed: %w", err)
-	}
-	logger.Printf("OpenSearch connection established: %s", cfg.OpenSearchEndpoint)
 
 	// Load AWS configuration
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.S3VectorRegion))
@@ -360,76 +348,157 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
-	// Initialize Bedrock embedding client
-	embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
+	// Initialize Bedrock client for Slack search (needed for LLM in Slack search)
+	slackBedrockClient := bedrock.NewBedrockClient(awsConfig, cfg.ChatModel)
 
-	// Optionally initialize Slack search service
+	// Initialize Slack search service (required in --only-slack mode, optional otherwise)
 	var slackService *slacksearch.SlackSearchService
-	if cfg.SlackSearchEnabled {
+	if cfg.SlackSearchEnabled || mcpOnlySlack {
 		slackCfg, slackErr := appcfg.LoadSlack()
 		if slackErr != nil {
+			if mcpOnlySlack {
+				return fmt.Errorf("slack configuration required in --only-slack mode: %w", slackErr)
+			}
 			logger.Printf("Slack configuration not available: %v", slackErr)
 		} else if strings.TrimSpace(slackCfg.BotToken) == "" {
+			if mcpOnlySlack {
+				return fmt.Errorf("SLACK_BOT_TOKEN is required in --only-slack mode")
+			}
 			logger.Printf("Slack search disabled: SLACK_BOT_TOKEN is not configured")
 		} else if strings.TrimSpace(cfg.SlackUserToken) == "" {
+			if mcpOnlySlack {
+				return fmt.Errorf("SLACK_USER_TOKEN is required in --only-slack mode")
+			}
 			logger.Printf("Slack search disabled: SLACK_USER_TOKEN is not configured")
 		} else {
 			slackClient := slack.New(slackCfg.BotToken)
-			slackBedrockClient := bedrock.NewBedrockClient(awsConfig, cfg.ChatModel)
 			service, serr := slacksearch.NewSlackSearchService(cfg, slackClient, slackBedrockClient, logger)
 			if serr != nil {
+				if mcpOnlySlack {
+					return fmt.Errorf("slack search initialization failed in --only-slack mode: %w", serr)
+				}
 				logger.Printf("Slack search initialization failed: %v", serr)
 			} else if err := service.Initialize(ctx); err != nil {
+				if mcpOnlySlack {
+					return fmt.Errorf("slack search dependencies not ready in --only-slack mode: %w", err)
+				}
 				logger.Printf("Slack search dependencies not ready: %v", err)
 			} else {
 				slackService = service
-				logger.Printf("Slack search support enabled for MCP hybrid_search tool")
+				logger.Printf("Slack search support enabled for MCP server")
 			}
 		}
 	}
 
-	// Create hybrid search tool configuration
-	hybridSearchConfig := &mcpserver.HybridSearchConfig{
-		DefaultIndexName:      cfg.OpenSearchIndex,
-		DefaultSize:           cfg.MCPDefaultSearchSize,
-		DefaultBM25Weight:     cfg.MCPDefaultBM25Weight,
-		DefaultVectorWeight:   cfg.MCPDefaultVectorWeight,
-		DefaultFusionMethod:   "weighted_sum",
-		DefaultUseJapaneseNLP: cfg.MCPDefaultUseJapaneseNLP,
-		DefaultTimeoutSeconds: cfg.MCPDefaultTimeoutSeconds,
+	var registeredTools []string
+
+	// In --only-slack mode, register only slack_search tool
+	if mcpOnlySlack {
+		// Create Slack search tool configuration
+		slackSearchConfig := &mcpserver.SlackSearchConfig{
+			DefaultMaxResults:     cfg.MCPDefaultSearchSize,
+			DefaultTimeoutSeconds: cfg.MCPDefaultTimeoutSeconds,
+		}
+
+		// Create Slack search handler
+		slackSearchHandler := mcpserver.NewSlackSearchHandler(slackService, slackSearchConfig)
+		slackToolHandlerFunc := slackSearchHandler.HandleSDKToolCall
+
+		// Determine tool name
+		slackToolName := "slack_search"
+		if cfg.MCPToolPrefix != "" {
+			slackToolName = cfg.MCPToolPrefix + slackToolName
+		}
+
+		// Build enriched tool definition
+		baseSlackDef := slackSearchHandler.GetSDKToolDefinition()
+		detailedSlackTool := mcpserver.BuildSlackSearchToolDefinition(baseSlackDef, slackToolName, slackSearchConfig)
+
+		// Register Slack search tool
+		if err := server.RegisterCustomTool(detailedSlackTool, slackToolHandlerFunc); err != nil {
+			return fmt.Errorf("failed to register slack_search tool: %w", err)
+		}
+
+		documentedParams := 0
+		if detailedSlackTool != nil && detailedSlackTool.InputSchema != nil && detailedSlackTool.InputSchema.Properties != nil {
+			documentedParams = len(detailedSlackTool.InputSchema.Properties)
+		}
+
+		logger.Printf(
+			"Registered tool '%s' with SDK server (documented parameters=%d)",
+			slackToolName,
+			documentedParams,
+		)
+		registeredTools = append(registeredTools, slackToolName)
+	} else {
+		// Initialize OpenSearch client
+		osConfig, err := opensearch.NewConfigFromTypes(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create OpenSearch config: %w", err)
+		}
+
+		if err := osConfig.Validate(); err != nil {
+			return fmt.Errorf("OpenSearch config validation failed: %w", err)
+		}
+
+		osClient, err := opensearch.NewClient(osConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create OpenSearch client: %w", err)
+		}
+
+		// Test OpenSearch connection
+		if err := osClient.HealthCheck(ctx); err != nil {
+			return fmt.Errorf("OpenSearch health check failed: %w", err)
+		}
+		logger.Printf("OpenSearch connection established: %s", cfg.OpenSearchEndpoint)
+
+		// Initialize Bedrock embedding client
+		embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
+
+		// Create hybrid search tool configuration
+		hybridSearchConfig := &mcpserver.HybridSearchConfig{
+			DefaultIndexName:      cfg.OpenSearchIndex,
+			DefaultSize:           cfg.MCPDefaultSearchSize,
+			DefaultBM25Weight:     cfg.MCPDefaultBM25Weight,
+			DefaultVectorWeight:   cfg.MCPDefaultVectorWeight,
+			DefaultFusionMethod:   "weighted_sum",
+			DefaultUseJapaneseNLP: cfg.MCPDefaultUseJapaneseNLP,
+			DefaultTimeoutSeconds: cfg.MCPDefaultTimeoutSeconds,
+		}
+
+		// Create hybrid search tool handler for SDK integration
+		hybridSearchHandler := mcpserver.NewHybridSearchHandler(osClient, embeddingClient, hybridSearchConfig, slackService)
+
+		// Create function wrapper to match mcp.ToolHandler signature
+		toolHandlerFunc := hybridSearchHandler.HandleSDKToolCall
+
+		// Determine tool name
+		toolName := cfg.MCPHybridSearchToolName
+		if cfg.MCPToolPrefix != "" {
+			toolName = cfg.MCPToolPrefix + toolName
+		}
+
+		// Build enriched tool definition for MCP clients
+		baseDefinition := hybridSearchHandler.GetSDKToolDefinition()
+		detailedTool := buildHybridSearchToolDefinition(baseDefinition, toolName, hybridSearchConfig)
+
+		// Register tool with SDK server through ServerWrapper using the enriched definition
+		if err := server.RegisterCustomTool(detailedTool, toolHandlerFunc); err != nil {
+			return fmt.Errorf("failed to register hybrid search tool: %w", err)
+		}
+
+		documentedParams := 0
+		if detailedTool != nil && detailedTool.InputSchema != nil && detailedTool.InputSchema.Properties != nil {
+			documentedParams = len(detailedTool.InputSchema.Properties)
+		}
+
+		logger.Printf(
+			"Registered tool '%s' with SDK server (documented parameters=%d)",
+			toolName,
+			documentedParams,
+		)
+		registeredTools = append(registeredTools, toolName)
 	}
-
-	// Create hybrid search tool handler for SDK integration
-	hybridSearchHandler := mcpserver.NewHybridSearchHandler(osClient, embeddingClient, hybridSearchConfig, slackService)
-
-	// Create function wrapper to match mcp.ToolHandler signature
-	toolHandlerFunc := hybridSearchHandler.HandleSDKToolCall
-
-	// Determine tool name
-	toolName := cfg.MCPHybridSearchToolName
-	if cfg.MCPToolPrefix != "" {
-		toolName = cfg.MCPToolPrefix + toolName
-	}
-
-	// Build enriched tool definition for MCP clients
-	baseDefinition := hybridSearchHandler.GetSDKToolDefinition()
-	detailedTool := buildHybridSearchToolDefinition(baseDefinition, toolName, hybridSearchConfig)
-
-	// Register tool with SDK server through ServerWrapper using the enriched definition
-	if err := server.RegisterCustomTool(detailedTool, toolHandlerFunc); err != nil {
-		return fmt.Errorf("failed to register hybrid search tool: %w", err)
-	}
-
-	documentedParams := 0
-	if detailedTool != nil && detailedTool.InputSchema != nil && detailedTool.InputSchema.Properties != nil {
-		documentedParams = len(detailedTool.InputSchema.Properties)
-	}
-
-	logger.Printf(
-		"Registered tool '%s' with SDK server (documented parameters=%d)",
-		toolName,
-		documentedParams,
-	)
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -455,7 +524,7 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	// Start the SDK-based server
 	logger.Printf("Starting MCP server (SDK-based) on %s:%d", cfg.MCPServerHost, cfg.MCPServerPort)
 	logger.Printf("Server address: %s", server.GetServerAddress())
-	logger.Printf("Available tools: %s", toolName)
+	logger.Printf("Available tools: %s", strings.Join(registeredTools, ", "))
 
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start MCP server: %w", err)

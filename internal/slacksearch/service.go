@@ -43,6 +43,7 @@ type SlackSearchService struct {
 	searcher           slackSearcher
 	contextRetriever   slackContextRetriever
 	sufficiencyChecker slackSufficiencyChecker
+	messageFetcher     *MessageFetcher
 	config             *SlackSearchConfig
 	logger             *log.Logger
 	progressHandler    func(iteration int, maxIterations int)
@@ -112,6 +113,7 @@ func NewSlackSearchService(
 	var (
 		searcher         slackSearcher
 		contextRetriever slackContextRetriever
+		messageFetcher   *MessageFetcher
 		err              error
 	)
 
@@ -122,6 +124,7 @@ func NewSlackSearchService(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create context retriever: %w", err)
 		}
+		messageFetcher = NewMessageFetcher(userClient, contextLimiter, cfg, logger)
 	}
 
 	sufficiencyChecker := NewSufficiencyChecker(bedrockClient, logger, llmTimeout)
@@ -133,6 +136,7 @@ func NewSlackSearchService(
 		searcher:           searcher,
 		contextRetriever:   contextRetriever,
 		sufficiencyChecker: sufficiencyChecker,
+		messageFetcher:     messageFetcher,
 		config:             cfg,
 		logger:             logger,
 		progressHandler:    nil,
@@ -224,6 +228,34 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 	}
 
 	startTime := time.Now()
+
+	// URL direct fetch: detect Slack URLs and fetch messages directly
+	var urlFetchedMessages []EnrichedMessage
+	if HasSlackURL(userQuery) && s.messageFetcher != nil {
+		fetchResp, err := s.FetchMessagesFromQuery(ctx, userQuery)
+		if err != nil {
+			s.logger.Printf("Slack URL fetch warning: %v", err)
+			span.AddEvent("url_fetch_warning", trace.WithAttributes(attribute.String("error", err.Error())))
+		} else if fetchResp != nil && len(fetchResp.EnrichedMessages) > 0 {
+			urlFetchedMessages = fetchResp.EnrichedMessages
+			s.logger.Printf("Fetched %d message(s) from Slack URL(s)", len(urlFetchedMessages))
+			span.SetAttributes(attribute.Int("slack.url_fetched_count", len(urlFetchedMessages)))
+		}
+	}
+
+	// If query contains only URLs (no other text), return URL-fetched results immediately
+	cleanedQuery := ExtractQueryWithoutURLs(userQuery)
+	if len(urlFetchedMessages) > 0 && strings.TrimSpace(cleanedQuery) == "" {
+		s.logger.Printf("Slack search completed (URL-only query) hash=%s fetched=%d duration=%s",
+			queryHash, len(urlFetchedMessages), time.Since(startTime).String())
+		span.SetAttributes(
+			attribute.Bool("slack.url_only_query", true),
+			attribute.Int("slack.url_fetched_count", len(urlFetchedMessages)),
+			attribute.Float64("slack.execution_ms", float64(time.Since(startTime).Milliseconds())),
+		)
+		return s.buildURLOnlyResult(startTime, urlFetchedMessages), nil
+	}
+
 	maxIterations := s.config.MaxIterations
 	if maxIterations <= 0 {
 		maxIterations = 1
@@ -310,6 +342,30 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 
 		if len(searchMessages) == 0 {
 			iterSpan.AddEvent("no_messages_returned")
+
+			// If we have URL-fetched messages, merge them and return success
+			if len(urlFetchedMessages) > 0 {
+				mergedMessages := mergeEnrichedMessages(urlFetchedMessages, enrichedMessages)
+				s.logger.Printf("Search returned 0 matches, but URL-fetched %d message(s) available", len(urlFetchedMessages))
+				result := s.buildResult(startTime, executedQueries, iteration+1, len(urlFetchedMessages), mergedMessages, &SufficiencyResponse{
+					IsSufficient: true,
+					MissingInfo:  []string{},
+					Reasoning:    "URL-fetched messages available",
+					Confidence:   1.0,
+				})
+				iterSpan.End()
+				span.SetAttributes(
+					attribute.Int("slack.iterations_completed", iterationsDone),
+					attribute.Int("slack.total_matches", len(urlFetchedMessages)),
+					attribute.Int("slack.enriched_messages", len(result.EnrichedMessages)),
+					attribute.Bool("slack.sufficient", result.IsSufficient),
+					attribute.Float64("slack.execution_ms", float64(time.Since(startTime).Milliseconds())),
+				)
+				s.logger.Printf("Slack search completed hash=%s iterations=%d matches=%d enriched=%d sufficient=%t duration=%s (URL-fetched)",
+					queryHash, iterationsDone, len(urlFetchedMessages), len(result.EnrichedMessages), result.IsSufficient, time.Since(startTime).String())
+				return result, nil
+			}
+
 			result := s.buildResult(startTime, executedQueries, iteration+1, totalMatches, enrichedMessages, &SufficiencyResponse{
 				IsSufficient: false,
 				MissingInfo:  []string{"No Slack conversations matched the query"},
@@ -411,6 +467,12 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 		}
 
 		iterSpan.End()
+	}
+
+	// Merge URL-fetched messages with search results (URL messages first, deduplicated)
+	if len(urlFetchedMessages) > 0 {
+		enrichedMessages = mergeEnrichedMessages(urlFetchedMessages, enrichedMessages)
+		s.logger.Printf("Merged URL-fetched messages with search results: total=%d", len(enrichedMessages))
 	}
 
 	result := s.buildResult(startTime, executedQueries, iterationsDone, totalMatches, enrichedMessages, suffResult)
@@ -613,4 +675,108 @@ func isBotMessage(msg slack.Message) bool {
 	}
 
 	return false
+}
+
+// FetchMessagesFromQuery detects Slack URLs in the query and fetches their content.
+// Returns nil if no Slack URLs are found in the query.
+// This method works independently of the Slack search enabled setting.
+func (s *SlackSearchService) FetchMessagesFromQuery(ctx context.Context, query string) (*FetchResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ctx, span := slackSearchTracer.Start(ctx, "slacksearch.service.fetch_from_query")
+	defer span.End()
+
+	// Detect Slack URLs in the query
+	urls := DetectSlackURLs(query)
+	if len(urls) == 0 {
+		span.SetAttributes(attribute.Bool("slack.has_urls", false))
+		return nil, nil
+	}
+
+	span.SetAttributes(
+		attribute.Bool("slack.has_urls", true),
+		attribute.Int("slack.url_count", len(urls)),
+		attribute.String("slack.query_hash", telemetryFingerprint(query)),
+	)
+
+	s.logger.Printf("SlackSearchService: detected %d Slack URL(s) in query", len(urls))
+
+	// Check if message fetcher is available
+	if s.messageFetcher == nil {
+		err := fmt.Errorf("message fetcher not initialized (Slack client may not be configured)")
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// Fetch messages from URLs
+	return s.messageFetcher.FetchByURLs(ctx, &FetchRequest{
+		URLs:      urls,
+		UserQuery: query,
+	})
+}
+
+// HasSlackURLs checks if the query contains any Slack message URLs.
+func (s *SlackSearchService) HasSlackURLs(query string) bool {
+	return HasSlackURL(query)
+}
+
+// GetMessageFetcher returns the message fetcher for direct use.
+// Returns nil if the fetcher is not initialized.
+func (s *SlackSearchService) GetMessageFetcher() *MessageFetcher {
+	return s.messageFetcher
+}
+
+// buildURLOnlyResult constructs a SlackSearchResult when only URL direct fetch is used.
+// This is returned when the query contains only Slack URLs with no additional search text.
+func (s *SlackSearchService) buildURLOnlyResult(start time.Time, messages []EnrichedMessage) *SlackSearchResult {
+	result := &SlackSearchResult{
+		EnrichedMessages: messages,
+		Queries:          []string{"[URL direct fetch]"},
+		IterationCount:   0,
+		TotalMatches:     len(messages),
+		ExecutionTime:    time.Since(start),
+		IsSufficient:     len(messages) > 0,
+		MissingInfo:      []string{},
+		Sources:          make(map[string]string),
+	}
+
+	// Populate Sources with permalinks
+	for _, msg := range messages {
+		if msg.Permalink != "" {
+			key := fmt.Sprintf("%s#%s", msg.OriginalMessage.Channel, msg.OriginalMessage.Timestamp)
+			result.Sources[key] = msg.Permalink
+		}
+	}
+
+	return result
+}
+
+// mergeEnrichedMessages combines URL-fetched messages with search results.
+// URL-fetched messages are placed first, and duplicates are removed.
+// Duplicates are identified by channel:timestamp combination.
+func mergeEnrichedMessages(urlMessages, searchMessages []EnrichedMessage) []EnrichedMessage {
+	seen := make(map[string]struct{})
+	result := make([]EnrichedMessage, 0, len(urlMessages)+len(searchMessages))
+
+	// Add URL-fetched messages first
+	for _, msg := range urlMessages {
+		key := fmt.Sprintf("%s:%s", msg.OriginalMessage.Channel, msg.OriginalMessage.Timestamp)
+		if _, exists := seen[key]; !exists {
+			seen[key] = struct{}{}
+			result = append(result, msg)
+		}
+	}
+
+	// Add search results, skipping duplicates
+	for _, msg := range searchMessages {
+		key := fmt.Sprintf("%s:%s", msg.OriginalMessage.Channel, msg.OriginalMessage.Timestamp)
+		if _, exists := seen[key]; !exists {
+			seen[key] = struct{}{}
+			result = append(result, msg)
+		}
+	}
+
+	return result
 }

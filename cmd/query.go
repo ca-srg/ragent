@@ -30,19 +30,19 @@ type openSearchClientFactory func(*opensearch.Config) (QuerySearchClient, error)
 type hybridEngineFactory func(opensearch.SearchClient, opensearch.EmbeddingClient) *opensearch.HybridSearchEngine
 
 var (
-	queryText         string
-	topK              int
-	outputJSON        bool
-	filterQuery       string
-	searchMode        string
-	indexName         string
-	bm25Weight        float64
-	vectorWeight      float64
-	fusionMethod      string
-	useJapaneseNLP    bool
-	timeout           int
-	enableSlackSearch bool
-	slackChannels     []string
+	queryText      string
+	topK           int
+	outputJSON     bool
+	filterQuery    string
+	searchMode     string
+	indexName      string
+	bm25Weight     float64
+	vectorWeight   float64
+	fusionMethod   string
+	useJapaneseNLP bool
+	timeout        int
+	queryOnlySlack bool
+	slackChannels  []string
 )
 
 var (
@@ -96,7 +96,7 @@ func init() {
 	queryCmd.Flags().StringVar(&fusionMethod, "fusion-method", "rrf", "Result fusion method: rrf|weighted_sum|max_score")
 	queryCmd.Flags().BoolVar(&useJapaneseNLP, "japanese-nlp", false, "Enable Japanese text processing and analysis")
 	queryCmd.Flags().IntVar(&timeout, "timeout", 30, "Request timeout in seconds")
-	queryCmd.Flags().BoolVar(&enableSlackSearch, "enable-slack-search", false, "Include Slack conversations in results")
+	queryCmd.Flags().BoolVar(&queryOnlySlack, "only-slack", false, "Search only Slack conversations (skip OpenSearch)")
 	queryCmd.Flags().StringSliceVar(&slackChannels, "slack-channels", nil, "Limit Slack search to specific channel names (omit leading #)")
 
 	if err := queryCmd.MarkFlagRequired("query"); err != nil {
@@ -105,6 +105,12 @@ func init() {
 }
 
 func runQuery(cmd *cobra.Command, args []string) error {
+	// Handle --only-slack mode
+	if queryOnlySlack {
+		log.Printf("Starting slack-only search for: %s", queryText)
+		return runSlackOnlySearch()
+	}
+
 	log.Printf("Starting %s search for: %s", searchMode, queryText)
 
 	// Load configuration
@@ -137,15 +143,51 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 }
 
+func runSlackOnlySearch() error {
+	// Load configuration
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Set context timeout
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	// Load AWS configuration
+	awsConfig, err := loadAWSConfig(ctx, config.WithRegion(cfg.S3VectorRegion))
+	if err != nil {
+		return fmt.Errorf("failed to load AWS configuration: %w", err)
+	}
+
+	// Execute Slack-only search
+	result, err := performSlackOnlySearch(ctx, cfg, awsConfig, queryText, slackChannels, nil)
+	if err != nil {
+		return fmt.Errorf("slack search failed: %w", err)
+	}
+
+	return outputSlackOnlyResults(result, queryText, outputJSON)
+}
+
 func runHybridSearch(ctx context.Context, cfg *commontypes.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient) error {
-	// Run document hybrid search first
+	// Fetch messages from Slack URLs in the query (if any)
+	var slackURLMessages []slacksearch.EnrichedMessage
+	urlMessages, err := fetchSlackURLContext(ctx, cfg, queryText)
+	if err != nil {
+		log.Printf("Slack URL fetch warning: %v", err)
+	} else if len(urlMessages) > 0 {
+		slackURLMessages = urlMessages
+		log.Printf("Fetched %d message(s) from Slack URL(s)", len(urlMessages))
+	}
+
+	// Run document hybrid search
 	docResult, docErr := attemptOpenSearchHybrid(ctx, cfg, embeddingClient)
 	if docErr != nil {
 		return fmt.Errorf("hybrid search failed: %w", docErr)
 	}
 
 	var slackResult *slacksearch.SlackSearchResult
-	if enableSlackSearch {
+	if cfg.SlackSearchEnabled {
 		var err error
 		slackResult, err = slackSearchRunner(ctx, cfg, awsCfg, embeddingClient, queryText, slackChannels, nil)
 		if err != nil {
@@ -153,7 +195,7 @@ func runHybridSearch(ctx context.Context, cfg *commontypes.Config, awsCfg aws.Co
 		}
 	}
 
-	return outputCombinedResults(docResult, slackResult, "hybrid")
+	return outputCombinedResultsWithURLContext(docResult, slackResult, slackURLMessages, "hybrid")
 }
 
 func runOpenSearchOnly(ctx context.Context, cfg *commontypes.Config, embeddingClient opensearch.EmbeddingClient) error {
@@ -281,17 +323,23 @@ func outputHybridResults(result *opensearch.HybridSearchResult, searchType strin
 }
 
 func outputCombinedResults(result *opensearch.HybridSearchResult, slackResult *slacksearch.SlackSearchResult, searchType string) error {
+	return outputCombinedResultsWithURLContext(result, slackResult, nil, searchType)
+}
+
+func outputCombinedResultsWithURLContext(result *opensearch.HybridSearchResult, slackResult *slacksearch.SlackSearchResult, urlMessages []slacksearch.EnrichedMessage, searchType string) error {
 	if outputJSON {
 		payload := struct {
 			*opensearch.HybridSearchResult
-			Query        string                         `json:"query"`
-			Mode         string                         `json:"mode"`
-			SlackResults *slacksearch.SlackSearchResult `json:"slack_results,omitempty"`
+			Query               string                         `json:"query"`
+			Mode                string                         `json:"mode"`
+			SlackResults        *slacksearch.SlackSearchResult `json:"slack_results,omitempty"`
+			ReferencedSlackURLs []slacksearch.EnrichedMessage  `json:"referenced_slack_urls,omitempty"`
 		}{
-			HybridSearchResult: result,
-			Query:              queryText,
-			Mode:               searchType,
-			SlackResults:       slackResult,
+			HybridSearchResult:  result,
+			Query:               queryText,
+			Mode:                searchType,
+			SlackResults:        slackResult,
+			ReferencedSlackURLs: urlMessages,
 		}
 		jsonOutput, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
@@ -299,6 +347,11 @@ func outputCombinedResults(result *opensearch.HybridSearchResult, slackResult *s
 		}
 		fmt.Println(string(jsonOutput))
 		return nil
+	}
+
+	// Print URL-referenced messages first
+	if len(urlMessages) > 0 {
+		printSlackURLContext(urlMessages)
 	}
 
 	printHybridResults(result, searchType)

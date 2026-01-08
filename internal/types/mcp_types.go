@@ -89,16 +89,17 @@ type HybridSearchRequest struct {
 
 // HybridSearchResponse represents the hybrid search tool response
 type HybridSearchResponse struct {
-	Query          string                    `json:"query"`
-	Total          int                       `json:"total"`
-	SearchMode     string                    `json:"search_mode"`
-	SearchMethod   string                    `json:"search_method"`
-	URLDetected    bool                      `json:"url_detected,omitempty"`
-	FallbackReason string                    `json:"fallback_reason,omitempty"`
-	Results        []HybridSearchResultItem  `json:"results"`
-	Metadata       *HybridSearchMetadata     `json:"metadata,omitempty"`
-	SlackResults   []HybridSearchSlackResult `json:"slack_results,omitempty"`
-	SearchSources  []string                  `json:"search_sources,omitempty"`
+	Query               string                    `json:"query"`
+	Total               int                       `json:"total"`
+	SearchMode          string                    `json:"search_mode"`
+	SearchMethod        string                    `json:"search_method"`
+	URLDetected         bool                      `json:"url_detected,omitempty"`
+	FallbackReason      string                    `json:"fallback_reason,omitempty"`
+	Results             []HybridSearchResultItem  `json:"results"`
+	Metadata            *HybridSearchMetadata     `json:"metadata,omitempty"`
+	SlackResults        []HybridSearchSlackResult `json:"slack_results,omitempty"`
+	ReferencedSlackURLs []HybridSearchSlackResult `json:"referenced_slack_urls,omitempty"`
+	SearchSources       []string                  `json:"search_sources,omitempty"`
 }
 
 // HybridSearchResultItem represents a single search result
@@ -183,4 +184,47 @@ func NewMCPContent(contentType, text string) *mcp.TextContent {
 	return &mcp.TextContent{
 		Text: text,
 	}
+}
+
+// Slack search tool specific types (for --only-slack mode)
+
+// SlackSearchRequest represents parameters for slack-only search tool
+type SlackSearchRequest struct {
+	Query      string   `json:"query"`
+	Channels   []string `json:"channels,omitempty"`
+	MaxResults int      `json:"max_results,omitempty"`
+}
+
+// SlackSearchResponse represents the slack search tool response
+type SlackSearchResponse struct {
+	Query    string                  `json:"query"`
+	Total    int                     `json:"total"`
+	Results  []SlackSearchResultItem `json:"results"`
+	Metadata *SlackSearchMetadata    `json:"metadata,omitempty"`
+}
+
+// SlackSearchResultItem represents a single Slack message in search results
+type SlackSearchResultItem struct {
+	Channel       string                 `json:"channel"`
+	Timestamp     string                 `json:"timestamp"`
+	User          string                 `json:"user"`
+	Text          string                 `json:"text"`
+	Permalink     string                 `json:"permalink,omitempty"`
+	ThreadReplies []SlackThreadReplyItem `json:"thread_replies,omitempty"`
+}
+
+// SlackThreadReplyItem represents a reply in a Slack thread
+type SlackThreadReplyItem struct {
+	Timestamp string `json:"timestamp"`
+	User      string `json:"user"`
+	Text      string `json:"text"`
+}
+
+// SlackSearchMetadata contains metadata about the Slack search execution
+type SlackSearchMetadata struct {
+	ExecutionTimeMs int64    `json:"execution_time_ms"`
+	IterationCount  int      `json:"iteration_count"`
+	QueriesUsed     []string `json:"queries_used,omitempty"`
+	IsSufficient    bool     `json:"is_sufficient"`
+	MissingInfo     []string `json:"missing_info,omitempty"`
 }

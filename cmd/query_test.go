@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestQueryEnableSlackFlag(t *testing.T) {
+func TestQueryOnlySlackFlag(t *testing.T) {
 	ResetQueryState()
 	t.Cleanup(ResetQueryState)
 
-	require.NoError(t, queryCmd.Flags().Set("enable-slack-search", "true"))
-	assert.True(t, enableSlackSearch)
-	require.NoError(t, queryCmd.Flags().Set("enable-slack-search", "false"))
+	require.NoError(t, queryCmd.Flags().Set("only-slack", "true"))
+	assert.True(t, queryOnlySlack)
+	require.NoError(t, queryCmd.Flags().Set("only-slack", "false"))
 }
 
 func TestSanitizeSlackChannels(t *testing.T) {
