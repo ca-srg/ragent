@@ -28,6 +28,7 @@ var (
 	chatBM25Weight     float64
 	chatVectorWeight   float64
 	chatUseJapaneseNLP bool
+	chatOnlySlack      bool
 )
 
 type chatResponder interface {
@@ -68,6 +69,7 @@ func init() {
 	chatCmd.Flags().Float64VarP(&chatBM25Weight, "bm25-weight", "b", 0.5, "Weight for BM25 scoring in hybrid search (0-1)")
 	chatCmd.Flags().Float64VarP(&chatVectorWeight, "vector-weight", "v", 0.5, "Weight for vector scoring in hybrid search (0-1)")
 	chatCmd.Flags().BoolVar(&chatUseJapaneseNLP, "use-japanese-nlp", true, "Use Japanese NLP optimization for OpenSearch")
+	chatCmd.Flags().BoolVar(&chatOnlySlack, "only-slack", false, "Search only Slack conversations (skip OpenSearch)")
 }
 
 func runChat(cmd *cobra.Command, args []string) error {
@@ -79,9 +81,16 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Require OpenSearch configuration for chat (fallback removed)
-	if cfg.OpenSearchEndpoint == "" {
-		return fmt.Errorf("OpenSearch is required for chat: set OPENSEARCH_ENDPOINT and related settings")
+	// In --only-slack mode, skip OpenSearch requirement
+	if !chatOnlySlack {
+		// Require OpenSearch configuration for chat (fallback removed)
+		if cfg.OpenSearchEndpoint == "" {
+			return fmt.Errorf("OpenSearch is required for chat: set OPENSEARCH_ENDPOINT and related settings (use --only-slack to skip)")
+		}
+	} else {
+		// Force enable Slack search in --only-slack mode
+		cfg.SlackSearchEnabled = true
+		log.Println("Running in Slack-only mode (OpenSearch disabled)")
 	}
 
 	// Load AWS configuration - FIXED to us-east-1 for Bedrock chat functionality
@@ -110,13 +119,19 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("embedding service validation failed: %w", err)
 	}
 
-	// Optionally validate OpenSearch is reachable early
-	if err := validateOpenSearch(ctx, cfg, embeddingClient); err != nil {
-		return err
+	// Optionally validate OpenSearch is reachable early (skip in --only-slack mode)
+	if !chatOnlySlack {
+		if err := validateOpenSearch(ctx, cfg, embeddingClient); err != nil {
+			return err
+		}
 	}
 
 	log.Printf("Chat ready! Using model: %s", cfg.ChatModel)
-	fmt.Println("=== Kiberag Chat Session ===")
+	if chatOnlySlack {
+		fmt.Println("=== Kiberag Chat Session (Slack Only) ===")
+	} else {
+		fmt.Println("=== Kiberag Chat Session ===")
+	}
 	fmt.Println("Type 'exit' or 'quit' to end the session")
 	fmt.Println("Type 'help' for available commands")
 	fmt.Println("=============================")
@@ -179,45 +194,34 @@ func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	if slackEnabled {
-		fmt.Println("Searching documents and Slack conversations...")
-	} else {
-		fmt.Println("Searching documents...")
-	}
-
-	// Create and initialize hybrid search service
-	log.Printf("Searching for relevant context using hybrid mode...")
-	searchService, err := newHybridSearchServiceFunc(cfg, embeddingClient)
+	// Fetch messages from Slack URLs in the input (if any)
+	var slackURLMessages []slacksearch.EnrichedMessage
+	urlMessages, err := fetchSlackURLContext(ctx, cfg, userInput)
 	if err != nil {
-		return "", fmt.Errorf("failed to create search service: %w", err)
+		log.Printf("Slack URL fetch warning: %v", err)
+	} else if len(urlMessages) > 0 {
+		slackURLMessages = urlMessages
+		fmt.Printf("Fetched %d message(s) from Slack URL(s)\n", len(urlMessages))
+		printSlackURLContext(urlMessages)
 	}
 
-	if err := searchService.Initialize(ctx); err != nil {
-		return "", fmt.Errorf("failed to initialize search service: %w", err)
-	}
-
-	// Prepare search request with same parameters as original searchWithHybrid
-	searchRequest := &search.SearchRequest{
-		Query:          userInput,
-		IndexName:      getIndexNameForChat(cfg, "hybrid"),
-		ContextSize:    contextSize,
-		BM25Weight:     chatBM25Weight,
-		VectorWeight:   chatVectorWeight,
-		UseJapaneseNLP: chatUseJapaneseNLP,
-		TimeoutSeconds: 30,
-	}
-
-	// Execute search using service
-	searchResponse, err := searchService.Search(ctx, searchRequest)
-	if err != nil {
-		return "", fmt.Errorf("failed to search for context: %w", err)
-	}
-
-	contextParts := searchResponse.ContextParts
-	references := searchResponse.References
-
+	var contextParts []string
+	var references map[string]string
 	var slackResult *slacksearch.SlackSearchResult
-	if slackEnabled {
+
+	// In --only-slack mode, skip document search
+	if chatOnlySlack {
+		fmt.Println("Searching Slack conversations...")
+
+		// Add Slack URL context first (highest priority)
+		if len(slackURLMessages) > 0 {
+			urlContext := slackURLContextForPrompt(slackURLMessages)
+			if urlContext != "" {
+				contextParts = append(contextParts, urlContext)
+			}
+		}
+
+		// Execute Slack search
 		var slackErr error
 		slackResult, slackErr = slackSearchRunner(ctx, cfg, awsCfg, embeddingClient, userInput, nil, func(iteration, max int) {
 			fmt.Printf("Refining Slack search (iteration %d/%d)...\n", iteration, max)
@@ -229,6 +233,70 @@ func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 			printSlackResults(slackResult)
 			if slackPrompt := slackContextForPrompt(slackResult); slackPrompt != "" {
 				contextParts = append(contextParts, slackPrompt)
+			}
+		}
+
+		references = make(map[string]string)
+	} else {
+		if slackEnabled {
+			fmt.Println("Searching documents and Slack conversations...")
+		} else {
+			fmt.Println("Searching documents...")
+		}
+
+		// Create and initialize hybrid search service
+		log.Printf("Searching for relevant context using hybrid mode...")
+		searchService, err := newHybridSearchServiceFunc(cfg, embeddingClient)
+		if err != nil {
+			return "", fmt.Errorf("failed to create search service: %w", err)
+		}
+
+		if err := searchService.Initialize(ctx); err != nil {
+			return "", fmt.Errorf("failed to initialize search service: %w", err)
+		}
+
+		// Prepare search request with same parameters as original searchWithHybrid
+		searchRequest := &search.SearchRequest{
+			Query:          userInput,
+			IndexName:      getIndexNameForChat(cfg, "hybrid"),
+			ContextSize:    contextSize,
+			BM25Weight:     chatBM25Weight,
+			VectorWeight:   chatVectorWeight,
+			UseJapaneseNLP: chatUseJapaneseNLP,
+			TimeoutSeconds: 30,
+		}
+
+		// Execute search using service
+		searchResponse, err := searchService.Search(ctx, searchRequest)
+		if err != nil {
+			return "", fmt.Errorf("failed to search for context: %w", err)
+		}
+
+		contextParts = searchResponse.ContextParts
+		references = searchResponse.References
+
+		// Add Slack URL context to context parts (high priority - user explicitly referenced)
+		if len(slackURLMessages) > 0 {
+			urlContext := slackURLContextForPrompt(slackURLMessages)
+			if urlContext != "" {
+				// Prepend URL context as it's explicitly referenced by user
+				contextParts = append([]string{urlContext}, contextParts...)
+			}
+		}
+
+		if slackEnabled {
+			var slackErr error
+			slackResult, slackErr = slackSearchRunner(ctx, cfg, awsCfg, embeddingClient, userInput, nil, func(iteration, max int) {
+				fmt.Printf("Refining Slack search (iteration %d/%d)...\n", iteration, max)
+			})
+			if slackErr != nil {
+				fmt.Printf("Slack search unavailable: %v\n", slackErr)
+			} else if slackResult != nil {
+				fmt.Printf("Slack search completed in %d iteration(s).\n", slackResult.IterationCount)
+				printSlackResults(slackResult)
+				if slackPrompt := slackContextForPrompt(slackResult); slackPrompt != "" {
+					contextParts = append(contextParts, slackPrompt)
+				}
 			}
 		}
 	}

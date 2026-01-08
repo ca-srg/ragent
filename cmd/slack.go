@@ -23,6 +23,7 @@ import (
 
 var (
 	slackContextSize int
+	slackOnlyMode    bool
 )
 
 var slackCmd = &cobra.Command{
@@ -66,9 +67,15 @@ var slackCmd = &cobra.Command{
 		}
 		client := slack.New(scfg.BotToken, clientOpts...)
 
-		// Choose search adapter (fallback removed): require OpenSearch
-		if cfg.OpenSearchEndpoint == "" {
-			return fmt.Errorf("OpenSearch is required for slack-bot: set OPENSEARCH_ENDPOINT and related settings")
+		// Choose search adapter (fallback removed): require OpenSearch unless --only-slack is used
+		if !slackOnlyMode && cfg.OpenSearchEndpoint == "" {
+			return fmt.Errorf("OpenSearch is required for slack-bot: set OPENSEARCH_ENDPOINT and related settings (use --only-slack to skip)")
+		}
+
+		// In --only-slack mode, force enable Slack search
+		if slackOnlyMode {
+			cfg.SlackSearchEnabled = true
+			logger.Printf("Running in Slack-only mode (OpenSearch disabled)")
 		}
 
 		// Override context size if provided via command line
@@ -108,7 +115,19 @@ var slackCmd = &cobra.Command{
 			}
 		}
 
-		adapter := slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults, convSearcher, &awsCfg)
+		// Choose adapter based on mode
+		var adapter slackbot.SearchAdapter
+		if slackOnlyMode {
+			// Use Slack-only adapter
+			chatClient := bedrock.GetSharedBedrockClient(awsCfg, cfg.ChatModel)
+			adapter = slackbot.NewSlackOnlySearchAdapter(cfg, scfg.MaxResults, convSearcher, chatClient, &awsCfg)
+			logger.Printf("Using Slack-only search adapter")
+		} else {
+			// Use hybrid search adapter
+			hybridAdapter := slackbot.NewHybridSearchAdapter(cfg, scfg.MaxResults, convSearcher, &awsCfg)
+			hybridAdapter.SetSlackClient(client) // Enable Slack URL message fetching
+			adapter = hybridAdapter
+		}
 		threadBuilder := slackbot.NewThreadContextBuilder(client, scfg, logger)
 		processor := slackbot.NewProcessor(&slackbot.MentionDetector{}, &slackbot.QueryExtractor{}, adapter, &slackbot.Formatter{}, threadBuilder)
 
@@ -152,6 +171,7 @@ var slackCmd = &cobra.Command{
 func init() {
 	// add flags
 	slackCmd.Flags().IntVarP(&slackContextSize, "context-size", "c", 0, "Number of context documents to retrieve (overrides config)")
+	slackCmd.Flags().BoolVar(&slackOnlyMode, "only-slack", false, "Search only Slack conversations (skip OpenSearch)")
 
 	// attach command
 	rootCmd.AddCommand(slackCmd)

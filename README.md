@@ -57,6 +57,19 @@ Slack search extends every retrieval workflow by streaming recent conversations,
 
 Each Slack lookup performs iterative query refinement, merges timeline context from threads, and runs a sufficiency check before the final answer is generated. Results include permalinks so operators can pivot back to the original conversation instantly.
 
+### Slack URL Reference
+
+You can include Slack message URLs directly in your queries. RAGent automatically detects and fetches the referenced messages, including thread replies, making them available as context for your question. This works across all commands (`query`, `chat`, `slack-bot`, `mcp-server`) regardless of whether `SLACK_SEARCH_ENABLED` is set.
+
+```bash
+# Fetch and analyze a specific Slack conversation
+RAGent query -q "Summarize this discussion: https://your-workspace.slack.com/archives/C12345678/p1234567890123456"
+
+# Reference multiple Slack messages
+RAGent chat
+> Compare these two threads: https://slack.com/.../p111 and https://slack.com/.../p222
+```
+
 Quick example:
 
 ```bash
@@ -724,6 +737,9 @@ RAGent query -q "database optimization" --top-k 20
 
 # Merge Slack context for incident reviews
 RAGent query -q "on-call handoff" --enable-slack-search
+
+# Reference a specific Slack message by URL (automatically fetched)
+RAGent query -q "What was discussed in https://your-workspace.slack.com/archives/C12345678/p1234567890123456"
 ```
 
 #### URL-Aware Search
@@ -792,6 +808,11 @@ RAGent chat --system "You are a helpful assistant specialized in documentation."
 
 # Chat with Slack context enabled via environment flag
 SLACK_SEARCH_ENABLED=true RAGent chat
+
+# Reference Slack messages by URL in your questions
+# (URLs are automatically detected and messages fetched)
+RAGent chat
+> What does this Slack discussion mean? https://your-workspace.slack.com/archives/C12345678/p1234567890123456
 ```
 
 **Options:**

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
+	"github.com/slack-go/slack"
 )
 
 // SearchAdapter abstracts the RAG search for Slack
@@ -31,6 +34,7 @@ type HybridSearchAdapter struct {
 	cfg         *commontypes.Config
 	maxResults  int
 	slackSearch SlackConversationSearcher
+	slackClient *slack.Client
 
 	awsCfgMu sync.RWMutex
 	awsCfg   *aws.Config
@@ -46,6 +50,11 @@ func NewHybridSearchAdapter(cfg *commontypes.Config, maxResults int, slackSearch
 		adapter.awsCfg = awsCfg
 	}
 	return adapter
+}
+
+// SetSlackClient sets the Slack client for URL message fetching
+func (h *HybridSearchAdapter) SetSlackClient(client *slack.Client) {
+	h.slackClient = client
 }
 
 func (h *HybridSearchAdapter) awsConfig(ctx context.Context) (aws.Config, error) {
@@ -75,6 +84,17 @@ func (h *HybridSearchAdapter) awsConfig(ctx context.Context) (aws.Config, error)
 
 func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts SearchOptions) *SearchResult {
 	start := time.Now()
+
+	// Fetch messages from Slack URLs in the query (if any)
+	var slackURLContext string
+	if h.slackClient != nil {
+		urls := detectSlackURLs(query)
+		if len(urls) > 0 {
+			log.Printf("Detected %d Slack URL(s) in query, fetching content...", len(urls))
+			slackURLContext = fetchSlackURLMessages(ctx, h.slackClient, urls)
+		}
+	}
+
 	awsCfg, err := h.awsConfig(ctx)
 	if err != nil {
 		log.Printf("bedrock config error: %v", err)
@@ -134,6 +154,11 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 	// Extract context and references from results (same as chat command)
 	var contextParts []string
 	references := make(map[string]string)
+
+	// Add Slack URL context first (highest priority - explicitly referenced by user)
+	if slackURLContext != "" {
+		contextParts = append(contextParts, slackURLContext)
+	}
 
 	for _, doc := range res.FusionResult.Documents {
 		// Unmarshal the source JSON
@@ -235,4 +260,166 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		FallbackReason:    res.FallbackReason,
 		Slack:             slackResult,
 	}
+}
+
+// slackURLInfo contains parsed Slack URL information
+type slackURLInfo struct {
+	ChannelID   string
+	MessageTS   string
+	ThreadTS    string
+	OriginalURL string
+}
+
+// Slack URL pattern for archives
+var slackArchiveURLPattern = regexp.MustCompile(
+	`https?://[a-zA-Z0-9\-_.]+\.slack\.com/archives/([A-Z0-9]+)/p(\d{10})(\d{6})`,
+)
+
+// slackURLDetectPattern detects Slack URLs in text
+var slackURLDetectPattern = regexp.MustCompile(
+	`https?://[a-zA-Z0-9\-_.]+\.slack\.com/archives/[A-Z0-9]+/p\d{16}[^\s]*`,
+)
+
+// detectSlackURLs finds all Slack message URLs in text
+func detectSlackURLs(text string) []*slackURLInfo {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+
+	matches := slackURLDetectPattern.FindAllString(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	results := make([]*slackURLInfo, 0, len(matches))
+
+	for _, match := range matches {
+		// Normalize URL
+		normalized := strings.TrimRight(match, `>)]\'",.;:!?`)
+
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+
+		// Parse URL
+		info, err := parseSlackURL(normalized)
+		if err != nil {
+			continue
+		}
+		results = append(results, info)
+	}
+
+	return results
+}
+
+// parseSlackURL extracts channel ID and timestamp from a Slack URL
+func parseSlackURL(rawURL string) (*slackURLInfo, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if !strings.Contains(parsedURL.Host, "slack.com") {
+		return nil, fmt.Errorf("not a Slack URL")
+	}
+
+	matches := slackArchiveURLPattern.FindStringSubmatch(rawURL)
+	if len(matches) < 4 {
+		return nil, fmt.Errorf("invalid Slack URL format")
+	}
+
+	info := &slackURLInfo{
+		ChannelID:   matches[1],
+		MessageTS:   fmt.Sprintf("%s.%s", matches[2], matches[3]),
+		OriginalURL: rawURL,
+	}
+
+	// Extract thread_ts from query params
+	if threadTS := parsedURL.Query().Get("thread_ts"); threadTS != "" {
+		info.ThreadTS = threadTS
+	}
+
+	return info, nil
+}
+
+// fetchSlackURLMessages fetches messages from Slack URLs
+func fetchSlackURLMessages(ctx context.Context, client *slack.Client, urls []*slackURLInfo) string {
+	if client == nil || len(urls) == 0 {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.WriteString("Referenced Slack Messages:\n")
+
+	for i, info := range urls {
+		if i >= 5 { // Limit to 5 URLs
+			break
+		}
+
+		// Fetch message using conversation history
+		params := &slack.GetConversationHistoryParameters{
+			ChannelID: info.ChannelID,
+			Oldest:    info.MessageTS,
+			Latest:    info.MessageTS,
+			Limit:     1,
+			Inclusive: true,
+		}
+
+		history, err := client.GetConversationHistoryContext(ctx, params)
+		if err != nil {
+			log.Printf("Failed to fetch Slack message %s: %v", info.OriginalURL, err)
+			continue
+		}
+
+		if len(history.Messages) == 0 {
+			continue
+		}
+
+		msg := history.Messages[0]
+		user := msg.User
+		if msg.Username != "" {
+			user = msg.Username
+		}
+
+		builder.WriteString(fmt.Sprintf("\n[%d] Channel: %s | User: %s\n", i+1, info.ChannelID, user))
+		builder.WriteString(fmt.Sprintf("Message: %s\n", msg.Text))
+		builder.WriteString(fmt.Sprintf("URL: %s\n", info.OriginalURL))
+
+		// Fetch thread replies if applicable
+		if info.ThreadTS != "" || msg.ThreadTimestamp != "" {
+			threadTS := info.ThreadTS
+			if threadTS == "" {
+				threadTS = msg.ThreadTimestamp
+			}
+
+			repliesParams := &slack.GetConversationRepliesParameters{
+				ChannelID: info.ChannelID,
+				Timestamp: threadTS,
+				Limit:     10,
+			}
+
+			replies, _, _, err := client.GetConversationRepliesContext(ctx, repliesParams)
+			if err == nil && len(replies) > 1 {
+				builder.WriteString(fmt.Sprintf("Thread Replies (%d):\n", len(replies)-1))
+				for j, reply := range replies {
+					if reply.Timestamp == msg.Timestamp {
+						continue
+					}
+					if j > 5 {
+						builder.WriteString("  ... (truncated)\n")
+						break
+					}
+					replyUser := reply.User
+					if reply.Username != "" {
+						replyUser = reply.Username
+					}
+					builder.WriteString(fmt.Sprintf("  - %s: %s\n", replyUser, reply.Text))
+				}
+			}
+		}
+	}
+
+	return builder.String()
 }
