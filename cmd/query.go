@@ -13,6 +13,7 @@ import (
 
 	appconfig "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/metrics"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/ca-srg/ragent/internal/slacksearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
@@ -105,6 +106,8 @@ func init() {
 }
 
 func runQuery(cmd *cobra.Command, args []string) error {
+	metrics.RecordInvocation(metrics.ModeQuery)
+
 	// Handle --only-slack mode
 	if queryOnlySlack {
 		log.Printf("Starting slack-only search for: %s", queryText)

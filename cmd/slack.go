@@ -15,6 +15,7 @@ import (
 
 	appcfg "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/metrics"
 	"github.com/ca-srg/ragent/internal/observability"
 	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/ca-srg/ragent/internal/slacksearch"
@@ -30,6 +31,8 @@ var slackCmd = &cobra.Command{
 	Use:   "slack-bot",
 	Short: "Start Slack Bot for RAG search",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		metrics.RecordInvocation(metrics.ModeSlack)
+
 		// Load base config for search
 		cfg, err := appcfg.Load()
 		if err != nil {
@@ -41,6 +44,9 @@ var slackCmd = &cobra.Command{
 		shutdown, obsErr := observability.Init(cfg)
 		if obsErr != nil {
 			logger.Printf("observability initialization error: %v", obsErr)
+		}
+		if err := metrics.InitOTelMetrics(); err != nil {
+			logger.Printf("metrics OTel initialization error: %v", err)
 		}
 		defer func() {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
