@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/metrics"
 	"github.com/ca-srg/ragent/internal/opensearch"
 	"github.com/ca-srg/ragent/internal/slacksearch"
 	"github.com/ca-srg/ragent/internal/types"
@@ -45,6 +46,9 @@ func NewHybridSearchHandlerFromAdapter(adapter *HybridSearchToolAdapter) *Hybrid
 // Converts SDK request to RAGent format, executes search, and converts response back.
 // If the client provides a progressToken, progress notifications are sent during execution.
 func (hsh *HybridSearchHandler) HandleSDKToolCall(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Record MCP tool invocation for statistics
+	metrics.RecordInvocation(metrics.ModeMCP)
+
 	toolName := ""
 	rawArguments := ""
 	if req != nil && req.Params != nil {

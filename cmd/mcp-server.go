@@ -117,7 +117,8 @@ func init() {
 }
 
 func runMCPServer(cmd *cobra.Command, args []string) error {
-	metrics.RecordInvocation(metrics.ModeMCP)
+	// Note: MCP invocations are now recorded per tool call in HandleSDKToolCall()
+	// metrics.RecordInvocation(metrics.ModeMCP) - removed to avoid counting server startup
 
 	// Load configuration
 	cfg, err := appcfg.Load()
