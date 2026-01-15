@@ -41,7 +41,7 @@ func TestHandleSDKToolCall_RecordsInvocationCount(t *testing.T) {
 	// 6. Call HandleSDKToolCall - it will panic due to nil adapter,
 	// but RecordInvocation should be called first
 	func() {
-		defer func() { recover() }() // Catch expected panic
+		defer func() { _ = recover() }() // Catch expected panic
 		ctx := context.Background()
 		req := &mcp.CallToolRequest{
 			Params: &mcp.CallToolParamsRaw{Name: "hybrid_search"},
@@ -60,7 +60,7 @@ func TestHandleSDKToolCall_RecordsInvocationCount(t *testing.T) {
 
 	// 8. Call again
 	func() {
-		defer func() { recover() }()
+		defer func() { _ = recover() }()
 		ctx := context.Background()
 		req := &mcp.CallToolRequest{
 			Params: &mcp.CallToolParamsRaw{Name: "hybrid_search"},
@@ -107,7 +107,7 @@ func TestSlackSearchHandler_RecordsInvocationCount(t *testing.T) {
 
 	// 6. Call HandleSDKToolCall
 	func() {
-		defer func() { recover() }()
+		defer func() { _ = recover() }()
 		ctx := context.Background()
 		req := &mcp.CallToolRequest{
 			Params: &mcp.CallToolParamsRaw{Name: "slack_search"},
