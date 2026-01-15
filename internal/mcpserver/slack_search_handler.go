@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ca-srg/ragent/internal/metrics"
 	"github.com/ca-srg/ragent/internal/slacksearch"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -38,6 +39,9 @@ func NewSlackSearchHandlerFromAdapter(adapter *SlackSearchToolAdapter) *SlackSea
 
 // HandleSDKToolCall implements SDK tool handler interface
 func (ssh *SlackSearchHandler) HandleSDKToolCall(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Record MCP tool invocation for statistics
+	metrics.RecordInvocation(metrics.ModeMCP)
+
 	toolName := ""
 	rawArguments := ""
 	if req != nil && req.Params != nil {
