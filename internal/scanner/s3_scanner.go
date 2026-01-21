@@ -104,14 +104,28 @@ func (s *S3Scanner) ScanBucket(ctx context.Context) ([]*types.FileInfo, error) {
 				modTime = *obj.LastModified
 			}
 
+			// Get ETag for content hash (remove quotes if present)
+			// Note: For multipart uploads, ETag contains "-" and is not MD5
+			var contentHash string
+			if obj.ETag != nil {
+				etag := strings.Trim(*obj.ETag, "\"")
+				// Only use ETag as hash if it's not a multipart upload
+				if !strings.Contains(etag, "-") {
+					contentHash = etag
+				}
+				// For multipart uploads, hash will be computed after download
+			}
+
 			// Create FileInfo
 			fileInfo := &types.FileInfo{
-				Path:       fmt.Sprintf("s3://%s/%s", s.bucket, key),
-				Name:       filepath.Base(key),
-				Size:       size,
-				ModTime:    modTime,
-				IsMarkdown: s.IsMarkdownFile(key),
-				IsCSV:      s.IsCSVFile(key),
+				Path:        fmt.Sprintf("s3://%s/%s", s.bucket, key),
+				Name:        filepath.Base(key),
+				Size:        size,
+				ModTime:     modTime,
+				IsMarkdown:  s.IsMarkdownFile(key),
+				IsCSV:       s.IsCSVFile(key),
+				ContentHash: contentHash,
+				SourceType:  "s3",
 			}
 
 			files = append(files, fileInfo)
@@ -149,6 +163,17 @@ func (s *S3Scanner) DownloadFile(ctx context.Context, s3Path string) (string, er
 	}
 
 	return string(content), nil
+}
+
+// DownloadFileWithHash downloads a file from S3 and returns content with computed MD5 hash
+func (s *S3Scanner) DownloadFileWithHash(ctx context.Context, s3Path string) (string, string, error) {
+	content, err := s.DownloadFile(ctx, s3Path)
+	if err != nil {
+		return "", "", err
+	}
+
+	hash := ComputeMD5Hash(content)
+	return content, hash, nil
 }
 
 // parseS3Path extracts the key from an S3 path (s3://bucket/key)

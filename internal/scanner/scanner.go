@@ -1,6 +1,8 @@
 package scanner
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
@@ -134,6 +136,25 @@ func (s *FileScanner) LoadFileWithContent(fileInfo *FileInfo) error {
 
 	fileInfo.Content = content
 	return nil
+}
+
+// LoadFileWithContentAndHash loads file info, reads its content, and computes MD5 hash
+func (s *FileScanner) LoadFileWithContentAndHash(fileInfo *FileInfo) error {
+	content, err := s.ReadFileContent(fileInfo.Path)
+	if err != nil {
+		return err
+	}
+
+	fileInfo.Content = content
+	fileInfo.ContentHash = ComputeMD5Hash(content)
+	fileInfo.SourceType = "local"
+	return nil
+}
+
+// ComputeMD5Hash computes the MD5 hash of content and returns it as a hex string
+func ComputeMD5Hash(content string) string {
+	hash := md5.Sum([]byte(content))
+	return hex.EncodeToString(hash[:])
 }
 
 // FilterFilesBySize filters files by size constraints

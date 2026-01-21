@@ -51,6 +51,7 @@ go clean -cache
 ### Import Organization
 
 Group imports in this order with blank lines between groups:
+
 1. Standard library packages
 2. Third-party packages
 3. Internal project packages
@@ -94,6 +95,7 @@ type Config struct {
 ### Error Handling
 
 1. **Wrap errors with context** using `fmt.Errorf` and `%w`:
+
 ```go
 if err != nil {
     return nil, fmt.Errorf("failed to create OpenSearch client: %w", err)
@@ -152,3 +154,5 @@ internal/
 ./RAGent slack-bot                          # Start Slack Bot
 ./RAGent mcp-server                         # Start MCP Server
 ```
+
+_Required read doc/_.md files for more information

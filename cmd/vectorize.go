@@ -18,6 +18,7 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/csv"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/hashstore"
 	"github.com/ca-srg/ragent/internal/ipc"
 	"github.com/ca-srg/ragent/internal/metadata"
 	"github.com/ca-srg/ragent/internal/s3vector"
@@ -56,6 +57,10 @@ var (
 	s3Prefix       string
 	s3VectorRegion string
 	s3SourceRegion string
+
+	// Incremental processing options
+	forceProcess bool // Force re-vectorization of all files
+	pruneDeleted bool // Remove vectors for deleted files
 )
 
 // ProgressCallback is called when processing progress is updated
@@ -89,10 +94,14 @@ func init() {
 	vectorizeCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be processed without making API calls")
 	vectorizeCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0, "Number of concurrent operations (0 = use config default)")
 	vectorizeCmd.Flags().BoolVar(&clearVectors, "clear", false, "Delete all existing vectors before processing new ones")
-	vectorizeCmd.Flags().BoolVarP(&followMode, "follow", "f", false, "Continuously vectorize at a fixed interval")
+	vectorizeCmd.Flags().BoolVar(&followMode, "follow", false, "Continuously vectorize at a fixed interval")
 	vectorizeCmd.Flags().StringVar(&followInterval, "interval", defaultFollowInterval, "Interval between vectorization runs in follow mode (e.g. 30m, 1h)")
 	vectorizeCmd.Flags().StringVar(&spreadsheetConfigPath, "spreadsheet-config", "", "Path to spreadsheet configuration YAML file (enables spreadsheet mode)")
 	vectorizeCmd.Flags().StringVar(&csvConfigPath, "csv-config", "", "Path to CSV configuration YAML file (for column mapping)")
+
+	// Incremental processing options
+	vectorizeCmd.Flags().BoolVarP(&forceProcess, "force", "f", false, "Force re-vectorization of all files, ignoring hash cache")
+	vectorizeCmd.Flags().BoolVar(&pruneDeleted, "prune", false, "Remove vectors for files that no longer exist")
 
 	// S3 source options
 	vectorizeCmd.Flags().BoolVar(&enableS3, "enable-s3", false, "Enable S3 source file fetching")
@@ -294,7 +303,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 	// 1. Scan local directory if specified
 	if hasLocalSource {
 		log.Printf("Scanning local directory: %s", directory)
-		localFiles, err := scanLocalDirectory(directory)
+		localFiles, err := scanLocalDirectoryWithHash(directory)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan local directory: %w", err)
 		}
@@ -324,12 +333,12 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 		}
 		log.Printf("Found %d files in S3 bucket", len(s3Files))
 
-		// Download content for S3 files
+		// Download content for S3 files and compute hash if needed
 		// For CSV files, download even in dry-run mode to show configuration preview
 		for _, f := range s3Files {
 			shouldDownload := !dryRun || f.IsCSV
 			if shouldDownload {
-				content, err := s3Scanner.DownloadFile(ctx, f.Path)
+				content, hash, err := s3Scanner.DownloadFileWithHash(ctx, f.Path)
 				if err != nil {
 					log.Printf("Warning: Failed to download S3 file %s: %v", f.Path, err)
 					if !dryRun {
@@ -338,6 +347,10 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 					// In dry-run, still add file but without content
 				} else {
 					f.Content = content
+					// Use computed hash if ETag was not available (multipart upload)
+					if f.ContentHash == "" {
+						f.ContentHash = hash
+					}
 				}
 			}
 			allFiles = append(allFiles, f)
@@ -353,7 +366,62 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 		}, nil
 	}
 
-	log.Printf("Total files to process: %d", len(allFiles))
+	log.Printf("Total files found: %d", len(allFiles))
+
+	// Change detection using hash store (unless --force is specified)
+	var changeResult *hashstore.ChangeDetectionResult
+	var hashStore *hashstore.HashStore
+	var filesToProcess []*types.FileInfo
+
+	if !forceProcess && !dryRun {
+		var err error
+		hashStore, err = hashstore.NewHashStore()
+		if err != nil {
+			log.Printf("Warning: Failed to initialize hash store, processing all files: %v", err)
+			filesToProcess = allFiles
+		} else {
+			defer func() { _ = hashStore.Close() }()
+
+			// Determine source types for change detection
+			var sourceTypes []string
+			if hasS3Source && hasLocalSource {
+				sourceTypes = []string{"local", "s3"}
+			} else if hasS3Source {
+				sourceTypes = []string{"s3"}
+			} else {
+				sourceTypes = []string{"local"}
+			}
+
+			detector := hashstore.NewChangeDetector(hashStore)
+			filesToProcess, changeResult, err = detector.FilterFilesToProcess(ctx, sourceTypes, allFiles)
+			if err != nil {
+				log.Printf("Warning: Change detection failed, processing all files: %v", err)
+				filesToProcess = allFiles
+				changeResult = nil
+			}
+		}
+	} else {
+		filesToProcess = allFiles
+		if forceProcess {
+			log.Println("Force mode: processing all files (ignoring hash cache)")
+		}
+	}
+
+	// Print change detection summary
+	if changeResult != nil {
+		printChangeDetectionSummary(changeResult)
+	}
+
+	if len(filesToProcess) == 0 && !dryRun {
+		log.Println("No files need processing (all files are unchanged)")
+		return &types.ProcessingResult{
+			ProcessedFiles: 0,
+			SuccessCount:   0,
+			FailureCount:   0,
+		}, nil
+	}
+
+	log.Printf("Files to process: %d", len(filesToProcess))
 
 	// Print CSV configuration info in dry-run mode
 	if dryRun {
@@ -361,9 +429,30 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 	}
 
 	// Use VectorizeFiles for combined processing
-	result, err := service.VectorizeFiles(ctx, allFiles, dryRun)
+	result, err := service.VectorizeFiles(ctx, filesToProcess, dryRun)
 	if err != nil {
 		return nil, fmt.Errorf("vectorization failed: %w", err)
+	}
+
+	// Update hash store for successfully processed files
+	if hashStore != nil && result != nil && result.SuccessCount > 0 && !dryRun {
+		updateHashStoreForSuccessfulFiles(ctx, hashStore, filesToProcess, result)
+	}
+
+	// Handle pruning of deleted files
+	if pruneDeleted && changeResult != nil && len(changeResult.Deleted) > 0 && !dryRun {
+		log.Printf("Pruning %d deleted files from hash store...", len(changeResult.Deleted))
+		for _, deletedPath := range changeResult.Deleted {
+			sourceType := "local"
+			if strings.HasPrefix(deletedPath, "s3://") {
+				sourceType = "s3"
+			}
+			if err := hashStore.DeleteFileHash(ctx, sourceType, deletedPath); err != nil {
+				log.Printf("Warning: Failed to delete hash for %s: %v", deletedPath, err)
+			}
+		}
+		// TODO: Also delete vectors from S3 Vectors and OpenSearch
+		log.Printf("Note: Vector deletion from backends not yet implemented")
 	}
 
 	return result, nil
@@ -373,6 +462,93 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 func scanLocalDirectory(dirPath string) ([]*types.FileInfo, error) {
 	fileScanner := scanner.NewFileScanner()
 	return fileScanner.ScanDirectory(dirPath)
+}
+
+// scanLocalDirectoryWithHash scans a local directory and computes MD5 hash for each file
+func scanLocalDirectoryWithHash(dirPath string) ([]*types.FileInfo, error) {
+	fileScanner := scanner.NewFileScanner()
+	files, err := fileScanner.ScanDirectory(dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load content and compute hash for each file
+	for _, f := range files {
+		if err := fileScanner.LoadFileWithContentAndHash(f); err != nil {
+			log.Printf("Warning: Failed to load file %s: %v", f.Path, err)
+			continue
+		}
+	}
+
+	return files, nil
+}
+
+// printChangeDetectionSummary prints a summary of detected changes
+func printChangeDetectionSummary(result *hashstore.ChangeDetectionResult) {
+	fmt.Println("\n" + strings.Repeat("-", 40))
+	fmt.Println("Change Detection Summary:")
+	fmt.Println(strings.Repeat("-", 40))
+	fmt.Printf("  New:       %d files\n", result.NewCount)
+	fmt.Printf("  Modified:  %d files\n", result.ModCount)
+	fmt.Printf("  Unchanged: %d files (skipped)\n", result.UnchangeCount)
+	fmt.Printf("  Deleted:   %d files\n", result.DeleteCount)
+	fmt.Println(strings.Repeat("-", 40))
+}
+
+// updateHashStoreForSuccessfulFiles updates the hash store after successful processing.
+// Only files that were successfully processed (not in the error list) are updated.
+func updateHashStoreForSuccessfulFiles(
+	ctx context.Context,
+	store *hashstore.HashStore,
+	files []*types.FileInfo,
+	result *types.ProcessingResult,
+) {
+	// Build a set of failed file paths from processing errors
+	failedPaths := make(map[string]bool)
+	for _, procErr := range result.Errors {
+		failedPaths[procErr.FilePath] = true
+	}
+
+	successCount := 0
+	skippedCount := 0
+	for _, f := range files {
+		// Skip files without content hash
+		if f.ContentHash == "" {
+			continue
+		}
+
+		// Skip files that failed processing
+		if failedPaths[f.Path] {
+			skippedCount++
+			continue
+		}
+
+		sourceType := f.SourceType
+		if sourceType == "" {
+			sourceType = "local"
+		}
+
+		record := &hashstore.FileHashRecord{
+			SourceType:   sourceType,
+			FilePath:     f.Path,
+			ContentHash:  f.ContentHash,
+			FileSize:     f.Size,
+			VectorizedAt: time.Now(),
+		}
+
+		if err := store.UpsertFileHash(ctx, record); err != nil {
+			log.Printf("Warning: Failed to update hash for %s: %v", f.Path, err)
+		} else {
+			successCount++
+		}
+	}
+
+	if successCount > 0 {
+		log.Printf("Updated hash store for %d files", successCount)
+	}
+	if skippedCount > 0 {
+		log.Printf("Skipped hash update for %d failed files", skippedCount)
+	}
 }
 
 func startFollowProcessing() bool {
