@@ -1,0 +1,31 @@
+<div class="stats-container">
+    <div class="status-indicator {{statusClass .Status}}">
+        <span class="status-label">ステータス:</span>
+        <span class="status-value">{{.Status}}</span>
+    </div>
+    
+    {{if or (eq .Status "running") (eq .Status "waiting")}}
+    <div class="stats-grid">
+        <div class="stat-item">
+            <span class="stat-label">進捗</span>
+            <span class="stat-value">{{formatPercent .PercentComplete}}</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">ファイル</span>
+            <span class="stat-value">{{.ProcessedFiles}} / {{.TotalFiles}}</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">成功</span>
+            <span class="stat-value success">{{.SuccessCount}}</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">失敗</span>
+            <span class="stat-value failed">{{.FailedCount}}</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">経過時間</span>
+            <span class="stat-value">{{.ElapsedTime}}</span>
+        </div>
+    </div>
+    {{end}}
+</div>

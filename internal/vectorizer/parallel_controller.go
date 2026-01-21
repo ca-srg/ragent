@@ -18,6 +18,10 @@ type ParallelController struct {
 
 	// Statistics tracking with atomic operations
 	stats *ParallelProcessingStats
+
+	// Progress callback
+	progressCallback ProgressCallback
+	progressMu       sync.RWMutex
 }
 
 // ParallelProcessingStats tracks statistics for dual backend processing
@@ -139,6 +143,9 @@ func (pc *ParallelController) ProcessFiles(
 			// Update progress
 			current := atomic.AddInt64(&processedCount, 1)
 			pc.updateStatisticsFromResult(result)
+
+			// Notify progress callback
+			pc.notifyProgress(int(current), int(totalFiles))
 
 			// Progress reporting every 10%
 			percent := (current * 100) / totalFiles
@@ -642,4 +649,22 @@ func (pc *ParallelController) IsHealthy(ctx context.Context) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// SetProgressCallback sets a callback function to be called when progress is updated
+func (pc *ParallelController) SetProgressCallback(callback ProgressCallback) {
+	pc.progressMu.Lock()
+	defer pc.progressMu.Unlock()
+	pc.progressCallback = callback
+}
+
+// notifyProgress calls the progress callback if set
+func (pc *ParallelController) notifyProgress(processed, total int) {
+	pc.progressMu.RLock()
+	callback := pc.progressCallback
+	pc.progressMu.RUnlock()
+
+	if callback != nil {
+		callback(processed, total)
+	}
 }

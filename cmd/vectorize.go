@@ -18,6 +18,7 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/config"
 	"github.com/ca-srg/ragent/internal/csv"
 	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/ipc"
 	"github.com/ca-srg/ragent/internal/metadata"
 	"github.com/ca-srg/ragent/internal/s3vector"
 	"github.com/ca-srg/ragent/internal/scanner"
@@ -57,7 +58,13 @@ var (
 	s3SourceRegion string
 )
 
+// ProgressCallback is called when processing progress is updated
+type ProgressCallback func(processed, total int)
+
 var vectorizationRunner = executeVectorizationOnce
+
+// currentProgressCallback is set by follow mode to receive progress updates
+var currentProgressCallback ProgressCallback
 
 var vectorizeCmd = &cobra.Command{
 	Use:   "vectorize",
@@ -144,6 +151,10 @@ func runVectorize(cmd *cobra.Command, args []string) error {
 }
 
 func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.ProcessingResult, error) {
+	return executeVectorizationOnceWithProgress(ctx, cfg, currentProgressCallback)
+}
+
+func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config, progressCallback ProgressCallback) (*types.ProcessingResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -257,6 +268,13 @@ func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.Pr
 	service, err := createVectorizerServiceWithCSVConfig(cfg, csvCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vectorizer service: %w", err)
+	}
+
+	// Set progress callback if provided
+	if progressCallback != nil {
+		service.SetProgressCallback(func(processed, total int) {
+			progressCallback(processed, total)
+		})
 	}
 
 	if !dryRun {
@@ -389,28 +407,6 @@ func setupSignalHandler(parent context.Context) (context.Context, context.Cancel
 	return signalCtx, stop
 }
 
-func runFollowCycle(ctx context.Context, cfg *types.Config) (*types.ProcessingResult, error) {
-	if !startFollowProcessing() {
-		log.Println("[Follow Mode] Previous vectorization still running. Skipping this cycle.")
-		return nil, nil
-	}
-
-	defer finishFollowProcessing()
-
-	log.Println("[Follow Mode] Starting vectorization cycle...")
-
-	result, err := vectorizationRunner(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	if result != nil {
-		printResults(result, dryRun)
-	}
-
-	return result, nil
-}
-
 func runFollowMode(ctx context.Context, cfg *types.Config) error {
 	followCtx, cancel := setupSignalHandler(ctx)
 	defer cancel()
@@ -420,9 +416,27 @@ func runFollowMode(ctx context.Context, cfg *types.Config) error {
 		interval = 30 * time.Minute
 	}
 
+	// Start IPC server for cross-process status sharing
+	ipcLogger := log.New(os.Stdout, "[ipc] ", log.LstdFlags)
+	ipcServer, err := ipc.NewServer(ipc.ServerConfig{}, ipcLogger)
+	if err != nil {
+		if err == ipc.ErrAnotherInstanceRunning {
+			return fmt.Errorf("another vectorize process is already running")
+		}
+		log.Printf("[Follow Mode] Warning: Failed to start IPC server: %v", err)
+		// Continue without IPC - degraded mode
+	} else {
+		if err := ipcServer.Start(followCtx); err != nil {
+			log.Printf("[Follow Mode] Warning: Failed to start IPC server: %v", err)
+		} else {
+			defer func() { _ = ipcServer.Shutdown(context.Background()) }()
+			log.Println("[Follow Mode] IPC server started for status sharing")
+		}
+	}
+
 	log.Printf("Follow mode enabled. Interval: %s. Press Ctrl+C to stop.", interval)
 
-	result, err := runFollowCycle(followCtx, cfg)
+	result, err := runFollowCycleWithIPC(followCtx, cfg, ipcServer)
 	if err != nil {
 		log.Printf("[Follow Mode] Vectorization cycle failed: %v", err)
 	} else if result != nil {
@@ -438,8 +452,11 @@ func runFollowMode(ctx context.Context, cfg *types.Config) error {
 		case <-followCtx.Done():
 			log.Println("[Follow Mode] Shutdown complete.")
 			return nil
+		case <-ipcServer.StopChan():
+			log.Println("[Follow Mode] Stop requested via IPC.")
+			return nil
 		case <-ticker.C:
-			result, err := runFollowCycle(followCtx, cfg)
+			result, err := runFollowCycleWithIPC(followCtx, cfg, ipcServer)
 			if err != nil {
 				log.Printf("[Follow Mode] Vectorization cycle failed: %v", err)
 				continue
@@ -451,6 +468,77 @@ func runFollowMode(ctx context.Context, cfg *types.Config) error {
 			}
 		}
 	}
+}
+
+// runFollowCycleWithIPC runs a single vectorization cycle with IPC status updates
+func runFollowCycleWithIPC(ctx context.Context, cfg *types.Config, ipcServer *ipc.Server) (*types.ProcessingResult, error) {
+	if !startFollowProcessing() {
+		log.Println("[Follow Mode] Previous vectorization still running. Skipping this cycle.")
+		return nil, nil
+	}
+
+	defer finishFollowProcessing()
+
+	// Update IPC status to running
+	if ipcServer != nil {
+		startTime := time.Now()
+		ipcServer.SetStateWithTime(ipc.StateRunning, startTime)
+	}
+
+	log.Println("[Follow Mode] Starting vectorization cycle...")
+
+	// Set progress callback for IPC updates
+	if ipcServer != nil {
+		currentProgressCallback = func(processed, total int) {
+			percentage := 0.0
+			if total > 0 {
+				percentage = float64(processed) / float64(total) * 100.0
+			}
+			ipcServer.UpdateProgress(&ipc.ProgressResponse{
+				TotalFiles:     total,
+				ProcessedFiles: processed,
+				Percentage:     percentage,
+			})
+		}
+	} else {
+		currentProgressCallback = nil
+	}
+	defer func() {
+		currentProgressCallback = nil
+	}()
+
+	result, err := vectorizationRunner(ctx, cfg)
+	if err != nil {
+		// Update IPC status to error
+		if ipcServer != nil {
+			ipcServer.UpdateStatus(&ipc.StatusResponse{
+				State: ipc.StateError,
+				Error: err.Error(),
+				PID:   os.Getpid(),
+			})
+		}
+		return nil, err
+	}
+
+	// Update IPC status to waiting (for next follow mode cycle)
+	if ipcServer != nil {
+		ipcServer.SetState(ipc.StateWaiting)
+		if result != nil {
+			ipcServer.UpdateProgress(&ipc.ProgressResponse{
+				TotalFiles:     result.ProcessedFiles,
+				ProcessedFiles: result.ProcessedFiles,
+				SuccessCount:   result.SuccessCount,
+				FailedCount:    result.FailureCount,
+				Percentage:     100.0,
+			})
+		}
+	}
+
+	if result != nil {
+		printResults(result, dryRun)
+	}
+
+	return result, nil
 }
 
 // createVectorizerService creates a vectorizer service with concrete implementations

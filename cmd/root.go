@@ -36,4 +36,5 @@ func init() {
 	rootCmd.AddCommand(queryCmd)
 	rootCmd.AddCommand(chatCmd)
 	rootCmd.AddCommand(mcpServerCmd)
+	rootCmd.AddCommand(webuiCmd)
 }

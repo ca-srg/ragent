@@ -1,0 +1,51 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{block "title" .}}RAGent Dashboard{{end}}</title>
+    <script src="/static/js/htmx.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="brand">RAGent</a>
+        <ul class="nav-links">
+            <li><a href="/" {{if eq .ActivePage "dashboard"}}class="active"{{end}}>ダッシュボード</a></li>
+            <li><a href="/files" {{if eq .ActivePage "files"}}class="active"{{end}}>ファイル</a></li>
+            <li><a href="/history" {{if eq .ActivePage "history"}}class="active"{{end}}>履歴</a></li>
+        </ul>
+    </nav>
+    
+    <main class="container">
+        {{block "content" .}}{{end}}
+    </main>
+    
+    <footer>
+        <span id="connection-status">接続中...</span>
+    </footer>
+    
+    <script>
+        // SSE connection for heartbeat
+        const evtSource = new EventSource('/sse/events?filter=heartbeat');
+        const statusEl = document.getElementById('connection-status');
+        
+        evtSource.addEventListener('connected', function(e) {
+            statusEl.textContent = '接続済み';
+            statusEl.className = 'connected';
+        });
+        
+        evtSource.addEventListener('heartbeat', function(e) {
+            statusEl.textContent = '接続済み';
+            statusEl.className = 'connected';
+        });
+        
+        evtSource.onerror = function() {
+            statusEl.textContent = '切断';
+            statusEl.className = 'disconnected';
+        };
+    </script>
+</body>
+</html>
+{{end}}

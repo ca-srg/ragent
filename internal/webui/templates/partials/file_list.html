@@ -1,0 +1,29 @@
+<table class="file-table">
+    <thead>
+        <tr>
+            <th>名前</th>
+            <th>種類</th>
+            <th>サイズ</th>
+            <th>更新日時</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .}}
+        <tr>
+            <td class="file-name" title="{{.Path}}">
+                {{.Name}}
+            </td>
+            <td class="file-type">
+                {{if .IsMarkdown}}<span class="type-badge md">MD</span>{{end}}
+                {{if .IsCSV}}<span class="type-badge csv">CSV</span>{{end}}
+            </td>
+            <td class="file-size">{{formatSize .Size}}</td>
+            <td class="file-modified">{{formatTime .ModTime}}</td>
+        </tr>
+        {{else}}
+        <tr>
+            <td colspan="4" class="no-files">ファイルが見つかりません</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>

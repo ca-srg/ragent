@@ -12,6 +12,9 @@ import (
 	"github.com/ca-srg/ragent/internal/csv"
 )
 
+// ProgressCallback is called when processing progress is updated
+type ProgressCallback func(processed, total int)
+
 // VectorizerService orchestrates the vectorization process
 type VectorizerService struct {
 	embeddingClient     EmbeddingClient
@@ -26,6 +29,8 @@ type VectorizerService struct {
 	enableOpenSearch    bool
 	opensearchIndexName string
 	csvReader           *csv.Reader
+	progressCallback    ProgressCallback
+	progressMu          sync.RWMutex
 }
 
 // ProcessingStats tracks processing statistics
@@ -329,6 +334,9 @@ func (vs *VectorizerService) processFilesConcurrently(ctx context.Context, files
 			current := atomic.AddInt64(&processedCount, 1)
 			percent := (current * 100) / totalFiles
 
+			// Notify progress callback
+			vs.notifyProgress(int(current), int(totalFiles))
+
 			// Report progress at 10% intervals (thread-safe)
 			progressMutex.Lock()
 			reportedPercent := atomic.LoadInt64(&lastReportedPercent)
@@ -491,6 +499,24 @@ func (vs *VectorizerService) GetStats() ProcessingStats {
 	}
 }
 
+// SetProgressCallback sets a callback function to be called when progress is updated
+func (vs *VectorizerService) SetProgressCallback(callback ProgressCallback) {
+	vs.progressMu.Lock()
+	defer vs.progressMu.Unlock()
+	vs.progressCallback = callback
+}
+
+// notifyProgress calls the progress callback if set
+func (vs *VectorizerService) notifyProgress(processed, total int) {
+	vs.progressMu.RLock()
+	callback := vs.progressCallback
+	vs.progressMu.RUnlock()
+
+	if callback != nil {
+		callback(processed, total)
+	}
+}
+
 // processDualBackend processes files using both S3 Vector and OpenSearch backends
 func (vs *VectorizerService) processDualBackend(ctx context.Context, files []*FileInfo, dryRun bool) (*ProcessingResult, error) {
 	log.Printf("Starting dual backend processing for %d files", len(files))
@@ -501,6 +527,14 @@ func (vs *VectorizerService) processDualBackend(ctx context.Context, files []*Fi
 			log.Printf("Warning: Failed to ensure OpenSearch index: %v", err)
 			// Don't fail the entire operation, just log the warning
 		}
+	}
+
+	// Propagate progress callback to parallel controller
+	vs.progressMu.RLock()
+	callback := vs.progressCallback
+	vs.progressMu.RUnlock()
+	if callback != nil {
+		vs.parallelController.SetProgressCallback(callback)
 	}
 
 	// Use parallel controller for dual backend processing

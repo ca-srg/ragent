@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.18.0
+    container_name: ragent-opensearch
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin123!
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    command: >
+      bash -c '
+        # Install kuromoji plugin if not already installed
+        if ! /usr/share/opensearch/bin/opensearch-plugin list | grep -q analysis-kuromoji; then
+          /usr/share/opensearch/bin/opensearch-plugin install --batch analysis-kuromoji
+        fi
+        # Install ICU plugin for better Unicode support
+        if ! /usr/share/opensearch/bin/opensearch-plugin list | grep -q analysis-icu; then
+          /usr/share/opensearch/bin/opensearch-plugin install --batch analysis-icu
+        fi
+        # Start OpenSearch
+        /usr/share/opensearch/opensearch-docker-entrypoint.sh opensearch
+      '
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.18.0
+    container_name: ragent-opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+volumes:
+  opensearch-data:

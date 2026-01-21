@@ -1,0 +1,44 @@
+{{template "base" .}}
+
+{{define "title"}}履歴 - RAGent{{end}}
+
+{{define "content"}}
+<div class="history-page">
+    <h1>処理履歴</h1>
+    
+    {{if .History}}
+    <table class="history-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>ステータス</th>
+                <th>開始</th>
+                <th>完了</th>
+                <th>ファイル</th>
+                <th>成功</th>
+                <th>失敗</th>
+                <th>ドライラン</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .History}}
+            <tr class="{{statusClass .Status}}">
+                <td>{{.ID}}</td>
+                <td><span class="status-badge {{statusClass .Status}}">{{.Status}}</span></td>
+                <td>{{formatTime .StartTime}}</td>
+                <td>{{formatTime .EndTime}}</td>
+                <td>{{.ProcessedFiles}}</td>
+                <td class="success-count">{{.SuccessCount}}</td>
+                <td class="failed-count">{{.FailedCount}}</td>
+                <td>{{if .DryRun}}はい{{else}}いいえ{{end}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <div class="empty-state">
+        <p>処理履歴はまだありません。</p>
+    </div>
+    {{end}}
+</div>
+{{end}}

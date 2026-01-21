@@ -21,6 +21,7 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
   - [chat - 対話型RAGチャット](#4-chat---対話型ragチャット)
   - [slack-bot - Slack Bot（メンションでRAG検索）](#5-slack-bot---slack-botメンションでrag検索)
   - [mcp-server - Claude Desktop統合用MCPサーバー（新機能）](#6-mcp-server---claude-desktop統合用mcpサーバー新機能)
+  - [webui - ベクトル化監視用Web UI（新機能）](#7-webui---ベクトル化監視用web-ui新機能)
 - [開発](#開発)
 - [典型的なワークフロー](#典型的なワークフロー)
 - [トラブルシューティング](#トラブルシューティング)
@@ -86,7 +87,13 @@ Slack検索はベクトルの事前生成に依存せず、クエリ時に最新
 
 ```mermaid
 graph LR
-    MD[Markdown Documents] -->|Vectorize| VE[Amazon S3 Vectors]
+    subgraph Sources["データソース"]
+        MD[Markdownファイル]
+        CSV[CSVファイル]
+        S3[Amazon S3バケット]
+    end
+
+    Sources -->|Vectorize| VE[Amazon S3 Vectors]
     VE --> HY[Hybrid Search Engine]
     OS[(Amazon OpenSearch)] --> HY
     SL[Slack Workspace] -->|Conversations API| SS[SlackSearch Service]
@@ -272,30 +279,42 @@ sequenceDiagram
 
 #### ベクトル化パイプライン
 
-vectorizeコマンドはMarkdownドキュメントを処理し、デュアルバックエンドに保存します：
+vectorizeコマンドはソースドキュメント（Markdown、CSV、S3オブジェクト）を処理し、デュアルバックエンドに保存します：
 
 ```mermaid
 flowchart TD
     Start([vectorize コマンド]) --> CheckFlags{フラグ確認}
 
     CheckFlags -->|--clear| Clear[全ベクトル削除<br/>+ インデックス再作成]
-    CheckFlags -->|通常| Scan
-    Clear --> Scan
+    CheckFlags -->|通常| ScanSources
+    Clear --> ScanSources
 
-    Scan[Markdownディレクトリスキャン] --> Files[.mdファイルリスト化]
+    subgraph ScanSources[データソーススキャン]
+        LocalScan[ローカルディレクトリスキャン<br/>./source]
+        S3Scan[S3バケットスキャン<br/>--enable-s3]
+    end
+
+    ScanSources --> Files[ファイルリスト化<br/>.md, .markdown, .csv]
 
     Files --> Loop{各ファイル処理<br/>並行実行}
 
-    Loop --> Read[ファイル内容読み込み]
-    Read --> Extract[メタデータ抽出<br/>FrontMatterパーサー]
+    Loop --> FileType{ファイル種別?}
+
+    FileType -->|Markdown| ReadMD[ファイル内容読み込み]
+    FileType -->|CSV| ReadCSV[CSV読み込み＆行展開<br/>各行 → 1ドキュメント]
+
+    ReadMD --> Extract[メタデータ抽出<br/>FrontMatterパーサー]
+    ReadCSV --> ExtractCSV[メタデータ抽出<br/>CSVカラムマッピング]
+
     Extract --> Embed[埋め込み生成<br/>Bedrock Titan v2]
+    ExtractCSV --> Embed
 
     Embed --> Dual{デュアルバックエンド保存}
 
-    Dual --> S3[S3 Vectorへ保存<br/>メタデータ付き]
+    Dual --> S3Store[S3 Vectorへ保存<br/>メタデータ付き]
     Dual --> OSIndex[OpenSearchへインデックス<br/>BM25 + k-NNフィールド]
 
-    S3 --> Stats1[統計更新<br/>S3: 成功/失敗]
+    S3Store --> Stats1[統計更新<br/>S3: 成功/失敗]
     OSIndex --> Stats2[統計更新<br/>OS: インデックス済/スキップ/リトライ]
 
     Stats1 --> Check{さらにファイル?}
@@ -306,11 +325,12 @@ flowchart TD
 
     Report --> Follow{フォローモード?}
     Follow -->|はい| Wait[インターバル待機<br/>デフォルト: 30分]
-    Wait --> Scan
+    Wait --> ScanSources
     Follow -->|いいえ| End([完了])
 
     style Start fill:#e1f5ff
     style Clear fill:#ffe1e1
+    style ScanSources fill:#e8f4f8
     style Embed fill:#fff4e1
     style Dual fill:#f5e1ff
     style End fill:#e1ffe1
@@ -1238,3 +1258,72 @@ claude mcp add --transport sse ragent https://your-server.example.com/sse --head
 ```
 
 詳細: `doc/mcp-server.md` および `doc/oidc-authentication.md` を参照してください。
+
+### 7. webui - ベクトル化監視用Web UI（新機能）
+
+ベクトル化プロセスを監視・制御するためのWebベースのユーザーインターフェースを起動します。Web UIはリアルタイムの進捗追跡、ファイルブラウジング、処理履歴を提供します。
+
+```bash
+# デフォルト設定で起動（localhost:8081）
+RAGent webui
+
+# ホストとポートを指定
+RAGent webui --host 0.0.0.0 --port 8080
+
+# ソースディレクトリを指定
+RAGent webui --directory ./docs
+```
+
+**オプション：**
+- `--host`: バインドするホストアドレス（デフォルト: `localhost`）
+- `--port`: リッスンするポート番号（デフォルト: `8081`）
+- `-d, --directory`: ベクトル化対象のソースディレクトリ（デフォルト: `./source`）
+
+**機能：**
+- **ダッシュボード**: 開始/停止コントロール付きのリアルタイムベクトル化進捗
+- **ファイルブラウザ**: ソースファイル（Markdown、CSV）のブラウズと検索
+- **処理履歴**: 成功/失敗の統計を含む過去のベクトル化実行の表示
+- **フォローモード**: 設定可能な間隔でのスケジュールベクトル化の有効化/無効化
+- **SSE更新**: ページ更新なしでServer-Sent Eventsによるライブ更新
+
+**ダッシュボードコントロール：**
+- 手動でベクトル化を開始/停止
+- 定期的なベクトル化のためのフォローモード（スケジューラ）の切り替え
+- 現在の進捗、経過時間、推定残り時間の表示
+- ファイルパスとエラー詳細を含む最近のエラーの監視
+
+**APIエンドポイント：**
+| メソッド | パス | 説明 |
+|----------|------|------|
+| GET | `/` | ダッシュボードページ |
+| GET | `/files` | ファイルブラウザページ |
+| GET | `/history` | 処理履歴ページ |
+| POST | `/api/vectorize/start` | ベクトル化を開始 |
+| POST | `/api/vectorize/stop` | ベクトル化を停止 |
+| GET | `/api/status` | 現在のステータスを取得 |
+| GET | `/api/files` | ファイル一覧（検索付き） |
+| POST | `/api/scheduler/toggle` | スケジューラの切り替え |
+| GET | `/sse/progress` | SSE進捗ストリーム |
+| GET | `/sse/events` | SSEイベントストリーム |
+
+**使用例：**
+```bash
+# Web UIを起動
+RAGent webui --port 8081 --directory ./source
+
+# ブラウザで開く
+open http://localhost:8081
+
+# ダッシュボードには以下が表示されます：
+# - 現在のベクトル化ステータス
+# - 開始/停止コントロール
+# - 処理中のプログレスバー
+# - 最近のエラー
+# - フォローモードの切り替え
+```
+
+**技術スタック：**
+- 動的更新にHTMXを使用したGoテンプレート
+- リアルタイム進捗のためのServer-Sent Events (SSE)
+- 外部JavaScriptフレームワーク不要
+- レスポンシブCSSデザイン

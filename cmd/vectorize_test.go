@@ -257,7 +257,7 @@ func TestRunFollowCycle_SkipWhenProcessing(t *testing.T) {
 		log.SetOutput(originalWriter)
 	})
 
-	result, err := runFollowCycle(context.Background(), &types.Config{})
+	result, err := runFollowCycleWithIPC(context.Background(), &types.Config{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
