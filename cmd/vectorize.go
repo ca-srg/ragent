@@ -30,7 +30,6 @@ import (
 
 const (
 	defaultFollowInterval = "30m"
-	minFollowInterval     = 5 * time.Minute
 )
 
 var (
@@ -937,10 +936,6 @@ func validateFollowModeFlags(cmd *cobra.Command) error {
 	duration, err := time.ParseDuration(intervalValue)
 	if err != nil {
 		return fmt.Errorf("invalid interval: %w", err)
-	}
-
-	if duration < minFollowInterval {
-		return fmt.Errorf("interval must be at least %s, got: %s", minFollowInterval, duration)
 	}
 
 	followIntervalDuration = duration
