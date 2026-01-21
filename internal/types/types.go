@@ -31,6 +31,8 @@ type FileInfo struct {
 	CSVRowIndex int              `json:"csv_row_index,omitempty"` // Row index for CSV files (1-based, excluding header)
 	Content     string           `json:"content"`
 	Metadata    DocumentMetadata `json:"metadata"`
+	ContentHash string           `json:"content_hash,omitempty"` // MD5 hash of content (hex format)
+	SourceType  string           `json:"source_type,omitempty"`  // "local" or "s3"
 }
 
 // VectorData represents the embedding vector data for a document
