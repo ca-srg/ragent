@@ -10,3 +10,4 @@ doc/debug.md
 # Added by goreleaser init:
 dist/
 source/*.md
+.opencode/plans/*.md
