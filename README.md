@@ -22,6 +22,7 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
   - [chat - Interactive RAG Chat](#4-chat---interactive-rag-chat)
   - [slack-bot - Slack Bot for RAG Search](#5-slack-bot---slack-bot-for-rag-search)
   - [mcp-server - MCP Server for Claude Desktop Integration](#6-mcp-server---mcp-server-for-claude-desktop-integration-new)
+  - [webui - Web UI for Vectorization Monitoring](#7-webui---web-ui-for-vectorization-monitoring-new)
 - [Development](#development)
 - [Typical Workflow](#typical-workflow)
 - [Troubleshooting](#troubleshooting)
@@ -94,7 +95,13 @@ The diagram below highlights how document and Slack pipelines converge before th
 
 ```mermaid
 graph LR
-    MD[Markdown Documents] -->|Vectorize| VE[Amazon S3 Vectors]
+    subgraph Sources["Data Sources"]
+        MD[Markdown Files]
+        CSV[CSV Files]
+        S3[Amazon S3 Bucket]
+    end
+
+    Sources -->|Vectorize| VE[Amazon S3 Vectors]
     VE --> HY[Hybrid Search Engine]
     OS[(Amazon OpenSearch)] --> HY
     SL[Slack Workspace] -->|Conversations API| SS[SlackSearch Service]
@@ -280,30 +287,42 @@ sequenceDiagram
 
 #### Vectorization Pipeline
 
-The vectorize command processes markdown documents and stores them in dual backends:
+The vectorize command processes source documents (Markdown, CSV, and S3 objects) and stores them in dual backends:
 
 ```mermaid
 flowchart TD
     Start([vectorize command]) --> CheckFlags{Check Flags}
 
     CheckFlags -->|--clear| Clear[Delete All Vectors<br/>+ Recreate Index]
-    CheckFlags -->|Normal| Scan
-    Clear --> Scan
+    CheckFlags -->|Normal| ScanSources
+    Clear --> ScanSources
 
-    Scan[Scan Markdown Directory] --> Files[List .md Files]
+    subgraph ScanSources[Scan Data Sources]
+        LocalScan[Scan Local Directory<br/>./source]
+        S3Scan[Scan S3 Bucket<br/>--enable-s3]
+    end
+
+    ScanSources --> Files[List Files<br/>.md, .markdown, .csv]
 
     Files --> Loop{For Each File<br/>Parallel Processing}
 
-    Loop --> Read[Read File Content]
-    Read --> Extract[Extract Metadata<br/>FrontMatter Parser]
+    Loop --> FileType{File Type?}
+
+    FileType -->|Markdown| ReadMD[Read File Content]
+    FileType -->|CSV| ReadCSV[Read CSV & Expand Rows<br/>Each row → 1 document]
+
+    ReadMD --> Extract[Extract Metadata<br/>FrontMatter Parser]
+    ReadCSV --> ExtractCSV[Extract Metadata<br/>CSV Column Mapping]
+
     Extract --> Embed[Generate Embedding<br/>Bedrock Titan v2]
+    ExtractCSV --> Embed
 
     Embed --> Dual{Dual Backend Storage}
 
-    Dual --> S3[Store to S3 Vector<br/>with Metadata]
+    Dual --> S3Store[Store to S3 Vector<br/>with Metadata]
     Dual --> OSIndex[Index to OpenSearch<br/>BM25 + k-NN fields]
 
-    S3 --> Stats1[Update Stats<br/>S3: Success/Fail]
+    S3Store --> Stats1[Update Stats<br/>S3: Success/Fail]
     OSIndex --> Stats2[Update Stats<br/>OS: Indexed/Skipped/Retry]
 
     Stats1 --> Check{More Files?}
@@ -314,11 +333,12 @@ flowchart TD
 
     Report --> Follow{Follow Mode?}
     Follow -->|Yes| Wait[Wait Interval<br/>Default: 30m]
-    Wait --> Scan
+    Wait --> ScanSources
     Follow -->|No| End([Completed])
 
     style Start fill:#e1f5ff
     style Clear fill:#ffe1e1
+    style ScanSources fill:#e8f4f8
     style Embed fill:#fff4e1
     style Dual fill:#f5e1ff
     style End fill:#e1ffe1
@@ -931,6 +951,96 @@ claude mcp add --transport sse ragent https://your-server.example.com/sse --head
 
 Details: see `doc/mcp-server.md` and `doc/oidc-authentication.md`.
 
+### 7. webui - Web UI for Vectorization Monitoring (New)
+
+Start a web-based user interface for monitoring and controlling the vectorization process. The Web UI provides real-time progress tracking, file browsing, and processing history.
+
+```bash
+# Start with default settings (localhost:8081)
+RAGent webui
+
+# Specify custom host and port
+RAGent webui --host 0.0.0.0 --port 8080
+
+# Specify source directory
+RAGent webui --directory ./docs
+```
+
+**Options:**
+- `--host`: Host address to bind (default: `localhost`)
+- `--port`: Port number to listen on (default: `8081`)
+- `-d, --directory`: Source directory for vectorization (default: `./source`)
+
+**Features:**
+- **Dashboard**: Real-time vectorization progress with start/stop controls
+- **File Browser**: Browse and search source files (Markdown, CSV)
+- **Processing History**: View past vectorization runs with success/failure stats
+- **Follow Mode**: Enable/disable scheduled vectorization with configurable intervals
+- **SSE Updates**: Live updates via Server-Sent Events without page refresh
+- **Cross-Process Status Sharing**: Monitor external `vectorize --follow` processes via Unix Socket IPC
+
+**Cross-Process Status Sharing:**
+
+When a `vectorize --follow` process is running separately, the Web UI can detect and display its status in real-time. This is achieved through Unix Socket-based IPC (Inter-Process Communication).
+
+```bash
+# Terminal 1: Start vectorize in follow mode (runs IPC server)
+RAGent vectorize --follow --interval 5m
+
+# Terminal 2: Start webui (connects as IPC client)
+RAGent webui
+
+# The dashboard will show "running" status from the external process
+```
+
+The IPC mechanism uses JSON-RPC 2.0 over Unix Socket:
+- Socket location: `$XDG_RUNTIME_DIR/ragent/ragent.sock` or `/tmp/ragent-{uid}/ragent.sock`
+- Exclusive locking prevents multiple vectorize instances from running simultaneously
+- Stale socket cleanup handles crashed processes gracefully
+
+**Dashboard Controls:**
+- Start/Stop vectorization manually
+- Toggle follow mode (scheduler) for periodic vectorization
+- View current progress, elapsed time, and estimated remaining time
+- Monitor recent errors with file paths and error details
+
+**API Endpoints:**
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Dashboard page |
+| GET | `/files` | File browser page |
+| GET | `/history` | Processing history page |
+| POST | `/api/vectorize/start` | Start vectorization |
+| POST | `/api/vectorize/stop` | Stop vectorization |
+| GET | `/api/status` | Get current status (includes external process status) |
+| GET | `/api/files` | List files (with search) |
+| POST | `/api/scheduler/toggle` | Toggle scheduler |
+| GET | `/sse/progress` | SSE progress stream |
+| GET | `/sse/events` | SSE events stream |
+
+**Usage Example:**
+```bash
+# Start the Web UI
+RAGent webui --port 8081 --directory ./source
+
+# Open in browser
+open http://localhost:8081
+
+# The dashboard will show:
+# - Current vectorization status
+# - Start/Stop controls
+# - Progress bar during processing
+# - Recent errors
+# - Follow mode toggle
+```
+
+**Technical Stack:**
+- Go templates with HTMX for dynamic updates
+- Server-Sent Events (SSE) for real-time progress
+- Unix Socket IPC for cross-process communication
+- No external JavaScript frameworks required
+- Responsive CSS design
+
 ## Development
 
 ### Build Commands
@@ -970,7 +1080,8 @@ RAGent/
 │   ├── opensearch/       # OpenSearch integration
 │   ├── vectorizer/       # Vectorization service
 │   ├── slackbot/         # Slack Bot integration
-│   └── mcpserver/        # MCP Server integration (new)
+│   ├── mcpserver/        # MCP Server integration (new)
+│   └── webui/            # Web UI server (new)
 ├── source/               # Source documents (markdown and CSV, prepare before use)
 ├── export/               # Separate export tool for Kibela
 ├── doc/                  # Project documentation

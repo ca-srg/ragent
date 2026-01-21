@@ -1,0 +1,17 @@
+<div class="error-list">
+    {{if .}}
+    <ul>
+        {{range .}}
+        <li class="error-item">
+            <span class="error-time">{{formatTime .Timestamp}}</span>
+            <span class="error-type">{{.ErrorType}}</span>
+            <span class="error-file">{{.FilePath}}</span>
+            <span class="error-message">{{.Message}}</span>
+            {{if .Retryable}}<span class="retryable-badge">リトライ可能</span>{{end}}
+        </li>
+        {{end}}
+    </ul>
+    {{else}}
+    <p class="no-errors">最近のエラーはありません</p>
+    {{end}}
+</div>
