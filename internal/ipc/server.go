@@ -71,27 +71,27 @@ func NewServer(cfg ServerConfig, logger *log.Logger) (*Server, error) {
 
 	// Try exclusive lock (non-blocking)
 	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return nil, ErrAnotherInstanceRunning
 	}
 
 	// Clean up stale socket if exists
 	if err := cleanupStaleSocket(cfg.SocketPath); err != nil {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return nil, err
 	}
 
 	// Write PID
 	if err := lockFile.Truncate(0); err != nil {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to truncate pid file: %w", err)
 	}
 	if _, err := lockFile.Seek(0, 0); err != nil {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to seek pid file: %w", err)
 	}
 	if _, err := fmt.Fprintf(lockFile, "%d\n", os.Getpid()); err != nil {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to write pid: %w", err)
 	}
 
@@ -124,7 +124,7 @@ func cleanupStaleSocket(socketPath string) error {
 		// Stale socket, remove it
 		return os.Remove(socketPath)
 	}
-	conn.Close()
+	_ = conn.Close()
 
 	// Socket is live, another process is running
 	return ErrAnotherInstanceRunning
@@ -184,7 +184,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Set socket permissions (owner only)
 	if err := os.Chmod(s.config.SocketPath, 0600); err != nil {
-		s.listener.Close()
+		_ = s.listener.Close()
 		return fmt.Errorf("failed to set socket permissions: %w", err)
 	}
 
@@ -220,7 +220,7 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	reader := bufio.NewReader(conn)
 	encoder := json.NewEncoder(conn)
@@ -306,7 +306,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	// Close listener
 	if s.listener != nil {
-		s.listener.Close()
+		_ = s.listener.Close()
 	}
 
 	// Wait for connections with timeout
@@ -327,7 +327,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.logger.Printf("failed to remove socket: %v", err)
 	}
 	if s.lockFile != nil {
-		s.lockFile.Close()
+		_ = s.lockFile.Close()
 		if err := os.Remove(s.config.PIDFile); err != nil && !os.IsNotExist(err) {
 			s.logger.Printf("failed to remove pid file: %v", err)
 		}

@@ -56,7 +56,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request, filters []str
 	defer s.sseManager.UnregisterClient(clientID)
 
 	// Send initial connection event
-	fmt.Fprintf(w, "event: connected\ndata: {\"client_id\":\"%s\"}\n\n", clientID)
+	_, _ = fmt.Fprintf(w, "event: connected\ndata: {\"client_id\":\"%s\"}\n\n", clientID)
 	flusher.Flush()
 
 	// Stream events
@@ -70,7 +70,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request, filters []str
 			if !ok {
 				return
 			}
-			w.Write(data)
+			_, _ = w.Write(data)
 			flusher.Flush()
 		}
 	}

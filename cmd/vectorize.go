@@ -429,7 +429,7 @@ func runFollowMode(ctx context.Context, cfg *types.Config) error {
 		if err := ipcServer.Start(followCtx); err != nil {
 			log.Printf("[Follow Mode] Warning: Failed to start IPC server: %v", err)
 		} else {
-			defer ipcServer.Shutdown(context.Background())
+			defer func() { _ = ipcServer.Shutdown(context.Background()) }()
 			log.Println("[Follow Mode] IPC server started for status sharing")
 		}
 	}

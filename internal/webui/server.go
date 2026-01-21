@@ -335,9 +335,7 @@ func (s *Server) runVectorization(ctx context.Context, dryRun bool) error {
 
 	// Convert to types.FileInfo
 	fileInfos := make([]*types.FileInfo, len(files))
-	for i, f := range files {
-		fileInfos[i] = f
-	}
+	copy(fileInfos, files)
 
 	// Run vectorization
 	result, err := s.vectorizer.VectorizeFiles(ctx, fileInfos, dryRun)

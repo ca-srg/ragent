@@ -153,7 +153,7 @@ func (c *Client) GetStatus(ctx context.Context) (*StatusResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var status StatusResponse
 	if err := conn.Call(ctx, MethodStatusGet, nil, &status); err != nil {
@@ -169,7 +169,7 @@ func (c *Client) GetProgress(ctx context.Context) (*ProgressResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var progress ProgressResponse
 	if err := conn.Call(ctx, MethodProgressGet, nil, &progress); err != nil {
@@ -185,7 +185,7 @@ func (c *Client) GetFullStatus(ctx context.Context) (*FullStatusResponse, error)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var status StatusResponse
 	if err := conn.Call(ctx, MethodStatusGet, nil, &status); err != nil {
@@ -211,7 +211,7 @@ func (c *Client) RequestStop(ctx context.Context, force bool) (*StopResponse, er
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	params := &StopParams{Force: force}
 	var resp StopResponse

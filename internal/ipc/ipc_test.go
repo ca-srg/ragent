@@ -29,7 +29,7 @@ func TestServerClientIntegration(t *testing.T) {
 
 	ctx := context.Background()
 	require.NoError(t, server.Start(ctx))
-	defer server.Shutdown(context.Background())
+	defer func() { _ = server.Shutdown(context.Background()) }()
 
 	// Set some status
 	now := time.Now()
@@ -90,7 +90,7 @@ func TestStaleSocketCleanup(t *testing.T) {
 		PIDFile:    pidPath,
 	}, logger)
 	require.NoError(t, err)
-	defer server.Shutdown(context.Background())
+	defer func() { _ = server.Shutdown(context.Background()) }()
 
 	require.NoError(t, server.Start(context.Background()))
 
@@ -124,7 +124,7 @@ func TestAnotherInstanceRunning(t *testing.T) {
 	}, logger)
 	require.NoError(t, err)
 	require.NoError(t, server1.Start(context.Background()))
-	defer server1.Shutdown(context.Background())
+	defer func() { _ = server1.Shutdown(context.Background()) }()
 
 	// Try to start second server - should fail
 	_, err = NewServer(ServerConfig{
@@ -147,7 +147,7 @@ func TestControlStop(t *testing.T) {
 	}, logger)
 	require.NoError(t, err)
 	require.NoError(t, server.Start(context.Background()))
-	defer server.Shutdown(context.Background())
+	defer func() { _ = server.Shutdown(context.Background()) }()
 
 	// Request stop
 	client := NewClient(ClientConfig{SocketPath: socketPath})
@@ -183,7 +183,7 @@ func TestMultipleConnections(t *testing.T) {
 	}, logger)
 	require.NoError(t, err)
 	require.NoError(t, server.Start(context.Background()))
-	defer server.Shutdown(context.Background())
+	defer func() { _ = server.Shutdown(context.Background()) }()
 
 	server.SetState(StateRunning)
 

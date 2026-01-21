@@ -293,7 +293,7 @@ func TestSchedulerConcurrentAccess(t *testing.T) {
 	// Concurrent start/stop
 	go func() {
 		for i := 0; i < 10; i++ {
-			scheduler.Start(context.Background())
+			_ = scheduler.Start(context.Background())
 			scheduler.Stop()
 		}
 		done <- true
@@ -311,7 +311,7 @@ func TestSchedulerConcurrentAccess(t *testing.T) {
 	// Concurrent set interval
 	go func() {
 		for i := 0; i < 20; i++ {
-			scheduler.SetInterval(time.Duration(5+i) * time.Minute)
+			_ = scheduler.SetInterval(time.Duration(5+i) * time.Minute)
 		}
 		done <- true
 	}()
