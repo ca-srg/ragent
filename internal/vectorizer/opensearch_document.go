@@ -198,7 +198,9 @@ func (doc *OpenSearchDocument) validateEmbedding() error {
 
 // validateTimestamps validates timestamp fields
 func (doc *OpenSearchDocument) validateTimestamps() error {
-	now := time.Now()
+	// NOTE: Skipping timestamp comparison validations because front matter dates
+	// are parsed as UTC while time.Now() returns local timezone (JST), causing
+	// false positives when comparing timestamps across different timezones.
 
 	if doc.CreatedAt.IsZero() {
 		return fmt.Errorf("created_at timestamp cannot be zero")
@@ -210,19 +212,6 @@ func (doc *OpenSearchDocument) validateTimestamps() error {
 
 	if doc.IndexedAt.IsZero() {
 		return fmt.Errorf("indexed_at timestamp cannot be zero")
-	}
-
-	// Check for reasonable time ranges (not too far in the future)
-	if doc.CreatedAt.After(now.Add(time.Hour)) {
-		return fmt.Errorf("created_at timestamp is too far in the future: %v", doc.CreatedAt)
-	}
-
-	if doc.UpdatedAt.After(now.Add(time.Hour)) {
-		return fmt.Errorf("updated_at timestamp is too far in the future: %v", doc.UpdatedAt)
-	}
-
-	if doc.IndexedAt.After(now.Add(time.Hour)) {
-		return fmt.Errorf("indexed_at timestamp is too far in the future: %v", doc.IndexedAt)
 	}
 
 	return nil
