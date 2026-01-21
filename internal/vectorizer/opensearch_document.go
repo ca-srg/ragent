@@ -225,11 +225,6 @@ func (doc *OpenSearchDocument) validateTimestamps() error {
 		return fmt.Errorf("indexed_at timestamp is too far in the future: %v", doc.IndexedAt)
 	}
 
-	// CreatedAt should not be after UpdatedAt
-	if doc.CreatedAt.After(doc.UpdatedAt) {
-		return fmt.Errorf("created_at (%v) cannot be after updated_at (%v)", doc.CreatedAt, doc.UpdatedAt)
-	}
-
 	return nil
 }
 
