@@ -458,12 +458,6 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 	return result, nil
 }
 
-// scanLocalDirectory scans a local directory for supported files
-func scanLocalDirectory(dirPath string) ([]*types.FileInfo, error) {
-	fileScanner := scanner.NewFileScanner()
-	return fileScanner.ScanDirectory(dirPath)
-}
-
 // scanLocalDirectoryWithHash scans a local directory and computes MD5 hash for each file
 func scanLocalDirectoryWithHash(dirPath string) ([]*types.FileInfo, error) {
 	fileScanner := scanner.NewFileScanner()

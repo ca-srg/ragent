@@ -15,12 +15,12 @@ func TestNewHashStore(t *testing.T) {
 	// Create temp directory for test database
 	tmpDir, err := os.MkdirTemp("", "hashstore_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 	store, err := NewHashStoreWithPath(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	assert.NotNil(t, store)
 	assert.FileExists(t, dbPath)
@@ -29,12 +29,12 @@ func TestNewHashStore(t *testing.T) {
 func TestHashStore_UpsertAndGetFileHash(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "hashstore_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 	store, err := NewHashStoreWithPath(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 
@@ -75,12 +75,12 @@ func TestHashStore_UpsertAndGetFileHash(t *testing.T) {
 func TestHashStore_GetFileHash_NotFound(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "hashstore_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 	store, err := NewHashStoreWithPath(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 
@@ -93,12 +93,12 @@ func TestHashStore_GetFileHash_NotFound(t *testing.T) {
 func TestHashStore_GetAllFileHashes(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "hashstore_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 	store, err := NewHashStoreWithPath(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 
@@ -131,12 +131,12 @@ func TestHashStore_GetAllFileHashes(t *testing.T) {
 func TestHashStore_DeleteFileHash(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "hashstore_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 	store, err := NewHashStoreWithPath(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 
@@ -186,12 +186,12 @@ func TestChangeType_String(t *testing.T) {
 func TestHashStore_GetAllFileHashesForSourceTypes(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "hashstore_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 	store, err := NewHashStoreWithPath(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 

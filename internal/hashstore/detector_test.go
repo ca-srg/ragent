@@ -21,8 +21,8 @@ func setupTestStore(t *testing.T) (*HashStore, func()) {
 	require.NoError(t, err)
 
 	cleanup := func() {
-		store.Close()
-		os.RemoveAll(tmpDir)
+		_ = store.Close()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return store, cleanup
