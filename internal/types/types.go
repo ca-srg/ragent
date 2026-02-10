@@ -199,6 +199,9 @@ type Config struct {
 	OTelResourceAttributes   string  `json:"otel_resource_attributes" env:"OTEL_RESOURCE_ATTRIBUTES"`
 	OTelTracesSampler        string  `json:"otel_traces_sampler" env:"OTEL_TRACES_SAMPLER,default=always_on"`
 	OTelTracesSamplerArg     float64 `json:"otel_traces_sampler_arg" env:"OTEL_TRACES_SAMPLER_ARG,default=1.0"`
+
+	// GitHub configuration
+	GitHubToken string `json:"github_token" env:"GITHUB_TOKEN"`
 }
 
 // QueryResult represents a single result from a vector query
