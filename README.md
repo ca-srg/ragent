@@ -740,6 +740,8 @@ RAGent vectorize --follow --github-repos "owner/repo"
 For private repositories, set the `GITHUB_TOKEN` environment variable.
 Metadata is auto-generated from the repository structure: owner name as author, repository name as source, parent directory as category, and a GitHub URL as reference.
 
+For detailed documentation on the GitHub data source feature, see [doc/github.md](doc/github.md).
+
 **Features:**
 - Recursive scanning of markdown and CSV files
 - Automatic metadata extraction
@@ -1112,6 +1114,7 @@ RAGent/
 ├── source/               # Source documents (markdown and CSV, prepare before use)
 ├── export/               # Separate export tool for Kibela
 ├── doc/                  # Project documentation
+│   ├── github.md         # GitHub data source guide
 │   ├── mcp-server.md     # MCP Server setup guide
 │   ├── oidc-authentication.md # OIDC authentication guide
 │   ├── filter-configuration.md # Filter configuration guide

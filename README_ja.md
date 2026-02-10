@@ -92,6 +92,7 @@ graph LR
         MD[Markdownファイル]
         CSV[CSVファイル]
         S3[Amazon S3バケット]
+        GH[GitHubリポジトリ]
     end
 
     Sources -->|Vectorize| VE[Amazon S3 Vectors]
@@ -293,6 +294,7 @@ flowchart TD
     subgraph ScanSources[データソーススキャン]
         LocalScan[ローカルディレクトリスキャン<br/>./source]
         S3Scan[S3バケットスキャン<br/>--enable-s3]
+        GHScan[GitHubリポジトリスキャン<br/>--github-repos]
     end
 
     ScanSources --> Files[ファイルリスト化<br/>.md, .markdown, .csv]
@@ -715,6 +717,8 @@ RAGent vectorize --follow --github-repos "owner/repo"
 プライベートリポジトリの場合は、`GITHUB_TOKEN` 環境変数を設定してください。
 メタデータはリポジトリ構造から自動生成されます: オーナー名が著者、リポジトリ名がソース、親ディレクトリがカテゴリ、GitHub URLが参照先として設定されます。
 
+GitHubデータソース機能の詳細については [doc/github.md](doc/github.md) を参照してください。
+
 **機能:**
 - markdownおよびCSVファイルの再帰的スキャン
 - メタデータの自動抽出
@@ -898,6 +902,13 @@ RAGent/
 │   └── vectorizer/       # ベクトル化サービス
 ├── source/               # ソースドキュメント（markdownおよびCSV、使用前に準備）
 ├── export/               # Kibela用エクスポートツール（別ツール）
+├── doc/                  # プロジェクトドキュメント
+│   ├── github.md         # GitHubデータソースガイド
+│   ├── mcp-server.md     # MCP Serverセットアップガイド
+│   ├── oidc-authentication.md # OIDC認証ガイド
+│   ├── filter-configuration.md # フィルター設定ガイド
+│   ├── s3-vector.md      # S3 Vector統合メモ
+│   └── score.md          # RAGスコアの基礎解説
 ├── .envrc                # direnv設定
 ├── .env                  # 環境変数ファイル
 └── CLAUDE.md            # Claude Code設定
