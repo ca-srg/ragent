@@ -33,7 +33,8 @@ RAGent は、Markdownドキュメントからハイブリッド検索（BM25 + �
 
 ## 機能
 
-- **ベクトル化**: ソースファイル（markdownおよびCSV）をAmazon Bedrockを使用してembeddingに変換
+- **ベクトル化**: ソースファイル（markdownおよびCSV）をローカルディレクトリ、S3、またはGitHubリポジトリからAmazon Bedrockを使用してembeddingに変換
+- **GitHubデータソース**: GitHubリポジトリをクローンし、自動生成メタデータでmarkdown/CSVファイルをベクトル化
 - **S3 Vector統合**: 生成されたベクトルをAmazon S3 Vectorsに保存
 - **ハイブリッド検索**: OpenSearchを使用したBM25 + ベクトル検索の組み合わせ
 - **Slack検索統合**: Slack会話とドキュメント検索結果を統合する反復型パイプライン
@@ -412,6 +413,9 @@ OPENSEARCH_ENDPOINT=your_opensearch_endpoint
 OPENSEARCH_INDEX=your_opensearch_index
 OPENSEARCH_REGION=us-east-1  # デフォルト
 
+# GitHub設定（オプション）
+GITHUB_TOKEN=ghp_your_github_token  # プライベートリポジトリに必要
+
 # チャット設定
 CHAT_MODEL=anthropic.claude-3-5-sonnet-20240620-v1:0  # デフォルト
 EXCLUDE_CATEGORIES=個人メモ,日報  # 検索から除外するカテゴリ
@@ -673,6 +677,7 @@ RAGent vectorize
 - `--s3-prefix`: スキャンするS3プレフィックス（ディレクトリ）（オプション、デフォルトはバケットルート）
 - `--s3-vector-region`: S3 Vectorバケット用AWSリージョン（S3_VECTOR_REGION を上書き、デフォルト: us-east-1）
 - `--s3-source-region`: ソースファイル用S3バケットのAWSリージョン（S3_SOURCE_REGION を上書き、デフォルト: us-east-1）
+- `--github-repos`: クローンしてベクトル化するGitHubリポジトリのカンマ区切りリスト（形式: `owner/repo`）
 
 **S3ソースの使用例:**
 ```bash
@@ -688,6 +693,27 @@ RAGent vectorize --directory ./local-docs --enable-s3 --s3-bucket my-docs-bucket
 # S3ソースでドライラン
 RAGent vectorize --enable-s3 --s3-bucket my-docs-bucket --dry-run
 ```
+
+**GitHubソースの使用例:**
+```bash
+# 単一のGitHubリポジトリをクローンしてベクトル化
+RAGent vectorize --github-repos "owner/repo"
+
+# 複数リポジトリ
+RAGent vectorize --github-repos "org/repo1,org/repo2"
+
+# ローカルソースとの組み合わせ
+RAGent vectorize --directory ./local-docs --github-repos "owner/repo"
+
+# GitHubソースでドライラン
+RAGent vectorize --github-repos "owner/repo" --dry-run
+
+# フォローモードでGitHubリポジトリを使用（各サイクルで再クローン）
+RAGent vectorize --follow --github-repos "owner/repo"
+```
+
+プライベートリポジトリの場合は、`GITHUB_TOKEN` 環境変数を設定してください。
+メタデータはリポジトリ構造から自動生成されます: オーナー名が著者、リポジトリ名がソース、親ディレクトリがカテゴリ、GitHub URLが参照先として設定されます。
 
 **機能:**
 - markdownおよびCSVファイルの再帰的スキャン
