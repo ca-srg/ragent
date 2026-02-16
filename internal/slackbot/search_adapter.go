@@ -154,6 +154,7 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 	// Extract context and references from results (same as chat command)
 	var contextParts []string
 	references := make(map[string]string)
+	filePathRefs := make(map[string]string)
 
 	// Add Slack URL context first (highest priority - explicitly referenced by user)
 	if slackURLContext != "" {
@@ -182,6 +183,12 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		}
 		if title != "" && reference != "" {
 			references[title] = reference
+		}
+
+		if title != "" {
+			if filePath, ok := source["file_path"].(string); ok && filePath != "" {
+				filePathRefs[title] = convertGitHubPathToURL(filePath)
+			}
 		}
 	}
 
@@ -230,15 +237,30 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		generatedResponse = "関連する情報が見つかりませんでした。"
 	}
 
-	// Add references to response if any were found
-	if len(references) > 0 {
+	if len(references) > 0 || len(filePathRefs) > 0 {
+		allTitles := make(map[string]struct{})
+		for t := range references {
+			allTitles[t] = struct{}{}
+		}
+		for t := range filePathRefs {
+			allTitles[t] = struct{}{}
+		}
+
 		var referenceBuilder strings.Builder
 		referenceBuilder.WriteString(generatedResponse)
 		referenceBuilder.WriteString("\n\n## 参考文献\n\n")
 
-		// Display title: reference format
-		for title, ref := range references {
-			referenceBuilder.WriteString(fmt.Sprintf("- %s: %s\n", title, ref))
+		for title := range allTitles {
+			ref := references[title]
+			fp := filePathRefs[title]
+			switch {
+			case ref != "" && fp != "":
+				referenceBuilder.WriteString(fmt.Sprintf("- %s: %s (%s)\n", title, ref, fp))
+			case ref != "":
+				referenceBuilder.WriteString(fmt.Sprintf("- %s: %s\n", title, ref))
+			case fp != "":
+				referenceBuilder.WriteString(fmt.Sprintf("- %s: %s\n", title, fp))
+			}
 		}
 
 		generatedResponse = referenceBuilder.String()
@@ -422,4 +444,16 @@ func fetchSlackURLMessages(ctx context.Context, client *slack.Client, urls []*sl
 	}
 
 	return builder.String()
+}
+
+func convertGitHubPathToURL(path string) string {
+	const prefix = "github://"
+	if !strings.HasPrefix(path, prefix) {
+		return path
+	}
+	parts := strings.SplitN(strings.TrimPrefix(path, prefix), "/", 3)
+	if len(parts) < 3 {
+		return path
+	}
+	return fmt.Sprintf("https://github.com/%s/%s/blob/main/%s", parts[0], parts[1], parts[2])
 }
