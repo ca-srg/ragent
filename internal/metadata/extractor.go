@@ -412,3 +412,61 @@ func (e *MetadataExtractor) isReservedField(fieldName string) bool {
 
 	return false
 }
+
+func (e *MetadataExtractor) ExtractGitHubMetadata(repoOwner, repoName, repoRelativePath, content string) (*DocumentMetadata, error) {
+	metadata := &DocumentMetadata{
+		FilePath:     fmt.Sprintf("github://%s/%s/%s", repoOwner, repoName, repoRelativePath),
+		CustomFields: make(map[string]interface{}),
+	}
+
+	frontMatter, cleanContent, err := e.ParseFrontMatter(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse front matter: %w", err)
+	}
+
+	metadata.Title = e.extractTitle(frontMatter, repoRelativePath, cleanContent)
+
+	if category, ok := frontMatter["category"].(string); ok && category != "" {
+		metadata.Category = category
+	} else {
+		dir := filepath.Dir(repoRelativePath)
+		lastDir := filepath.Base(dir)
+		if lastDir == "." || lastDir == "" {
+			metadata.Category = "general"
+		} else {
+			metadata.Category = lastDir
+		}
+	}
+
+	if author, ok := frontMatter["author"].(string); ok && author != "" {
+		metadata.Author = author
+	} else {
+		metadata.Author = repoOwner
+	}
+
+	if source, ok := frontMatter["source"].(string); ok && source != "" {
+		metadata.Source = source
+	} else {
+		metadata.Source = repoName
+	}
+
+	metadata.Reference = fmt.Sprintf("https://github.com/%s/%s/blob/main/%s", repoOwner, repoName, repoRelativePath)
+
+	tags := e.extractTags(frontMatter)
+	if len(tags) > 0 {
+		metadata.Tags = tags
+	} else {
+		metadata.Tags = []string{repoOwner, repoName}
+	}
+
+	metadata.CreatedAt, metadata.UpdatedAt = e.extractDates(frontMatter, repoRelativePath)
+	metadata.WordCount = e.calculateWordCount(cleanContent)
+
+	for key, value := range frontMatter {
+		if !e.isReservedField(key) {
+			metadata.CustomFields[key] = value
+		}
+	}
+
+	return metadata, nil
+}

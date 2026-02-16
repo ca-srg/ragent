@@ -57,6 +57,9 @@ var (
 	s3VectorRegion string
 	s3SourceRegion string
 
+	// GitHub source mode
+	githubRepos string
+
 	// Incremental processing options
 	forceProcess bool // Force re-vectorization of all files
 	pruneDeleted bool // Remove vectors for deleted files
@@ -110,6 +113,9 @@ func init() {
 	// S3 region options
 	vectorizeCmd.Flags().StringVar(&s3VectorRegion, "s3-vector-region", "", "AWS region for S3 Vector bucket (overrides S3_VECTOR_REGION, default: us-east-1)")
 	vectorizeCmd.Flags().StringVar(&s3SourceRegion, "s3-source-region", "", "AWS region for source S3 bucket (overrides S3_SOURCE_REGION, default: us-east-1)")
+
+	// GitHub source options
+	vectorizeCmd.Flags().StringVar(&githubRepos, "github-repos", "", "Comma-separated list of GitHub repositories to clone and vectorize (format: owner/repo)")
 }
 
 func runVectorize(cmd *cobra.Command, args []string) error {
@@ -172,12 +178,12 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 		return nil, fmt.Errorf("--s3-bucket is required when --enable-s3 is set")
 	}
 
-	// Validate at least one source is specified
 	hasLocalSource := directory != ""
 	hasS3Source := enableS3
+	hasGitHubSource := githubRepos != ""
 
-	if !hasLocalSource && !hasS3Source {
-		return nil, fmt.Errorf("at least one source must be specified: --directory or --enable-s3 with --s3-bucket")
+	if !hasLocalSource && !hasS3Source && !hasGitHubSource {
+		return nil, fmt.Errorf("at least one source must be specified: --directory, --enable-s3 with --s3-bucket, or --github-repos")
 	}
 
 	// Validate local directory if specified
@@ -356,6 +362,38 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 		}
 	}
 
+	// 3. Scan GitHub repositories if specified
+	if hasGitHubSource {
+		log.Printf("Scanning GitHub repositories: %s", githubRepos)
+		repos, err := scanner.ParseGitHubRepos(githubRepos)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse GitHub repos: %w", err)
+		}
+
+		githubScanner := scanner.NewGitHubScanner(repos, cfg.GitHubToken)
+		defer githubScanner.Cleanup()
+
+		githubFiles, err := githubScanner.ScanAllRepositories(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan GitHub repositories: %w", err)
+		}
+		log.Printf("Found %d files in GitHub repositories", len(githubFiles))
+
+		metadataExtractor := metadata.NewMetadataExtractor()
+		for _, f := range githubFiles {
+			parts := parseGitHubPath(f.Path)
+			if parts != nil {
+				meta, err := metadataExtractor.ExtractGitHubMetadata(parts.owner, parts.repo, parts.relativePath, f.Content)
+				if err != nil {
+					log.Printf("Warning: Failed to extract metadata for %s: %v", f.Path, err)
+					continue
+				}
+				f.Metadata = *meta
+			}
+		}
+		allFiles = append(allFiles, githubFiles...)
+	}
+
 	if len(allFiles) == 0 {
 		log.Println("No supported files found")
 		return &types.ProcessingResult{
@@ -381,14 +419,15 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 		} else {
 			defer func() { _ = hashStore.Close() }()
 
-			// Determine source types for change detection
 			var sourceTypes []string
-			if hasS3Source && hasLocalSource {
-				sourceTypes = []string{"local", "s3"}
-			} else if hasS3Source {
-				sourceTypes = []string{"s3"}
-			} else {
-				sourceTypes = []string{"local"}
+			if hasLocalSource {
+				sourceTypes = append(sourceTypes, "local")
+			}
+			if hasS3Source {
+				sourceTypes = append(sourceTypes, "s3")
+			}
+			if hasGitHubSource {
+				sourceTypes = append(sourceTypes, "github")
 			}
 
 			detector := hashstore.NewChangeDetector(hashStore)
@@ -445,6 +484,8 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 			sourceType := "local"
 			if strings.HasPrefix(deletedPath, "s3://") {
 				sourceType = "s3"
+			} else if strings.HasPrefix(deletedPath, "github://") {
+				sourceType = "github"
 			}
 			if err := hashStore.DeleteFileHash(ctx, sourceType, deletedPath); err != nil {
 				log.Printf("Warning: Failed to delete hash for %s: %v", deletedPath, err)
@@ -1310,7 +1351,28 @@ func formatHeadersDisplay(headers []string, maxLen int) string {
 	return result
 }
 
-// resolveS3VectorRegion returns the S3 Vector region with priority: flag > env > default
+type githubPathParts struct {
+	owner        string
+	repo         string
+	relativePath string
+}
+
+func parseGitHubPath(path string) *githubPathParts {
+	if !strings.HasPrefix(path, "github://") {
+		return nil
+	}
+	trimmed := strings.TrimPrefix(path, "github://")
+	parts := strings.SplitN(trimmed, "/", 3)
+	if len(parts) < 3 {
+		return nil
+	}
+	return &githubPathParts{
+		owner:        parts[0],
+		repo:         parts[1],
+		relativePath: parts[2],
+	}
+}
+
 func resolveS3VectorRegion(cfg *types.Config) string {
 	if s3VectorRegion != "" {
 		return s3VectorRegion

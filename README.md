@@ -34,7 +34,8 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 
 ## Features
 
-- **Vectorization**: Convert source files (markdown and CSV) to embeddings using Amazon Bedrock
+- **Vectorization**: Convert source files (markdown and CSV) from local directories, S3, or GitHub repositories to embeddings using Amazon Bedrock
+- **GitHub Data Source**: Clone GitHub repositories and vectorize their markdown/CSV files with auto-generated metadata
 - **S3 Vector Integration**: Store generated vectors in Amazon S3 Vectors
 - **Hybrid Search**: Combined BM25 + vector search using OpenSearch
 - **Slack Search Integration**: Blend document results with Slack conversations via an iterative enrichment pipeline
@@ -99,6 +100,7 @@ graph LR
         MD[Markdown Files]
         CSV[CSV Files]
         S3[Amazon S3 Bucket]
+        GH[GitHub Repositories]
     end
 
     Sources -->|Vectorize| VE[Amazon S3 Vectors]
@@ -420,6 +422,9 @@ OPENSEARCH_ENDPOINT=your_opensearch_endpoint
 OPENSEARCH_INDEX=your_opensearch_index
 OPENSEARCH_REGION=us-east-1  # default
 
+# GitHub Configuration (optional)
+GITHUB_TOKEN=ghp_your_github_token  # Required for private repositories
+
 # Chat Configuration
 CHAT_MODEL=anthropic.claude-3-5-sonnet-20240620-v1:0  # default
 EXCLUDE_CATEGORIES=Personal,Daily  # Categories to exclude from search
@@ -697,6 +702,7 @@ RAGent vectorize
 - `--s3-prefix`: S3 prefix (directory) to scan (optional, defaults to bucket root)
 - `--s3-vector-region`: AWS region for S3 Vector bucket (overrides S3_VECTOR_REGION, default: us-east-1)
 - `--s3-source-region`: AWS region for source S3 bucket (overrides S3_SOURCE_REGION, default: us-east-1)
+- `--github-repos`: Comma-separated list of GitHub repositories to clone and vectorize (format: `owner/repo`)
 
 **S3 Source Examples:**
 ```bash
@@ -712,6 +718,29 @@ RAGent vectorize --directory ./local-docs --enable-s3 --s3-bucket my-docs-bucket
 # Dry run with S3 source
 RAGent vectorize --enable-s3 --s3-bucket my-docs-bucket --dry-run
 ```
+
+**GitHub Source Examples:**
+```bash
+# Clone and vectorize a single GitHub repository
+RAGent vectorize --github-repos "owner/repo"
+
+# Multiple repositories
+RAGent vectorize --github-repos "org/repo1,org/repo2"
+
+# Combined with local source
+RAGent vectorize --directory ./local-docs --github-repos "owner/repo"
+
+# Dry run with GitHub source
+RAGent vectorize --github-repos "owner/repo" --dry-run
+
+# Follow mode with GitHub repos (re-clones on each cycle)
+RAGent vectorize --follow --github-repos "owner/repo"
+```
+
+For private repositories, set the `GITHUB_TOKEN` environment variable.
+Metadata is auto-generated from the repository structure: owner name as author, repository name as source, parent directory as category, and a GitHub URL as reference.
+
+For detailed documentation on the GitHub data source feature, see [doc/github.md](doc/github.md).
 
 **Features:**
 - Recursive scanning of markdown and CSV files
@@ -1085,6 +1114,7 @@ RAGent/
 ├── source/               # Source documents (markdown and CSV, prepare before use)
 ├── export/               # Separate export tool for Kibela
 ├── doc/                  # Project documentation
+│   ├── github.md         # GitHub data source guide
 │   ├── mcp-server.md     # MCP Server setup guide
 │   ├── oidc-authentication.md # OIDC authentication guide
 │   ├── filter-configuration.md # Filter configuration guide
