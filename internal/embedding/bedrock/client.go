@@ -50,6 +50,7 @@ type ChatRequest struct {
 	Temperature      float64       `json:"temperature,omitempty"`
 	StopSequences    []string      `json:"stop_sequences,omitempty"`
 	AnthropicVersion string        `json:"anthropic_version,omitempty"`
+	AnthropicBeta    []string      `json:"anthropic_beta,omitempty"`
 	System           string        `json:"system,omitempty"`
 }
 
@@ -85,6 +86,39 @@ func NewBedrockClient(awsConfig aws.Config, modelID string) *BedrockClient {
 		modelID: modelID,
 		region:  awsConfig.Region,
 	}
+}
+
+// Supports1MContext returns true if the given model ID supports 1M token context.
+// Only Claude Sonnet/Opus 4.5 and later are supported. Haiku and non-Claude models return false.
+func Supports1MContext(modelID string) bool {
+	lower := strings.ToLower(modelID)
+	// Must be a Claude model
+	if !strings.Contains(lower, "claude") {
+		return false
+	}
+	// Sonnet 4.x where x >= 5
+	if idx := strings.Index(lower, "sonnet-4-"); idx >= 0 {
+		rest := lower[idx+len("sonnet-4-"):]
+		parts := strings.SplitN(rest, "-", 2)
+		if len(parts) > 0 {
+			var v int
+			if _, err := fmt.Sscanf(parts[0], "%d", &v); err == nil && v >= 5 && v < 100 {
+				return true
+			}
+		}
+	}
+	// Opus 4.x where x >= 5
+	if idx := strings.Index(lower, "opus-4-"); idx >= 0 {
+		rest := lower[idx+len("opus-4-"):]
+		parts := strings.SplitN(rest, "-", 2)
+		if len(parts) > 0 {
+			var v int
+			if _, err := fmt.Sscanf(parts[0], "%d", &v); err == nil && v >= 5 && v < 100 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GenerateEmbedding creates an embedding vector from the given text using AWS Bedrock
@@ -174,6 +208,10 @@ func (c *BedrockClient) GenerateChatResponse(ctx context.Context, messages []Cha
 	}
 	if len(systemPrompts) > 0 {
 		request.System = strings.Join(systemPrompts, "\n\n")
+	}
+	if Supports1MContext(c.modelID) {
+		request.AnthropicBeta = []string{"context-1m-2025-08-07"}
+		log.Printf("Applying 1M context beta for model: %s", c.modelID)
 	}
 
 	requestBody, err := json.Marshal(request)
