@@ -118,7 +118,7 @@ type Config struct {
 	AWSS3VectorIndex     string        `json:"aws_s3_vector_index" env:"AWS_S3_VECTOR_INDEX,required=true"`
 	S3VectorRegion       string        `json:"s3_vector_region" env:"S3_VECTOR_REGION,default=us-east-1"`
 	S3SourceRegion       string        `json:"s3_source_region" env:"S3_SOURCE_REGION,default=us-east-1"`
-	ChatModel            string        `json:"chat_model" env:"CHAT_MODEL,default=global.anthropic.claude-sonnet-4-5-20250929-v1:0"`
+	ChatModel            string        `json:"chat_model" env:"CHAT_MODEL,default=global.anthropic.claude-sonnet-4-6"`
 	Concurrency          int           `json:"concurrency" env:"VECTORIZER_CONCURRENCY,default=10"`
 	RetryAttempts        int           `json:"retry_attempts" env:"VECTORIZER_RETRY_ATTEMPTS,default=10"`
 	RetryDelay           time.Duration `json:"retry_delay" env:"VECTORIZER_RETRY_DELAY,default=10s"`
