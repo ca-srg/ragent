@@ -15,11 +15,11 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
-	"github.com/ca-srg/ragent/internal/metadata"
+	"github.com/ca-srg/ragent/internal/ingestion/metadata"
 	"github.com/ca-srg/ragent/internal/pkg/s3vector"
-	"github.com/ca-srg/ragent/internal/scanner"
-	"github.com/ca-srg/ragent/internal/types"
-	"github.com/ca-srg/ragent/internal/vectorizer"
+	"github.com/ca-srg/ragent/internal/ingestion/scanner"
+	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 )
 
 // ServerConfig holds the web UI server configuration
@@ -49,7 +49,7 @@ func DefaultServerConfig() *ServerConfig {
 // Server represents the web UI server
 type Server struct {
 	config       *ServerConfig
-	appConfig    *types.Config
+	appConfig    *appconfig.Config
 	httpServer   *http.Server
 	templates    *TemplateManager
 	state        *VectorizeState
@@ -333,8 +333,8 @@ func (s *Server) runVectorization(ctx context.Context, dryRun bool) error {
 	runID := s.state.StartRun(len(files), dryRun)
 	s.logger.Printf("Starting vectorization run %s with %d files (dry-run: %v)", runID, len(files), dryRun)
 
-	// Convert to types.FileInfo
-	fileInfos := make([]*types.FileInfo, len(files))
+	// Convert to ingestion.FileInfo
+	fileInfos := make([]*ingestion.FileInfo, len(files))
 	copy(fileInfos, files)
 
 	// Run vectorization

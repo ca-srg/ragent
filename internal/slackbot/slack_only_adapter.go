@@ -10,13 +10,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 // SlackOnlySearchAdapter uses only Slack search without OpenSearch
 // This adapter is used in --only-slack mode
 type SlackOnlySearchAdapter struct {
-	cfg         *commontypes.Config
+	cfg         *appconfig.Config
 	maxResults  int
 	slackSearch SlackConversationSearcher
 	chatClient  *bedrock.BedrockClient
@@ -26,7 +26,7 @@ type SlackOnlySearchAdapter struct {
 
 // NewSlackOnlySearchAdapter creates a new Slack-only search adapter
 func NewSlackOnlySearchAdapter(
-	cfg *commontypes.Config,
+	cfg *appconfig.Config,
 	maxResults int,
 	slackSearch SlackConversationSearcher,
 	chatClient *bedrock.BedrockClient,

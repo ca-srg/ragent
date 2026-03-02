@@ -19,7 +19,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/observability"
 	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/query"
 )
 
 var (
@@ -184,7 +184,7 @@ func init() {
 }
 
 // ensure unused import of commontypes is referenced to keep module tidy
-var _ = commontypes.QueryVectorsResult{}
+var _ = query.QueryVectorsResult{}
 
 type slackConversationService interface {
 	Search(ctx context.Context, query string, channels []string) (*slacksearch.SlackSearchResult, error)

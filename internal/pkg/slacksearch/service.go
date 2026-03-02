@@ -11,7 +11,7 @@ import (
 
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/slackbot"
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -51,7 +51,7 @@ type SlackSearchService struct {
 
 // NewSlackSearchService constructs a new SlackSearchService instance.
 func NewSlackSearchService(
-	baseConfig *types.Config,
+	baseConfig *appconfig.Config,
 	botClient *slack.Client,
 	bedrockClient *bedrock.BedrockClient,
 	logger *log.Logger,

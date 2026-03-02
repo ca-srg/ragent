@@ -15,7 +15,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/types"
+	
 )
 
 // Test server setup
@@ -58,7 +58,7 @@ func createTestMCPServer(t testing.TB) (*mcpserver.MCPServer, *mcpserver.HybridS
 
 // Helper function to create HTTP request
 func createJSONRPCRequest(method string, params interface{}, id interface{}) *http.Request {
-	request := types.LegacyMCPToolRequest{
+	request := mcpserver.LegacyMCPToolRequest{
 		JSONRPC: "2.0",
 		Method:  method,
 		Params:  params,
@@ -106,7 +106,7 @@ func TestMCPServer_JSONRPCProtocolCompliance(t *testing.T) {
 			body:               `{"method":"tools/list","id":1}`,
 			contentType:        "application/json",
 			expectedStatusCode: 200,
-			expectedErrorCode:  &[]int{types.MCPErrorInvalidRequest}[0],
+			expectedErrorCode:  &[]int{mcpserver.MCPErrorInvalidRequest}[0],
 		},
 		{
 			name:               "wrong jsonrpc version",
@@ -114,7 +114,7 @@ func TestMCPServer_JSONRPCProtocolCompliance(t *testing.T) {
 			body:               `{"jsonrpc":"1.0","method":"tools/list","id":1}`,
 			contentType:        "application/json",
 			expectedStatusCode: 200,
-			expectedErrorCode:  &[]int{types.MCPErrorInvalidRequest}[0],
+			expectedErrorCode:  &[]int{mcpserver.MCPErrorInvalidRequest}[0],
 		},
 		{
 			name:               "missing method",
@@ -122,7 +122,7 @@ func TestMCPServer_JSONRPCProtocolCompliance(t *testing.T) {
 			body:               `{"jsonrpc":"2.0","id":1}`,
 			contentType:        "application/json",
 			expectedStatusCode: 200,
-			expectedErrorCode:  &[]int{types.MCPErrorInvalidRequest}[0],
+			expectedErrorCode:  &[]int{mcpserver.MCPErrorInvalidRequest}[0],
 		},
 		{
 			name:               "invalid JSON",
@@ -130,7 +130,7 @@ func TestMCPServer_JSONRPCProtocolCompliance(t *testing.T) {
 			body:               `{"jsonrpc":"2.0","method":"tools/list","id":1`,
 			contentType:        "application/json",
 			expectedStatusCode: 200,
-			expectedErrorCode:  &[]int{types.MCPErrorParseError}[0],
+			expectedErrorCode:  &[]int{mcpserver.MCPErrorParseError}[0],
 		},
 		{
 			name:               "wrong HTTP method",
@@ -138,7 +138,7 @@ func TestMCPServer_JSONRPCProtocolCompliance(t *testing.T) {
 			body:               `{"jsonrpc":"2.0","method":"tools/list","id":1}`,
 			contentType:        "application/json",
 			expectedStatusCode: 200,
-			expectedErrorCode:  &[]int{types.MCPErrorMethodNotFound}[0],
+			expectedErrorCode:  &[]int{mcpserver.MCPErrorMethodNotFound}[0],
 		},
 		{
 			name:               "wrong content type",
@@ -146,7 +146,7 @@ func TestMCPServer_JSONRPCProtocolCompliance(t *testing.T) {
 			body:               `{"jsonrpc":"2.0","method":"tools/list","id":1}`,
 			contentType:        "text/plain",
 			expectedStatusCode: 200,
-			expectedErrorCode:  &[]int{types.MCPErrorInvalidRequest}[0],
+			expectedErrorCode:  &[]int{mcpserver.MCPErrorInvalidRequest}[0],
 		},
 	}
 
@@ -248,7 +248,7 @@ func TestMCPServer_ToolsList(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	var response types.MCPToolResponse
+	var response mcpserver.MCPToolResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestMCPServer_ToolsList(t *testing.T) {
 		return
 	}
 
-	var listResult types.MCPToolListResult
+	var listResult mcpserver.MCPToolListResult
 	b, _ := json.Marshal(response.Result)
 	if err := json.Unmarshal(b, &listResult); err != nil {
 		t.Fatalf("Failed to parse tools list result: %v", err)
@@ -305,7 +305,7 @@ func TestMCPServer_ToolsList(t *testing.T) {
 func TestMCPServer_ToolCall_ValidRequest(t *testing.T) {
 	server, _ := createTestMCPServer(t)
 
-	params := types.MCPToolCallParams{
+	params := mcpserver.MCPToolCallParams{
 		Name: "hybrid_search",
 		Arguments: map[string]interface{}{
 			"query": "test query",
@@ -338,7 +338,7 @@ func TestMCPServer_ToolCall_ValidRequest(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", httpResp.StatusCode)
 	}
 
-	var response types.MCPToolResponse
+	var response mcpserver.MCPToolResponse
 	if err := json.NewDecoder(httpResp.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -365,9 +365,9 @@ func TestMCPServer_ToolCall_ValidRequest(t *testing.T) {
 
 	// If there's an error, it should be a tool execution error, not a protocol error
 	if response.Error != nil {
-		if response.Error.Code == types.MCPErrorMethodNotFound ||
-			response.Error.Code == types.MCPErrorInvalidRequest ||
-			response.Error.Code == types.MCPErrorParseError {
+		if response.Error.Code == mcpserver.MCPErrorMethodNotFound ||
+			response.Error.Code == mcpserver.MCPErrorInvalidRequest ||
+			response.Error.Code == mcpserver.MCPErrorParseError {
 			t.Errorf("Should not get protocol error for valid tool call: %v", response.Error)
 		}
 	}
@@ -384,22 +384,22 @@ func TestMCPServer_ToolCall_InvalidRequests(t *testing.T) {
 		{
 			name:              "missing tool name",
 			params:            map[string]interface{}{"arguments": map[string]interface{}{"query": "test"}},
-			expectedErrorCode: types.MCPErrorInvalidParams,
+			expectedErrorCode: mcpserver.MCPErrorInvalidParams,
 		},
 		{
 			name:              "empty tool name",
-			params:            types.MCPToolCallParams{Name: "", Arguments: map[string]interface{}{"query": "test"}},
-			expectedErrorCode: types.MCPErrorInvalidParams,
+			params:            mcpserver.MCPToolCallParams{Name: "", Arguments: map[string]interface{}{"query": "test"}},
+			expectedErrorCode: mcpserver.MCPErrorInvalidParams,
 		},
 		{
 			name:              "non-existent tool",
-			params:            types.MCPToolCallParams{Name: "non_existent_tool", Arguments: map[string]interface{}{"query": "test"}},
-			expectedErrorCode: types.MCPErrorInternalError,
+			params:            mcpserver.MCPToolCallParams{Name: "non_existent_tool", Arguments: map[string]interface{}{"query": "test"}},
+			expectedErrorCode: mcpserver.MCPErrorInternalError,
 		},
 		{
 			name:              "invalid parameters format",
 			params:            "invalid_params",
-			expectedErrorCode: types.MCPErrorInvalidParams,
+			expectedErrorCode: mcpserver.MCPErrorInvalidParams,
 		},
 	}
 
@@ -430,7 +430,7 @@ func TestMCPServer_ToolCall_InvalidRequests(t *testing.T) {
 				t.Errorf("Expected status 200, got %d", httpResp.StatusCode)
 			}
 
-			var response types.MCPToolResponse
+			var response mcpserver.MCPToolResponse
 			if err := json.NewDecoder(httpResp.Body).Decode(&response); err != nil {
 				t.Fatalf("Failed to parse response: %v", err)
 			}
@@ -474,7 +474,7 @@ func TestMCPServer_UnknownMethod(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	var response types.MCPToolResponse
+	var response mcpserver.MCPToolResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -484,8 +484,8 @@ func TestMCPServer_UnknownMethod(t *testing.T) {
 		return
 	}
 
-	if response.Error.Code != types.MCPErrorMethodNotFound {
-		t.Errorf("Expected error code %d for unknown method, got %d", types.MCPErrorMethodNotFound, response.Error.Code)
+	if response.Error.Code != mcpserver.MCPErrorMethodNotFound {
+		t.Errorf("Expected error code %d for unknown method, got %d", mcpserver.MCPErrorMethodNotFound, response.Error.Code)
 	}
 
 	if !strings.Contains(response.Error.Message, "unknown/method") {
@@ -607,7 +607,7 @@ func TestMCPServer_ConcurrentRequests(t *testing.T) {
 				return
 			}
 
-			var response types.MCPToolResponse
+			var response mcpserver.MCPToolResponse
 			if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 				results <- fmt.Errorf("request %d: failed to parse response: %v", id, err)
 				return
@@ -695,7 +695,7 @@ func BenchmarkMCPServer_ToolsList(b *testing.B) {
 func BenchmarkMCPServer_ToolCall(b *testing.B) {
 	server, _ := createTestMCPServer(b)
 
-	params := types.MCPToolCallParams{
+	params := mcpserver.MCPToolCallParams{
 		Name: "hybrid_search",
 		Arguments: map[string]interface{}{
 			"query": "benchmark query",

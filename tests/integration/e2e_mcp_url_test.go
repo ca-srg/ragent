@@ -10,7 +10,7 @@ import (
 
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/types"
+	
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -144,7 +144,7 @@ func TestHybridSearchToolAdapter_URLAwareMode(t *testing.T) {
 			require.NotNil(t, result)
 			require.NotEmpty(t, result.Content)
 
-			var response types.HybridSearchResponse
+			var response mcpserver.HybridSearchResponse
 			require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &response))
 			assert.Equal(t, tc.expectedMethod, response.SearchMethod)
 			assert.Equal(t, tc.expectedURLDetected, response.URLDetected)

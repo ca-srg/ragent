@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/slack-go/slack"
 )
 
@@ -31,7 +31,7 @@ type SearchOptions struct {
 
 // HybridSearchAdapter uses OpenSearch Hybrid + Bedrock embedding
 type HybridSearchAdapter struct {
-	cfg         *commontypes.Config
+	cfg         *appconfig.Config
 	maxResults  int
 	slackSearch SlackConversationSearcher
 	slackClient *slack.Client
@@ -40,7 +40,7 @@ type HybridSearchAdapter struct {
 	awsCfg   *aws.Config
 }
 
-func NewHybridSearchAdapter(cfg *commontypes.Config, maxResults int, slackSearch SlackConversationSearcher, awsCfg *aws.Config) *HybridSearchAdapter {
+func NewHybridSearchAdapter(cfg *appconfig.Config, maxResults int, slackSearch SlackConversationSearcher, awsCfg *aws.Config) *HybridSearchAdapter {
 	if maxResults <= 0 {
 		maxResults = 5
 	}

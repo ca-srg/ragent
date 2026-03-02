@@ -31,10 +31,10 @@ go test ./...
 go test -v ./...
 
 # Run single test by name
-go test -v -run TestSearcherSearchSuccessWithFilters ./internal/slacksearch/...
+go test -v -run TestSearcherSearchSuccessWithFilters ./internal/pkg/slacksearch/...
 
 # Run tests in specific package
-go test ./internal/opensearch/...
+go test ./internal/pkg/opensearch/...
 
 # Run tests with coverage
 go test -cover ./...
@@ -67,7 +67,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/slack-go/slack"
 
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/ingestion"
 )
 ```
 
@@ -127,15 +127,29 @@ Use `testify` for assertions and mocks. Test structure: Arrange/Act/Assert patte
 ```
 cmd/              # CLI command definitions (cobra)
 internal/
-  config/         # Configuration loading and validation
-  types/          # Shared type definitions
-  opensearch/     # OpenSearch client and queries
-  embedding/      # Embedding generation (Bedrock)
-  slacksearch/    # Slack search pipeline
-  slackbot/       # Slack Bot integration
-  mcpserver/      # MCP Server implementation
-  scanner/        # File scanning utilities
-  filter/         # Search filter logic
+  pkg/            # Shared infrastructure (feature-agnostic)
+    config/       # Config struct (91 fields)
+    embedding/
+      bedrock/    # Amazon Bedrock client
+    opensearch/   # OpenSearch client and queries
+    slacksearch/  # Slack search service
+    search/       # HybridSearchService
+    s3vector/     # S3 Vector client
+    metrics/      # Metrics collection
+    observability/ # OpenTelemetry
+    ipc/          # Inter-process communication
+  ingestion/      # vectorize/list/recreate-index slice
+    csv/
+    hashstore/
+    metadata/
+    scanner/
+    spreadsheet/
+    vectorizer/
+  query/          # query/chat slice
+    filter/
+  slackbot/       # slack-bot slice
+  mcpserver/      # mcp-server slice
+  webui/          # webui slice
 ```
 
 ## Documentation Rules

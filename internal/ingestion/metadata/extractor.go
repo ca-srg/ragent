@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/ingestion"
 	"gopkg.in/yaml.v3"
 )
 
 // Type alias for DocumentMetadata
-type DocumentMetadata = types.DocumentMetadata
+type DocumentMetadata = ingestion.DocumentMetadata
 
 // MetadataExtractor implements the MetadataExtractor interface
 type MetadataExtractor struct{}

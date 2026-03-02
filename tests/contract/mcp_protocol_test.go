@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -29,7 +29,7 @@ func testJSONRPCBaseStructure(t *testing.T) {
 	}{
 		{
 			name: "MCPToolRequest has required JSON-RPC fields",
-			message: types.LegacyMCPToolRequest{
+			message: mcpserver.LegacyMCPToolRequest{
 				JSONRPC: "2.0",
 				ID:      "test-1",
 				Method:  "tools/list",
@@ -43,7 +43,7 @@ func testJSONRPCBaseStructure(t *testing.T) {
 		},
 		{
 			name: "MCPToolResponse has required JSON-RPC fields",
-			message: types.MCPToolResponse{
+			message: mcpserver.MCPToolResponse{
 				JSONRPC: "2.0",
 				ID:      "test-1",
 				Result:  map[string]interface{}{"test": "result"},
@@ -114,7 +114,7 @@ func testToolDefinitionSchema(t *testing.T) {
 		_ = json.Unmarshal(b, &schema)
 	}
 
-	toolDef := types.MCPToolDefinition{
+	toolDef := mcpserver.MCPToolDefinition{
 		Name:        "hybrid_search",
 		Description: "Perform hybrid search using BM25 + vector search",
 		InputSchema: &schema,
@@ -200,12 +200,12 @@ func testToolDefinitionSchema(t *testing.T) {
 func testRequestMessageFormat(t *testing.T) {
 	tests := []struct {
 		name    string
-		request types.LegacyMCPToolRequest
+		request mcpserver.LegacyMCPToolRequest
 		valid   bool
 	}{
 		{
 			name: "valid tools/list request",
-			request: types.LegacyMCPToolRequest{
+			request: mcpserver.LegacyMCPToolRequest{
 				JSONRPC: "2.0",
 				ID:      "req-1",
 				Method:  "tools/list",
@@ -215,11 +215,11 @@ func testRequestMessageFormat(t *testing.T) {
 		},
 		{
 			name: "valid tools/call request",
-			request: types.LegacyMCPToolRequest{
+			request: mcpserver.LegacyMCPToolRequest{
 				JSONRPC: "2.0",
 				ID:      "req-2",
 				Method:  "tools/call",
-				Params: types.MCPToolCallParams{
+				Params: mcpserver.MCPToolCallParams{
 					Name:      "hybrid_search",
 					Arguments: map[string]interface{}{"query": "test"},
 				},
@@ -228,7 +228,7 @@ func testRequestMessageFormat(t *testing.T) {
 		},
 		{
 			name: "invalid jsonrpc version",
-			request: types.LegacyMCPToolRequest{
+			request: mcpserver.LegacyMCPToolRequest{
 				JSONRPC: "1.0",
 				ID:      "req-3",
 				Method:  "tools/list",
@@ -237,7 +237,7 @@ func testRequestMessageFormat(t *testing.T) {
 		},
 		{
 			name: "missing method",
-			request: types.LegacyMCPToolRequest{
+			request: mcpserver.LegacyMCPToolRequest{
 				JSONRPC: "2.0",
 				ID:      "req-4",
 				Method:  "",
@@ -295,12 +295,12 @@ func testRequestMessageFormat(t *testing.T) {
 func testResponseMessageFormat(t *testing.T) {
 	tests := []struct {
 		name     string
-		response types.MCPToolResponse
+		response mcpserver.MCPToolResponse
 		hasError bool
 	}{
 		{
 			name: "successful response",
-			response: types.MCPToolResponse{
+			response: mcpserver.MCPToolResponse{
 				JSONRPC: "2.0",
 				ID:      "resp-1",
 				Result:  map[string]interface{}{"tools": []interface{}{}},
@@ -310,12 +310,12 @@ func testResponseMessageFormat(t *testing.T) {
 		},
 		{
 			name: "error response",
-			response: types.MCPToolResponse{
+			response: mcpserver.MCPToolResponse{
 				JSONRPC: "2.0",
 				ID:      "resp-2",
 				Result:  nil,
-				Error: &types.MCPError{
-					Code:    types.MCPErrorMethodNotFound,
+				Error: &mcpserver.MCPError{
+					Code:    mcpserver.MCPErrorMethodNotFound,
 					Message: "Method not found",
 					Data:    nil,
 				},
@@ -379,35 +379,35 @@ func testResponseMessageFormat(t *testing.T) {
 func testErrorFormat(t *testing.T) {
 	tests := []struct {
 		name      string
-		mcpError  types.MCPError
+		mcpError  mcpserver.MCPError
 		errorCode int
 	}{
 		{
 			name: "parse error",
-			mcpError: types.MCPError{
-				Code:    types.MCPErrorParseError,
+			mcpError: mcpserver.MCPError{
+				Code:    mcpserver.MCPErrorParseError,
 				Message: "Parse error",
 				Data:    nil,
 			},
-			errorCode: types.MCPErrorParseError,
+			errorCode: mcpserver.MCPErrorParseError,
 		},
 		{
 			name: "invalid request error",
-			mcpError: types.MCPError{
-				Code:    types.MCPErrorInvalidRequest,
+			mcpError: mcpserver.MCPError{
+				Code:    mcpserver.MCPErrorInvalidRequest,
 				Message: "Invalid request",
 				Data:    "Additional error data",
 			},
-			errorCode: types.MCPErrorInvalidRequest,
+			errorCode: mcpserver.MCPErrorInvalidRequest,
 		},
 		{
 			name: "method not found error",
-			mcpError: types.MCPError{
-				Code:    types.MCPErrorMethodNotFound,
+			mcpError: mcpserver.MCPError{
+				Code:    mcpserver.MCPErrorMethodNotFound,
 				Message: "Method not found",
 				Data:    nil,
 			},
-			errorCode: types.MCPErrorMethodNotFound,
+			errorCode: mcpserver.MCPErrorMethodNotFound,
 		},
 	}
 
@@ -443,11 +443,11 @@ func testErrorFormat(t *testing.T) {
 
 			// Verify standard JSON-RPC error codes
 			errorCodes := []int{
-				types.MCPErrorParseError,
-				types.MCPErrorInvalidRequest,
-				types.MCPErrorMethodNotFound,
-				types.MCPErrorInvalidParams,
-				types.MCPErrorInternalError,
+				mcpserver.MCPErrorParseError,
+				mcpserver.MCPErrorInvalidRequest,
+				mcpserver.MCPErrorMethodNotFound,
+				mcpserver.MCPErrorInvalidParams,
+				mcpserver.MCPErrorInternalError,
 			}
 
 			validCode := false
@@ -479,7 +479,7 @@ func testToolListResponse(t *testing.T) {
 	}); err == nil {
 		_ = json.Unmarshal(b, &schema)
 	}
-	toolDefs := []types.MCPToolDefinition{
+	toolDefs := []mcpserver.MCPToolDefinition{
 		{
 			Name:        "hybrid_search",
 			Description: "Hybrid search tool",
@@ -487,11 +487,11 @@ func testToolListResponse(t *testing.T) {
 		},
 	}
 
-	listResult := types.MCPToolListResult{
+	listResult := mcpserver.MCPToolListResult{
 		Tools: toolDefs,
 	}
 
-	response := types.MCPToolResponse{
+	response := mcpserver.MCPToolResponse{
 		JSONRPC: "2.0",
 		ID:      "list-1",
 		Result:  listResult,
@@ -548,8 +548,8 @@ func testToolListResponse(t *testing.T) {
 }
 
 func testToolCallResponse(t *testing.T) {
-	callResult := types.MCPToolCallResult{
-		Content: []types.MCPContent{
+	callResult := mcpserver.MCPToolCallResult{
+		Content: []mcpserver.MCPContent{
 			{
 				Type: "text",
 				Text: "Search completed successfully",
@@ -558,7 +558,7 @@ func testToolCallResponse(t *testing.T) {
 		IsError: false,
 	}
 
-	response := types.MCPToolResponse{
+	response := mcpserver.MCPToolResponse{
 		JSONRPC: "2.0",
 		ID:      "call-1",
 		Result:  callResult,
@@ -630,11 +630,11 @@ func TestMCPErrorCodeValues(t *testing.T) {
 	}
 
 	actualCodes := map[string]int{
-		"MCPErrorParseError":     types.MCPErrorParseError,
-		"MCPErrorInvalidRequest": types.MCPErrorInvalidRequest,
-		"MCPErrorMethodNotFound": types.MCPErrorMethodNotFound,
-		"MCPErrorInvalidParams":  types.MCPErrorInvalidParams,
-		"MCPErrorInternalError":  types.MCPErrorInternalError,
+		"MCPErrorParseError":     mcpserver.MCPErrorParseError,
+		"MCPErrorInvalidRequest": mcpserver.MCPErrorInvalidRequest,
+		"MCPErrorMethodNotFound": mcpserver.MCPErrorMethodNotFound,
+		"MCPErrorInvalidParams":  mcpserver.MCPErrorInvalidParams,
+		"MCPErrorInternalError":  mcpserver.MCPErrorInternalError,
 	}
 
 	for name, expectedCode := range expectedCodes {
@@ -651,7 +651,7 @@ func TestMCPContentTypeValidation(t *testing.T) {
 
 	for _, contentType := range validContentTypes {
 		t.Run("content_type_"+contentType, func(t *testing.T) {
-			content := types.MCPContent{
+			content := mcpserver.MCPContent{
 				Type: contentType,
 				Text: "test content",
 			}
@@ -681,7 +681,7 @@ func TestMCPJSONSerialization(t *testing.T) {
 	}{
 		{
 			name: "MCPToolRequest",
-			data: types.LegacyMCPToolRequest{
+			data: mcpserver.LegacyMCPToolRequest{
 				JSONRPC: "2.0",
 				ID:      "test",
 				Method:  "tools/list",
@@ -690,7 +690,7 @@ func TestMCPJSONSerialization(t *testing.T) {
 		},
 		{
 			name: "MCPToolResponse",
-			data: types.MCPToolResponse{
+			data: mcpserver.MCPToolResponse{
 				JSONRPC: "2.0",
 				ID:      "test",
 				Result:  map[string]interface{}{"test": "value"},
@@ -699,8 +699,8 @@ func TestMCPJSONSerialization(t *testing.T) {
 		},
 		{
 			name: "MCPError",
-			data: types.MCPError{
-				Code:    types.MCPErrorInvalidRequest,
+			data: mcpserver.MCPError{
+				Code:    mcpserver.MCPErrorInvalidRequest,
 				Message: "Test error",
 				Data:    "error data",
 			},
@@ -745,7 +745,7 @@ func TestMethodNameCompliance(t *testing.T) {
 
 	for _, method := range validMethods {
 		t.Run("method_"+strings.ReplaceAll(method, "/", "_"), func(t *testing.T) {
-			request := types.LegacyMCPToolRequest{
+			request := mcpserver.LegacyMCPToolRequest{
 				JSONRPC: "2.0",
 				ID:      "test",
 				Method:  method,

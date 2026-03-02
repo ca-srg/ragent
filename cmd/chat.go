@@ -19,7 +19,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/search"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	
 )
 
 var (
@@ -41,7 +41,7 @@ type hybridSearchInitializer interface {
 	Search(ctx context.Context, request *search.SearchRequest) (*search.SearchResponse, error)
 }
 
-var newHybridSearchServiceFunc = func(cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) (hybridSearchInitializer, error) {
+var newHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient *bedrock.BedrockClient) (hybridSearchInitializer, error) {
 	return search.NewHybridSearchService(cfg, embeddingClient, nil, nil)
 }
 
@@ -142,7 +142,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	return startChatLoop(chatClient, embeddingClient, cfg, awsConfig)
 }
 
-func startChatLoop(chatClient chatResponder, embeddingClient *bedrock.BedrockClient, cfg *commontypes.Config, awsCfg aws.Config) error {
+func startChatLoop(chatClient chatResponder, embeddingClient *bedrock.BedrockClient, cfg *appconfig.Config, awsCfg aws.Config) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	var conversationHistory []bedrock.ChatMessage
 
@@ -192,7 +192,7 @@ func startChatLoop(chatClient chatResponder, embeddingClient *bedrock.BedrockCli
 	return scanner.Err()
 }
 
-func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient chatResponder, embeddingClient *bedrock.BedrockClient, cfg *commontypes.Config, awsCfg aws.Config, slackEnabled bool) (string, error) {
+func generateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient chatResponder, embeddingClient *bedrock.BedrockClient, cfg *appconfig.Config, awsCfg aws.Config, slackEnabled bool) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -384,7 +384,7 @@ func printChatHelp() {
 }
 
 // validateOpenSearch performs a quick connectivity check
-func validateOpenSearch(ctx context.Context, cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) error {
+func validateOpenSearch(ctx context.Context, cfg *appconfig.Config, embeddingClient *bedrock.BedrockClient) error {
 	osConfig, err := opensearch.NewConfigFromTypes(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create OpenSearch config: %w", err)
@@ -407,7 +407,7 @@ func validateOpenSearch(ctx context.Context, cfg *commontypes.Config, embeddingC
 // Removed OpenSearch-only path; chat uses hybrid search exclusively
 
 // getIndexNameForChat returns the index name for chat queries based on search mode
-func getIndexNameForChat(cfg *commontypes.Config, searchMode string) string {
+func getIndexNameForChat(cfg *appconfig.Config, searchMode string) string {
 	switch searchMode {
 	case "opensearch", "hybrid":
 		// Use OpenSearch index for OpenSearch-based searches

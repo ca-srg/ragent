@@ -10,28 +10,28 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/mcpserver"
-	"github.com/ca-srg/ragent/internal/types"
+	
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // Mock tool handler for testing
-func mockToolHandler(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
-	return &types.MCPToolCallResult{
-		Content: []types.MCPContent{{Type: "text", Text: "mock result"}},
+func mockToolHandler(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
+	return &mcpserver.MCPToolCallResult{
+		Content: []mcpserver.MCPContent{{Type: "text", Text: "mock result"}},
 		IsError: false,
 	}, nil
 }
 
 // Error tool handler for testing error scenarios
-func errorToolHandler(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+func errorToolHandler(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
 	return nil, errors.New("mock error")
 }
 
 // Slow tool handler for testing timeouts
-func slowToolHandler(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+func slowToolHandler(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
 	time.Sleep(100 * time.Millisecond)
-	return &types.MCPToolCallResult{
-		Content: []types.MCPContent{{Type: "text", Text: "slow result"}},
+	return &mcpserver.MCPToolCallResult{
+		Content: []mcpserver.MCPContent{{Type: "text", Text: "slow result"}},
 		IsError: false,
 	}, nil
 }
@@ -50,7 +50,7 @@ func TestNewToolRegistry(t *testing.T) {
 func TestToolRegistry_RegisterTool(t *testing.T) {
 	registry := mcpserver.NewToolRegistry()
 
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "test_tool",
 		Description: "A test tool",
 		InputSchema: &jsonschema.Schema{Type: "object"},
@@ -59,7 +59,7 @@ func TestToolRegistry_RegisterTool(t *testing.T) {
 	tests := []struct {
 		name         string
 		internalName string
-		definition   types.MCPToolDefinition
+		definition   mcpserver.MCPToolDefinition
 		handler      mcpserver.ToolHandler
 		expectError  bool
 	}{
@@ -116,7 +116,7 @@ func TestToolRegistry_RegisterToolWithEnvVarNaming(t *testing.T) {
 
 	registry := mcpserver.NewToolRegistry()
 
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "test_tool", // This should be overridden
 		Description: "A test tool",
 		InputSchema: nil,
@@ -156,7 +156,7 @@ func TestToolRegistry_RegisterToolWithPrefix(t *testing.T) {
 
 	registry := mcpserver.NewToolRegistry()
 
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "test_tool",
 		Description: "A test tool",
 		InputSchema: nil,
@@ -180,7 +180,7 @@ func TestToolRegistry_RegisterToolWithPrefix(t *testing.T) {
 func TestToolRegistry_UnregisterTool(t *testing.T) {
 	registry := mcpserver.NewToolRegistry()
 
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "test_tool",
 		Description: "A test tool",
 		InputSchema: nil,
@@ -217,13 +217,13 @@ func TestToolRegistry_ExecuteTool(t *testing.T) {
 	registry := mcpserver.NewToolRegistry()
 
 	// Register test tools
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "test_tool",
 		Description: "A test tool",
 		InputSchema: nil,
 	}
 
-	errorDefinition := types.MCPToolDefinition{
+	errorDefinition := mcpserver.MCPToolDefinition{
 		Name:        "error_tool",
 		Description: "An error tool",
 		InputSchema: nil,
@@ -288,7 +288,7 @@ func TestToolRegistry_ListTools(t *testing.T) {
 	}
 
 	// Register some tools
-	definitions := []types.MCPToolDefinition{
+	definitions := []mcpserver.MCPToolDefinition{
 		{Name: "tool1", Description: "Tool 1", InputSchema: nil},
 		{Name: "tool2", Description: "Tool 2", InputSchema: nil},
 		{Name: "tool3", Description: "Tool 3", InputSchema: nil},
@@ -327,7 +327,7 @@ func TestToolRegistry_ListTools(t *testing.T) {
 func TestToolRegistry_GetTool(t *testing.T) {
 	registry := mcpserver.NewToolRegistry()
 
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "test_tool",
 		Description: "A test tool",
 		InputSchema: nil,
@@ -359,7 +359,7 @@ func TestToolRegistry_GetTool(t *testing.T) {
 func TestToolRegistry_HasTool(t *testing.T) {
 	registry := mcpserver.NewToolRegistry()
 
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "test_tool",
 		Description: "A test tool",
 		InputSchema: nil,
@@ -402,7 +402,7 @@ func TestToolRegistry_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < numOperationsPerGoroutine; j++ {
 				toolName := fmt.Sprintf("tool_%d_%d", id, j)
-				definition := types.MCPToolDefinition{
+				definition := mcpserver.MCPToolDefinition{
 					Name:        toolName,
 					Description: "Concurrent test tool",
 					InputSchema: nil,
@@ -464,7 +464,7 @@ func TestToolRegistry_ConcurrentRegistrationAndUnregistration(t *testing.T) {
 	// Pre-register some tools
 	for i := 0; i < 50; i++ {
 		toolName := fmt.Sprintf("tool_%d", i)
-		definition := types.MCPToolDefinition{
+		definition := mcpserver.MCPToolDefinition{
 			Name:        toolName,
 			Description: "Test tool",
 			InputSchema: nil,
@@ -486,7 +486,7 @@ func TestToolRegistry_ConcurrentRegistrationAndUnregistration(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
 				toolName := fmt.Sprintf("new_tool_%d_%d", id, j)
-				definition := types.MCPToolDefinition{
+				definition := mcpserver.MCPToolDefinition{
 					Name:        toolName,
 					Description: "New test tool",
 					InputSchema: nil,
@@ -522,7 +522,7 @@ func TestToolRegistry_ConcurrentRegistrationAndUnregistration(t *testing.T) {
 func TestToolRegistry_ExecuteToolTimeout(t *testing.T) {
 	registry := mcpserver.NewToolRegistry()
 
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "slow_tool",
 		Description: "A slow tool",
 		InputSchema: nil,
@@ -545,12 +545,12 @@ func TestToolRegistry_ExecuteToolTimeout(t *testing.T) {
 func TestToolRegistry_ValidateToolDefinition(t *testing.T) {
 	tests := []struct {
 		name        string
-		definition  types.MCPToolDefinition
+		definition  mcpserver.MCPToolDefinition
 		expectError bool
 	}{
 		{
 			name: "valid definition",
-			definition: types.MCPToolDefinition{
+			definition: mcpserver.MCPToolDefinition{
 				Name:        "valid_tool",
 				Description: "A valid tool",
 				InputSchema: &jsonschema.Schema{Type: "object"},
@@ -559,7 +559,7 @@ func TestToolRegistry_ValidateToolDefinition(t *testing.T) {
 		},
 		{
 			name: "empty name",
-			definition: types.MCPToolDefinition{
+			definition: mcpserver.MCPToolDefinition{
 				Name:        "",
 				Description: "Tool with empty name",
 				InputSchema: nil,
@@ -568,7 +568,7 @@ func TestToolRegistry_ValidateToolDefinition(t *testing.T) {
 		},
 		{
 			name: "empty description",
-			definition: types.MCPToolDefinition{
+			definition: mcpserver.MCPToolDefinition{
 				Name:        "tool_no_desc",
 				Description: "",
 				InputSchema: nil,
@@ -577,7 +577,7 @@ func TestToolRegistry_ValidateToolDefinition(t *testing.T) {
 		},
 		{
 			name: "nil input schema",
-			definition: types.MCPToolDefinition{
+			definition: mcpserver.MCPToolDefinition{
 				Name:        "tool_no_schema",
 				Description: "Tool without schema",
 				InputSchema: nil,
@@ -638,7 +638,7 @@ func TestToolRegistry_HelperFunctions(t *testing.T) {
 // Benchmark tests
 func BenchmarkToolRegistry_RegisterTool(b *testing.B) {
 	registry := mcpserver.NewToolRegistry()
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "benchmark_tool",
 		Description: "Benchmark tool",
 		InputSchema: nil,
@@ -656,7 +656,7 @@ func BenchmarkToolRegistry_RegisterTool(b *testing.B) {
 
 func BenchmarkToolRegistry_ExecuteTool(b *testing.B) {
 	registry := mcpserver.NewToolRegistry()
-	definition := types.MCPToolDefinition{
+	definition := mcpserver.MCPToolDefinition{
 		Name:        "benchmark_tool",
 		Description: "Benchmark tool",
 		InputSchema: nil,
@@ -683,7 +683,7 @@ func BenchmarkToolRegistry_ListTools(b *testing.B) {
 	// Pre-register 100 tools
 	for i := 0; i < 100; i++ {
 		toolName := fmt.Sprintf("tool_%d", i)
-		definition := types.MCPToolDefinition{
+		definition := mcpserver.MCPToolDefinition{
 			Name:        toolName,
 			Description: "Benchmark tool",
 			InputSchema: nil,

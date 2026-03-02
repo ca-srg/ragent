@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/ingestion"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +36,7 @@ func TestChangeDetector_DetectChanges_NewFiles(t *testing.T) {
 	detector := NewChangeDetector(store)
 
 	// No existing hashes, all files should be new
-	files := []*types.FileInfo{
+	files := []*ingestion.FileInfo{
 		{Path: "/path/file1.md", ContentHash: "hash1"},
 		{Path: "/path/file2.md", ContentHash: "hash2"},
 	}
@@ -70,7 +70,7 @@ func TestChangeDetector_DetectChanges_ModifiedFiles(t *testing.T) {
 	detector := NewChangeDetector(store)
 
 	// File with different hash
-	files := []*types.FileInfo{
+	files := []*ingestion.FileInfo{
 		{Path: "/path/file1.md", ContentHash: "newHash"},
 	}
 
@@ -106,7 +106,7 @@ func TestChangeDetector_DetectChanges_UnchangedFiles(t *testing.T) {
 	detector := NewChangeDetector(store)
 
 	// File with same hash
-	files := []*types.FileInfo{
+	files := []*ingestion.FileInfo{
 		{Path: "/path/file1.md", ContentHash: "sameHash"},
 	}
 
@@ -140,7 +140,7 @@ func TestChangeDetector_DetectChanges_DeletedFiles(t *testing.T) {
 	detector := NewChangeDetector(store)
 
 	// Empty file list = all existing files are deleted
-	files := []*types.FileInfo{}
+	files := []*ingestion.FileInfo{}
 
 	result, err := detector.DetectChanges(ctx, []string{"local"}, files)
 	require.NoError(t, err)
@@ -173,7 +173,7 @@ func TestChangeDetector_DetectChanges_MixedChanges(t *testing.T) {
 	detector := NewChangeDetector(store)
 
 	// Current files: unchanged, modified, and new (deleted is missing)
-	files := []*types.FileInfo{
+	files := []*ingestion.FileInfo{
 		{Path: "/path/unchanged.md", ContentHash: "hash1"},  // unchanged
 		{Path: "/path/modified.md", ContentHash: "newHash"}, // modified
 		{Path: "/path/new.md", ContentHash: "hashNew"},      // new
@@ -209,7 +209,7 @@ func TestChangeDetector_FilterFilesToProcess(t *testing.T) {
 
 	detector := NewChangeDetector(store)
 
-	files := []*types.FileInfo{
+	files := []*ingestion.FileInfo{
 		{Path: "/path/unchanged.md", ContentHash: "sameHash", Size: 100},
 		{Path: "/path/new.md", ContentHash: "newHash", Size: 200},
 	}
@@ -245,7 +245,7 @@ func TestChangeDetector_DetectChanges_MixedSourceTypes(t *testing.T) {
 	detector := NewChangeDetector(store)
 
 	// Current files include unchanged local, new local, and modified s3
-	files := []*types.FileInfo{
+	files := []*ingestion.FileInfo{
 		{Path: "/local/file1.md", ContentHash: "localHash1", SourceType: "local"}, // unchanged
 		{Path: "/local/new.md", ContentHash: "newLocalHash", SourceType: "local"}, // new local file
 		{Path: "s3://bucket/file2.md", ContentHash: "s3Hash2", SourceType: "s3"},  // modified s3 file
@@ -281,7 +281,7 @@ func TestChangeDetector_FilterFilesToProcess_MixedSourceTypes(t *testing.T) {
 
 	detector := NewChangeDetector(store)
 
-	files := []*types.FileInfo{
+	files := []*ingestion.FileInfo{
 		{Path: "/local/unchanged.md", ContentHash: "hash1", Size: 100, SourceType: "local"},
 		{Path: "/local/new.md", ContentHash: "newHash", Size: 200, SourceType: "local"},
 		{Path: "s3://bucket/unchanged.md", ContentHash: "hash2", Size: 200, SourceType: "s3"},

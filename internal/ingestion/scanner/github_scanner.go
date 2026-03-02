@@ -12,7 +12,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/ingestion"
 )
 
 type GitHubRepo struct {
@@ -98,8 +98,8 @@ func (g *GitHubScanner) CloneRepository(ctx context.Context, repo GitHubRepo) (s
 	return tmpDir, nil
 }
 
-func (g *GitHubScanner) ScanRepository(ctx context.Context, repo GitHubRepo, repoDir string) ([]*types.FileInfo, error) {
-	var files []*types.FileInfo
+func (g *GitHubScanner) ScanRepository(ctx context.Context, repo GitHubRepo, repoDir string) ([]*ingestion.FileInfo, error) {
+	var files []*ingestion.FileInfo
 
 	err := filepath.WalkDir(repoDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -138,7 +138,7 @@ func (g *GitHubScanner) ScanRepository(ctx context.Context, repo GitHubRepo, rep
 
 		contentStr := string(content)
 
-		fileInfo := &types.FileInfo{
+		fileInfo := &ingestion.FileInfo{
 			Path:        fmt.Sprintf("github://%s/%s/%s", repo.Owner, repo.Name, relPath),
 			Name:        d.Name(),
 			Size:        info.Size(),
@@ -161,8 +161,8 @@ func (g *GitHubScanner) ScanRepository(ctx context.Context, repo GitHubRepo, rep
 	return files, nil
 }
 
-func (g *GitHubScanner) ScanAllRepositories(ctx context.Context) ([]*types.FileInfo, error) {
-	var allFiles []*types.FileInfo
+func (g *GitHubScanner) ScanAllRepositories(ctx context.Context) ([]*ingestion.FileInfo, error) {
+	var allFiles []*ingestion.FileInfo
 
 	for _, repo := range g.repos {
 		repoDir, err := g.CloneRepository(ctx, repo)

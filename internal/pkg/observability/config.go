@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 const (
@@ -30,7 +30,7 @@ type Config struct {
 }
 
 // LoadConfig resolves observability specific configuration from the root config.
-func LoadConfig(cfg *types.Config) (*Config, error) {
+func LoadConfig(cfg *appconfig.Config) (*Config, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("observability: nil root configuration provided")
 	}
@@ -177,7 +177,7 @@ func (c *Config) ensureResourceDefaults() {
 }
 
 // Init initializes OpenTelemetry tracing and metrics based on the root configuration.
-func Init(rootCfg *types.Config) (ShutdownFunc, error) {
+func Init(rootCfg *appconfig.Config) (ShutdownFunc, error) {
 	defaultShutdown := func(context.Context) error { return nil }
 
 	otelCfg, err := LoadConfig(rootCfg)

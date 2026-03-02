@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/ca-srg/ragent/cmd"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -142,7 +142,7 @@ func TestQueryCommandURLAwareSearch(t *testing.T) {
 			}
 
 			restore := cmd.OverrideQueryDependencies(cmd.QueryDependencyOverrides{
-				LoadConfig: cmd.DefaultLoadConfigOverride(&commontypes.Config{
+				LoadConfig: cmd.DefaultLoadConfigOverride(&appconfig.Config{
 					OpenSearchEndpoint: "http://localhost:9200",
 					OpenSearchRegion:   "us-west-2",
 					OpenSearchIndex:    "docs-index",

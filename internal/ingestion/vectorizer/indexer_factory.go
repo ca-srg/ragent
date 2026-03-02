@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/ca-srg/ragent/internal/csv"
+	"github.com/ca-srg/ragent/internal/ingestion/csv"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/types"
+	
 )
 
 // IndexerFactory creates OpenSearch indexers based on configuration
 type IndexerFactory struct {
-	config *types.Config
+	config *Config
 }
 
 // NewIndexerFactory creates a new indexer factory
-func NewIndexerFactory(config *types.Config) *IndexerFactory {
+func NewIndexerFactory(config *Config) *IndexerFactory {
 	return &IndexerFactory{
 		config: config,
 	}
@@ -167,7 +167,7 @@ type ServiceFactory struct {
 }
 
 // NewServiceFactory creates a new service factory
-func NewServiceFactory(config *types.Config) *ServiceFactory {
+func NewServiceFactory(config *Config) *ServiceFactory {
 	return &ServiceFactory{
 		indexerFactory: NewIndexerFactory(config),
 	}

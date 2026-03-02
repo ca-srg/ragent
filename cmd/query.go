@@ -16,7 +16,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	
 )
 
 type QuerySearchClient interface {
@@ -24,7 +24,7 @@ type QuerySearchClient interface {
 	HealthCheck(ctx context.Context) error
 }
 
-type appConfigLoader func() (*commontypes.Config, error)
+type appConfigLoader func() (*appconfig.Config, error)
 type awsConfigLoader func(ctx context.Context, optFns ...func(*config.LoadOptions) error) (aws.Config, error)
 type bedrockClientFactory func(aws.Config, string) opensearch.EmbeddingClient
 type openSearchClientFactory func(*opensearch.Config) (QuerySearchClient, error)
@@ -172,7 +172,7 @@ func runSlackOnlySearch() error {
 	return outputSlackOnlyResults(result, queryText, outputJSON)
 }
 
-func runHybridSearch(ctx context.Context, cfg *commontypes.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient) error {
+func runHybridSearch(ctx context.Context, cfg *appconfig.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient) error {
 	// Fetch messages from Slack URLs in the query (if any)
 	var slackURLMessages []slacksearch.EnrichedMessage
 	urlMessages, err := fetchSlackURLContext(ctx, cfg, queryText)
@@ -201,7 +201,7 @@ func runHybridSearch(ctx context.Context, cfg *commontypes.Config, awsCfg aws.Co
 	return outputCombinedResultsWithURLContext(docResult, slackResult, slackURLMessages, "hybrid")
 }
 
-func runOpenSearchOnly(ctx context.Context, cfg *commontypes.Config, embeddingClient opensearch.EmbeddingClient) error {
+func runOpenSearchOnly(ctx context.Context, cfg *appconfig.Config, embeddingClient opensearch.EmbeddingClient) error {
 	osResult, err := attemptOpenSearchHybrid(ctx, cfg, embeddingClient)
 	if err != nil {
 		return fmt.Errorf("OpenSearch search failed: %w", err)
@@ -209,7 +209,7 @@ func runOpenSearchOnly(ctx context.Context, cfg *commontypes.Config, embeddingCl
 	return outputHybridResults(osResult, "opensearch")
 }
 
-func attemptOpenSearchHybrid(ctx context.Context, cfg *commontypes.Config, embeddingClient opensearch.EmbeddingClient) (*opensearch.HybridSearchResult, error) {
+func attemptOpenSearchHybrid(ctx context.Context, cfg *appconfig.Config, embeddingClient opensearch.EmbeddingClient) (*opensearch.HybridSearchResult, error) {
 	// Validate OpenSearch configuration
 	if cfg.OpenSearchEndpoint == "" {
 		return nil, fmt.Errorf("OpenSearch endpoint not configured")
@@ -264,7 +264,7 @@ func attemptOpenSearchHybrid(ctx context.Context, cfg *commontypes.Config, embed
 	return hybridEngine.Search(ctx, hybridQuery)
 }
 
-func getIndexName(cfg *commontypes.Config) string {
+func getIndexName(cfg *appconfig.Config) string {
 	// Use explicitly provided index name if available
 	if indexName != "" {
 		return indexName

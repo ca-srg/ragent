@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 type SearchError struct {
-	Type       types.ErrorType `json:"type"`
+	Type       appconfig.ErrorType `json:"type"`
 	Message    string          `json:"message"`
 	StatusCode int             `json:"status_code,omitempty"`
 	Retryable  bool            `json:"retryable"`
@@ -31,7 +31,7 @@ func (e *SearchError) IsRetryable() bool {
 	return e.Retryable
 }
 
-func NewSearchError(errType types.ErrorType, message string) *SearchError {
+func NewSearchError(errType appconfig.ErrorType, message string) *SearchError {
 	return &SearchError{
 		Type:      errType,
 		Message:   message,
@@ -40,7 +40,7 @@ func NewSearchError(errType types.ErrorType, message string) *SearchError {
 	}
 }
 
-func NewRetryableSearchError(errType types.ErrorType, message string, retryAfter time.Duration) *SearchError {
+func NewRetryableSearchError(errType appconfig.ErrorType, message string, retryAfter time.Duration) *SearchError {
 	return &SearchError{
 		Type:       errType,
 		Message:    message,
@@ -54,7 +54,7 @@ func ClassifyHTTPError(statusCode int, body string) *SearchError {
 	switch statusCode {
 	case http.StatusUnauthorized:
 		return &SearchError{
-			Type:       types.ErrorTypeValidation,
+			Type:       appconfig.ErrorTypeValidation,
 			Message:    "認証に失敗しました。OpenSearchの認証情報を確認してください。",
 			StatusCode: statusCode,
 			Retryable:  false,
@@ -63,7 +63,7 @@ func ClassifyHTTPError(statusCode int, body string) *SearchError {
 		}
 	case http.StatusForbidden:
 		return &SearchError{
-			Type:       types.ErrorTypeValidation,
+			Type:       appconfig.ErrorTypeValidation,
 			Message:    "アクセスが拒否されました。IAM権限を確認してください。",
 			StatusCode: statusCode,
 			Retryable:  false,
@@ -72,7 +72,7 @@ func ClassifyHTTPError(statusCode int, body string) *SearchError {
 		}
 	case http.StatusNotFound:
 		return &SearchError{
-			Type:       types.ErrorTypeValidation,
+			Type:       appconfig.ErrorTypeValidation,
 			Message:    "指定されたインデックスまたはエンドポイントが見つかりません。",
 			StatusCode: statusCode,
 			Retryable:  false,
@@ -81,7 +81,7 @@ func ClassifyHTTPError(statusCode int, body string) *SearchError {
 		}
 	case http.StatusRequestTimeout:
 		return &SearchError{
-			Type:       types.ErrorTypeNetworkTimeout,
+			Type:       appconfig.ErrorTypeNetworkTimeout,
 			Message:    "リクエストがタイムアウトしました。",
 			StatusCode: statusCode,
 			Retryable:  true,
@@ -95,7 +95,7 @@ func ClassifyHTTPError(statusCode int, body string) *SearchError {
 			retryAfter = 30 * time.Second
 		}
 		return &SearchError{
-			Type:       types.ErrorTypeRateLimit,
+			Type:       appconfig.ErrorTypeRateLimit,
 			Message:    "レート制限に達しました。しばらくしてから再試行してください。",
 			StatusCode: statusCode,
 			Retryable:  true,
@@ -105,7 +105,7 @@ func ClassifyHTTPError(statusCode int, body string) *SearchError {
 		}
 	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable:
 		return &SearchError{
-			Type:       types.ErrorTypeNetworkTimeout,
+			Type:       appconfig.ErrorTypeNetworkTimeout,
 			Message:    "OpenSearchサーバーエラーが発生しました。",
 			StatusCode: statusCode,
 			Retryable:  true,
@@ -115,7 +115,7 @@ func ClassifyHTTPError(statusCode int, body string) *SearchError {
 		}
 	default:
 		return &SearchError{
-			Type:       types.ErrorTypeUnknown,
+			Type:       appconfig.ErrorTypeUnknown,
 			Message:    fmt.Sprintf("予期しないHTTPエラーが発生しました: %s", body),
 			StatusCode: statusCode,
 			Retryable:  statusCode >= 500,
@@ -130,7 +130,7 @@ func ClassifyConnectionError(err error) *SearchError {
 
 	if strings.Contains(errMsg, "timeout") {
 		return &SearchError{
-			Type:       types.ErrorTypeNetworkTimeout,
+			Type:       appconfig.ErrorTypeNetworkTimeout,
 			Message:    "OpenSearchへの接続がタイムアウトしました。",
 			Retryable:  true,
 			RetryAfter: 5 * time.Second,
@@ -141,7 +141,7 @@ func ClassifyConnectionError(err error) *SearchError {
 
 	if strings.Contains(errMsg, "connection refused") {
 		return &SearchError{
-			Type:       types.ErrorTypeValidation,
+			Type:       appconfig.ErrorTypeValidation,
 			Message:    "OpenSearchへの接続が拒否されました。",
 			Retryable:  false,
 			Suggestion: "OpenSearchエンドポイントURLとポートが正しいか確認してください。",
@@ -151,7 +151,7 @@ func ClassifyConnectionError(err error) *SearchError {
 
 	if strings.Contains(errMsg, "no such host") {
 		return &SearchError{
-			Type:       types.ErrorTypeValidation,
+			Type:       appconfig.ErrorTypeValidation,
 			Message:    "OpenSearchホストが見つかりません。",
 			Retryable:  false,
 			Suggestion: "OpenSearchエンドポイントURLのホスト名を確認してください。",
@@ -160,7 +160,7 @@ func ClassifyConnectionError(err error) *SearchError {
 	}
 
 	return &SearchError{
-		Type:       types.ErrorTypeUnknown,
+		Type:       appconfig.ErrorTypeUnknown,
 		Message:    fmt.Sprintf("接続エラー: %v", err),
 		Retryable:  true,
 		RetryAfter: 10 * time.Second,

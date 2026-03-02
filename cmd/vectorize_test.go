@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/ingestion"
+
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 func resetFollowModeState() {
@@ -161,11 +163,11 @@ func TestRunFollowMode_BasicExecution(t *testing.T) {
 
 	var mu sync.Mutex
 	callCount := 0
-	vectorizationRunner = func(ctx context.Context, cfg *types.Config) (*types.ProcessingResult, error) {
+	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*ingestion.ProcessingResult, error) {
 		mu.Lock()
 		callCount++
 		mu.Unlock()
-		return &types.ProcessingResult{ProcessedFiles: 3}, nil
+		return &ingestion.ProcessingResult{ProcessedFiles: 3}, nil
 	}
 
 	followIntervalDuration = 20 * time.Millisecond
@@ -182,7 +184,7 @@ func TestRunFollowMode_BasicExecution(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runFollowMode(ctx, &types.Config{})
+		errCh <- runFollowMode(ctx, &appconfig.Config{})
 	}()
 
 	deadline := time.Now().Add(300 * time.Millisecond)
@@ -243,7 +245,7 @@ func TestRunFollowCycle_SkipWhenProcessing(t *testing.T) {
 	resetFollowModeState()
 	t.Cleanup(resetFollowModeState)
 
-	vectorizationRunner = func(ctx context.Context, cfg *types.Config) (*types.ProcessingResult, error) {
+	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*ingestion.ProcessingResult, error) {
 		t.Fatalf("vectorization runner should not be called when processing flag is set")
 		return nil, nil
 	}
@@ -257,7 +259,7 @@ func TestRunFollowCycle_SkipWhenProcessing(t *testing.T) {
 		log.SetOutput(originalWriter)
 	})
 
-	result, err := runFollowCycleWithIPC(context.Background(), &types.Config{}, nil)
+	result, err := runFollowCycleWithIPC(context.Background(), &appconfig.Config{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

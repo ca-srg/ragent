@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 // SDKServerConfig represents the configuration structure expected by the MCP SDK
@@ -46,11 +46,11 @@ type SDKServerConfig struct {
 
 // ConfigAdapter handles conversion between RAGent Config and SDK configuration
 type ConfigAdapter struct {
-	config *types.Config
+	config *appconfig.Config
 }
 
 // NewConfigAdapter creates a new configuration adapter
-func NewConfigAdapter(config *types.Config) *ConfigAdapter {
+func NewConfigAdapter(config *appconfig.Config) *ConfigAdapter {
 	return &ConfigAdapter{
 		config: config,
 	}

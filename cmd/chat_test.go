@@ -10,7 +10,8 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/search"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,13 +33,13 @@ func TestGenerateChatResponseIncludesSlackContext(t *testing.T) {
 		},
 	}
 
-	newHybridSearchServiceFunc = func(cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) (hybridSearchInitializer, error) {
+	newHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient *bedrock.BedrockClient) (hybridSearchInitializer, error) {
 		stubService.config = cfg
 		return stubService, nil
 	}
 
 	progressCalls := 0
-	slackSearchRunner = func(ctx context.Context, cfg *commontypes.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient, userQuery string, channels []string, progressHandler func(iteration, max int)) (*slacksearch.SlackSearchResult, error) {
+	slackSearchRunner = func(ctx context.Context, cfg *appconfig.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient, userQuery string, channels []string, progressHandler func(iteration, max int)) (*slacksearch.SlackSearchResult, error) {
 		require.Equal(t, "How do we deploy?", userQuery)
 		progressHandler(1, 2)
 		progressHandler(2, 2)
@@ -64,7 +65,7 @@ func TestGenerateChatResponseIncludesSlackContext(t *testing.T) {
 	}
 
 	chatClient := &stubChatClient{response: "All good"}
-	cfg := &commontypes.Config{
+	cfg := &appconfig.Config{
 		SlackSearchEnabled:            true,
 		SlackSearchMaxResults:         5,
 		SlackSearchMaxContextMessages: 10,
@@ -122,17 +123,17 @@ func TestGenerateChatResponseWithoutSlack(t *testing.T) {
 		},
 	}
 
-	newHybridSearchServiceFunc = func(cfg *commontypes.Config, embeddingClient *bedrock.BedrockClient) (hybridSearchInitializer, error) {
+	newHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient *bedrock.BedrockClient) (hybridSearchInitializer, error) {
 		return stubService, nil
 	}
 
-	slackSearchRunner = func(ctx context.Context, cfg *commontypes.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient, userQuery string, channels []string, progressHandler func(int, int)) (*slacksearch.SlackSearchResult, error) {
+	slackSearchRunner = func(ctx context.Context, cfg *appconfig.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient, userQuery string, channels []string, progressHandler func(int, int)) (*slacksearch.SlackSearchResult, error) {
 		t.Fatalf("slackSearchRunner should not be called when Slack disabled")
 		return nil, nil
 	}
 
 	chatClient := &stubChatClient{response: "Done"}
-	cfg := &commontypes.Config{SlackSearchEnabled: false}
+	cfg := &appconfig.Config{SlackSearchEnabled: false}
 	awsCfg := aws.Config{Region: "us-west-2"}
 
 	var resp string
@@ -159,7 +160,7 @@ func TestGenerateChatResponseWithoutSlack(t *testing.T) {
 }
 
 type stubHybridService struct {
-	config      *commontypes.Config
+	config      *appconfig.Config
 	response    *search.SearchResponse
 	initCalled  bool
 	lastRequest *search.SearchRequest

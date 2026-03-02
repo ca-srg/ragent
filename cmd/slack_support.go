@@ -15,7 +15,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	
 	"github.com/slack-go/slack"
 )
 
@@ -23,7 +23,7 @@ var slackSearchRunner = performSlackSearch
 
 func performSlackSearch(
 	ctx context.Context,
-	cfg *commontypes.Config,
+	cfg *appconfig.Config,
 	awsCfg aws.Config,
 	embeddingClient opensearch.EmbeddingClient,
 	userQuery string,
@@ -152,7 +152,7 @@ func humanTimestamp(ts string) string {
 // This function works independently of the Slack search enabled setting.
 func fetchSlackURLContext(
 	ctx context.Context,
-	cfg *commontypes.Config,
+	cfg *appconfig.Config,
 	userQuery string,
 ) ([]slacksearch.EnrichedMessage, error) {
 	// Check if query contains Slack URLs
@@ -246,7 +246,7 @@ func slackURLContextForPrompt(messages []slacksearch.EnrichedMessage) string {
 // This is used in --only-slack mode
 var performSlackOnlySearch = func(
 	ctx context.Context,
-	cfg *commontypes.Config,
+	cfg *appconfig.Config,
 	awsCfg aws.Config,
 	userQuery string,
 	channels []string,

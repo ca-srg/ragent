@@ -16,7 +16,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -231,7 +231,7 @@ func createSDKMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 	t.Helper()
 
 	// Create MCP server configuration from existing config
-	mcpConfig := &types.Config{
+	mcpConfig := &appconfig.Config{
 		S3VectorRegion:     cfg.S3VectorRegion,
 		OpenSearchEndpoint: cfg.OpenSearchEndpoint,
 		OpenSearchRegion:   cfg.OpenSearchRegion,

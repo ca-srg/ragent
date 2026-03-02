@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/csv"
+	"github.com/ca-srg/ragent/internal/ingestion/csv"
 )
 
 // ProgressCallback is called when processing progress is updated

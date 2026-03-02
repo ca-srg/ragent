@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -29,7 +29,7 @@ func TestInitExportsToOTLPHTTP(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	cfg := &types.Config{
+	cfg := &appconfig.Config{
 		OTelEnabled:              true,
 		OTelServiceName:          "ragent-test",
 		OTelExporterOTLPEndpoint: server.URL,

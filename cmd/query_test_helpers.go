@@ -5,7 +5,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 type QueryDependencyOverrides struct {
@@ -49,8 +50,8 @@ func OverrideQueryDependencies(overrides QueryDependencyOverrides) func() {
 }
 
 // Helpers to build default override closures without importing internal types in tests.
-func DefaultLoadConfigOverride(cfg *commontypes.Config, err error) appConfigLoader {
-	return func() (*commontypes.Config, error) {
+func DefaultLoadConfigOverride(cfg *appconfig.Config, err error) appConfigLoader {
+	return func() (*appconfig.Config, error) {
 		return cfg, err
 	}
 }

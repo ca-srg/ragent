@@ -7,12 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
 	env "github.com/netflix/go-env"
 )
-
-// Type alias for Config
-type Config = types.Config
 
 // Load loads configuration from environment variables
 func Load() (*Config, error) {

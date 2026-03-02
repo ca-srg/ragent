@@ -18,7 +18,7 @@ import (
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/search"
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 // E2EMCPClient provides a real MCP client for end-to-end testing
@@ -38,12 +38,12 @@ func NewE2EMCPClient(serverURL string) *E2EMCPClient {
 }
 
 // CallTool calls an MCP tool using real HTTP communication
-func (c *E2EMCPClient) CallTool(ctx context.Context, toolName string, args map[string]interface{}) (*types.MCPToolResponse, *types.MCPToolCallResult, error) {
+func (c *E2EMCPClient) CallTool(ctx context.Context, toolName string, args map[string]interface{}) (*mcpserver.MCPToolResponse, *mcpserver.MCPToolCallResult, error) {
 	// Create MCP tool call request
-	request := types.LegacyMCPToolRequest{
+	request := mcpserver.LegacyMCPToolRequest{
 		JSONRPC: "2.0",
 		Method:  "tools/call",
-		Params: types.MCPToolCallParams{
+		Params: mcpserver.MCPToolCallParams{
 			Name:      toolName,
 			Arguments: args,
 		},
@@ -75,18 +75,18 @@ func (c *E2EMCPClient) CallTool(ctx context.Context, toolName string, args map[s
 	}()
 
 	// Parse response
-	var mcpResponse types.MCPToolResponse
+	var mcpResponse mcpserver.MCPToolResponse
 	if err := json.NewDecoder(resp.Body).Decode(&mcpResponse); err != nil {
 		return nil, nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	// Decode result payload into MCPToolCallResult if present
-	var callResult *types.MCPToolCallResult
+	var callResult *mcpserver.MCPToolCallResult
 	if mcpResponse.Result != nil {
 		// Re-marshal and unmarshal into typed struct
 		b, err := json.Marshal(mcpResponse.Result)
 		if err == nil {
-			var r types.MCPToolCallResult
+			var r mcpserver.MCPToolCallResult
 			if err := json.Unmarshal(b, &r); err == nil {
 				callResult = &r
 			}
@@ -97,8 +97,8 @@ func (c *E2EMCPClient) CallTool(ctx context.Context, toolName string, args map[s
 }
 
 // ListTools lists available MCP tools
-func (c *E2EMCPClient) ListTools(ctx context.Context) (*types.MCPToolResponse, *types.MCPToolListResult, error) {
-	request := types.LegacyMCPToolRequest{
+func (c *E2EMCPClient) ListTools(ctx context.Context) (*mcpserver.MCPToolResponse, *mcpserver.MCPToolListResult, error) {
+	request := mcpserver.LegacyMCPToolRequest{
 		JSONRPC: "2.0",
 		Method:  "tools/list",
 		ID:      "list-" + fmt.Sprintf("%d", time.Now().UnixNano()),
@@ -125,16 +125,16 @@ func (c *E2EMCPClient) ListTools(ctx context.Context) (*types.MCPToolResponse, *
 		}
 	}()
 
-	var mcpResponse types.MCPToolResponse
+	var mcpResponse mcpserver.MCPToolResponse
 	if err := json.NewDecoder(resp.Body).Decode(&mcpResponse); err != nil {
 		return nil, nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	var listResult *types.MCPToolListResult
+	var listResult *mcpserver.MCPToolListResult
 	if mcpResponse.Result != nil {
 		b, err := json.Marshal(mcpResponse.Result)
 		if err == nil {
-			var r types.MCPToolListResult
+			var r mcpserver.MCPToolListResult
 			if err := json.Unmarshal(b, &r); err == nil {
 				listResult = &r
 			}
@@ -414,7 +414,7 @@ func TestE2E_MCPClient_HybridSearchVsChatCommand(t *testing.T) {
 			}
 
 			// Parse MCP response
-			var mcpResult types.HybridSearchResponse
+			var mcpResult mcpserver.HybridSearchResponse
 			if callRes == nil || len(callRes.Content) == 0 {
 				t.Fatalf("Empty MCP tool call result content")
 			}
@@ -498,8 +498,8 @@ func TestE2E_MCPClient_ErrorHandling(t *testing.T) {
 			t.Error("Expected MCP error for invalid tool name")
 		}
 
-		if resp.Error.Code != types.MCPErrorMethodNotFound {
-			t.Errorf("Expected error code %d, got %d", types.MCPErrorMethodNotFound, resp.Error.Code)
+		if resp.Error.Code != mcpserver.MCPErrorMethodNotFound {
+			t.Errorf("Expected error code %d, got %d", mcpserver.MCPErrorMethodNotFound, resp.Error.Code)
 		}
 	})
 
@@ -832,7 +832,7 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 		}
 
 		// Verify SDK server can be created with existing config
-		mcpConfig := &types.Config{
+		mcpConfig := &appconfig.Config{
 			S3VectorRegion:     originalConfig.S3VectorRegion,
 			OpenSearchEndpoint: originalConfig.OpenSearchEndpoint,
 			OpenSearchRegion:   originalConfig.OpenSearchRegion,
@@ -928,7 +928,7 @@ func createSDKE2EServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 	t.Helper()
 
 	// Create MCP server configuration for SDK server
-	mcpConfig := &types.Config{
+	mcpConfig := &appconfig.Config{
 		S3VectorRegion:     cfg.S3VectorRegion,
 		OpenSearchEndpoint: cfg.OpenSearchEndpoint,
 		OpenSearchRegion:   cfg.OpenSearchRegion,

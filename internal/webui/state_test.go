@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/ingestion"
+
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,15 +97,15 @@ func TestVectorizeStateCompleteRun(t *testing.T) {
 	state.StartRun(10, false)
 	state.UpdateProgress(10, 8, 2, "")
 
-	result := &types.ProcessingResult{
+	result := &ingestion.ProcessingResult{
 		ProcessedFiles: 10,
 		SuccessCount:   8,
 		FailureCount:   2,
-		Errors: []types.ProcessingError{
+		Errors: []ingestion.ProcessingError{
 			{
 				Timestamp: time.Now(),
 				FilePath:  "test/error.md",
-				Type:      types.ErrorTypeEmbedding,
+				Type:      appconfig.ErrorTypeEmbedding,
 				Message:   "embedding failed",
 				Retryable: true,
 			},
@@ -130,7 +132,7 @@ func TestVectorizeStateCompleteRunNoRun(t *testing.T) {
 	state := NewVectorizeState(nil)
 
 	// Should not panic when no run is active
-	result := &types.ProcessingResult{
+	result := &ingestion.ProcessingResult{
 		ProcessedFiles: 5,
 	}
 	state.CompleteRun(result)
@@ -199,7 +201,7 @@ func TestVectorizeStateAddError(t *testing.T) {
 	errInfo := ErrorInfo{
 		Timestamp: time.Now(),
 		FilePath:  "test/file.md",
-		ErrorType: types.ErrorTypeEmbedding,
+		ErrorType: appconfig.ErrorTypeEmbedding,
 		Message:   "test error",
 		Retryable: true,
 	}
@@ -233,7 +235,7 @@ func TestVectorizeStateHistoryMaxSize(t *testing.T) {
 	// Add more than maxHistorySize runs
 	for i := 0; i < 110; i++ {
 		state.StartRun(1, false)
-		state.CompleteRun(&types.ProcessingResult{
+		state.CompleteRun(&ingestion.ProcessingResult{
 			ProcessedFiles: 1,
 			SuccessCount:   1,
 		})

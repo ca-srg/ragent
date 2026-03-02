@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
-func NewConfigFromTypes(cfg *types.Config) (*Config, error) {
+func NewConfigFromTypes(cfg *appconfig.Config) (*Config, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}

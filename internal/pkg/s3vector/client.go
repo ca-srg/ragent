@@ -18,7 +18,8 @@ import (
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/query"
 )
 
 const (
@@ -101,7 +102,7 @@ func NewS3VectorService(cfg *S3Config) (*S3VectorService, error) {
 }
 
 // StoreVector saves a vector with its metadata to S3 Vectors
-func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *commontypes.VectorData) error {
+func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *ingestion.VectorData) error {
 	if vectorData == nil {
 		log.Printf("ERROR: vector data is nil")
 		return fmt.Errorf("vector data cannot be nil")
@@ -359,7 +360,7 @@ func (s *S3VectorService) DeleteVector(ctx context.Context, vectorID string) err
 }
 
 // GetVector retrieves a vector from S3 Vectors
-func (s *S3VectorService) GetVector(ctx context.Context, vectorID string) (*commontypes.VectorData, error) {
+func (s *S3VectorService) GetVector(ctx context.Context, vectorID string) (*ingestion.VectorData, error) {
 	if vectorID == "" {
 		return nil, fmt.Errorf("vector ID cannot be empty")
 	}
@@ -386,7 +387,7 @@ func (s *S3VectorService) GetVector(ctx context.Context, vectorID string) (*comm
 }
 
 // BatchStoreVectors stores multiple vectors in a single operation
-func (s *S3VectorService) BatchStoreVectors(ctx context.Context, vectors []*commontypes.VectorData) error {
+func (s *S3VectorService) BatchStoreVectors(ctx context.Context, vectors []*ingestion.VectorData) error {
 	if len(vectors) == 0 {
 		return nil
 	}
@@ -422,7 +423,7 @@ func (s *S3VectorService) GetBucketInfo(ctx context.Context) (map[string]interfa
 }
 
 // QueryVectors performs a similarity search using a query vector
-func (s *S3VectorService) QueryVectors(ctx context.Context, queryVector []float64, topK int, filter map[string]interface{}) (*commontypes.QueryVectorsResult, error) {
+func (s *S3VectorService) QueryVectors(ctx context.Context, queryVector []float64, topK int, filter map[string]interface{}) (*query.QueryVectorsResult, error) {
 	if len(queryVector) == 0 {
 		return nil, fmt.Errorf("query vector cannot be empty")
 	}
@@ -463,14 +464,14 @@ func (s *S3VectorService) QueryVectors(ctx context.Context, queryVector []float6
 	}
 
 	// Convert API result to our result format
-	queryResult := &commontypes.QueryVectorsResult{
-		Results:    make([]commontypes.QueryResult, 0, len(result.Vectors)),
+	queryResult := &query.QueryVectorsResult{
+		Results:    make([]query.QueryResult, 0, len(result.Vectors)),
 		TotalCount: len(result.Vectors),
 		TopK:       topK,
 	}
 
 	for _, vector := range result.Vectors {
-		queryRes := commontypes.QueryResult{}
+		queryRes := query.QueryResult{}
 
 		if vector.Key != nil {
 			queryRes.Key = *vector.Key

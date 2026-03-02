@@ -12,7 +12,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -23,7 +23,7 @@ import (
 
 // HybridSearchService provides reusable hybrid search functionality
 type HybridSearchService struct {
-	config          *types.Config
+	config          *appconfig.Config
 	embeddingClient *bedrock.BedrockClient
 	osClient        *opensearch.Client
 	hybridEngine    *opensearch.HybridSearchEngine
@@ -63,7 +63,7 @@ type SearchResponse struct {
 
 // NewHybridSearchService creates a new hybrid search service
 func NewHybridSearchService(
-	config *types.Config,
+	config *appconfig.Config,
 	embeddingClient *bedrock.BedrockClient,
 	slackClient *slack.Client,
 	slackBedrockClient *bedrock.BedrockClient,

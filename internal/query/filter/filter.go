@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 // BuildExclusionFilter は除外カテゴリを元にS3 Vector用のフィルタを構築します
-func BuildExclusionFilter(cfg *types.Config, userFilter map[string]interface{}) (map[string]interface{}, error) {
+func BuildExclusionFilter(cfg *appconfig.Config, userFilter map[string]interface{}) (map[string]interface{}, error) {
 	if len(cfg.ExcludeCategories) == 0 && len(userFilter) == 0 {
 		return nil, nil
 	}
@@ -42,7 +42,7 @@ func BuildExclusionFilter(cfg *types.Config, userFilter map[string]interface{}) 
 }
 
 // BuildExclusionFilterFromJSON はJSONフィルタクエリと除外カテゴリを統合します
-func BuildExclusionFilterFromJSON(cfg *types.Config, filterQuery string) (map[string]interface{}, error) {
+func BuildExclusionFilterFromJSON(cfg *appconfig.Config, filterQuery string) (map[string]interface{}, error) {
 	var userFilter map[string]interface{}
 
 	// JSONフィルタクエリをパース

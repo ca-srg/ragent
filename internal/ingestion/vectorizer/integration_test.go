@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +48,7 @@ func TestVectorizerService_IntegrationWithMocks(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create service config
-	cfg := &types.Config{
+	cfg := &Config{
 		Concurrency: 2,
 	}
 
@@ -94,7 +94,7 @@ func TestDualBackendProcessing_WithMocks(t *testing.T) {
 			Name:    "file1.md",
 			Path:    "/test/file1.md",
 			Content: "Content 1",
-			Metadata: types.DocumentMetadata{
+			Metadata: DocumentMetadata{
 				Title:     "File 1",
 				Category:  "test",
 				WordCount: 10,
@@ -104,7 +104,7 @@ func TestDualBackendProcessing_WithMocks(t *testing.T) {
 			Name:    "file2.md",
 			Path:    "/test/file2.md",
 			Content: "Content 2",
-			Metadata: types.DocumentMetadata{
+			Metadata: DocumentMetadata{
 				Title:     "File 2",
 				Category:  "test",
 				WordCount: 15,
@@ -163,7 +163,7 @@ func TestDualBackendProcessing_WithMocks(t *testing.T) {
 			var s3Success, osSuccess bool
 
 			// Test S3 operation
-			s3Err := mockS3Client.StoreVector(ctx, &types.VectorData{
+			s3Err := mockS3Client.StoreVector(ctx, &VectorData{
 				ID:        "test-doc",
 				Embedding: []float64{0.1, 0.2, 0.3},
 				Metadata:  testFiles[0].Metadata,
@@ -354,12 +354,12 @@ func TestServiceConfiguration_ValidationWithMocks(t *testing.T) {
 // Helper mock implementations for testing
 
 type MockMetadataExtractor struct {
-	metadata *types.DocumentMetadata
+	metadata *DocumentMetadata
 }
 
 func NewMockMetadataExtractor() *MockMetadataExtractor {
 	return &MockMetadataExtractor{
-		metadata: &types.DocumentMetadata{
+		metadata: &DocumentMetadata{
 			Title:     "Mock Title",
 			Category:  "mock",
 			WordCount: 100,
@@ -368,18 +368,18 @@ func NewMockMetadataExtractor() *MockMetadataExtractor {
 	}
 }
 
-func (m *MockMetadataExtractor) ExtractMetadata(filePath string, content string) (*types.DocumentMetadata, error) {
+func (m *MockMetadataExtractor) ExtractMetadata(filePath string, content string) (*DocumentMetadata, error) {
 	if m.metadata != nil {
 		return m.metadata, nil
 	}
-	return &types.DocumentMetadata{Title: "Default", Category: "default"}, nil
+	return &DocumentMetadata{Title: "Default", Category: "default"}, nil
 }
 
 func (m *MockMetadataExtractor) ParseFrontMatter(content string) (map[string]interface{}, string, error) {
 	return map[string]interface{}{}, content, nil
 }
 
-func (m *MockMetadataExtractor) GenerateKey(metadata *types.DocumentMetadata) string {
+func (m *MockMetadataExtractor) GenerateKey(metadata *DocumentMetadata) string {
 	return fmt.Sprintf("mock-key-%s", metadata.Title)
 }
 

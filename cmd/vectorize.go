@@ -16,16 +16,16 @@ import (
 	"github.com/spf13/cobra"
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
-	"github.com/ca-srg/ragent/internal/csv"
+	"github.com/ca-srg/ragent/internal/ingestion/csv"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/hashstore"
+	"github.com/ca-srg/ragent/internal/ingestion/hashstore"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
-	"github.com/ca-srg/ragent/internal/metadata"
+	"github.com/ca-srg/ragent/internal/ingestion/metadata"
 	"github.com/ca-srg/ragent/internal/pkg/s3vector"
-	"github.com/ca-srg/ragent/internal/scanner"
-	"github.com/ca-srg/ragent/internal/spreadsheet"
-	"github.com/ca-srg/ragent/internal/types"
-	"github.com/ca-srg/ragent/internal/vectorizer"
+	"github.com/ca-srg/ragent/internal/ingestion/scanner"
+	"github.com/ca-srg/ragent/internal/ingestion/spreadsheet"
+	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 )
 
 const (
@@ -164,11 +164,11 @@ func runVectorize(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func executeVectorizationOnce(ctx context.Context, cfg *types.Config) (*types.ProcessingResult, error) {
+func executeVectorizationOnce(ctx context.Context, cfg *appconfig.Config) (*ingestion.ProcessingResult, error) {
 	return executeVectorizationOnceWithProgress(ctx, cfg, currentProgressCallback)
 }
 
-func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config, progressCallback ProgressCallback) (*types.ProcessingResult, error) {
+func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Config, progressCallback ProgressCallback) (*ingestion.ProcessingResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -303,7 +303,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 	}
 
 	// Collect files from all sources
-	var allFiles []*types.FileInfo
+	var allFiles []*ingestion.FileInfo
 
 	// 1. Scan local directory if specified
 	if hasLocalSource {
@@ -396,7 +396,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 
 	if len(allFiles) == 0 {
 		log.Println("No supported files found")
-		return &types.ProcessingResult{
+		return &ingestion.ProcessingResult{
 			ProcessedFiles: 0,
 			SuccessCount:   0,
 			FailureCount:   0,
@@ -408,7 +408,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 	// Change detection using hash store (unless --force is specified)
 	var changeResult *hashstore.ChangeDetectionResult
 	var hashStore *hashstore.HashStore
-	var filesToProcess []*types.FileInfo
+	var filesToProcess []*ingestion.FileInfo
 
 	if !forceProcess && !dryRun {
 		var err error
@@ -452,7 +452,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 
 	if len(filesToProcess) == 0 && !dryRun {
 		log.Println("No files need processing (all files are unchanged)")
-		return &types.ProcessingResult{
+		return &ingestion.ProcessingResult{
 			ProcessedFiles: 0,
 			SuccessCount:   0,
 			FailureCount:   0,
@@ -499,7 +499,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *types.Config
 }
 
 // scanLocalDirectoryWithHash scans a local directory and computes MD5 hash for each file
-func scanLocalDirectoryWithHash(dirPath string) ([]*types.FileInfo, error) {
+func scanLocalDirectoryWithHash(dirPath string) ([]*ingestion.FileInfo, error) {
 	fileScanner := scanner.NewFileScanner()
 	files, err := fileScanner.ScanDirectory(dirPath)
 	if err != nil {
@@ -534,8 +534,8 @@ func printChangeDetectionSummary(result *hashstore.ChangeDetectionResult) {
 func updateHashStoreForSuccessfulFiles(
 	ctx context.Context,
 	store *hashstore.HashStore,
-	files []*types.FileInfo,
-	result *types.ProcessingResult,
+	files []*ingestion.FileInfo,
+	result *ingestion.ProcessingResult,
 ) {
 	// Build a set of failed file paths from processing errors
 	failedPaths := make(map[string]bool)
@@ -617,7 +617,7 @@ func setupSignalHandler(parent context.Context) (context.Context, context.Cancel
 	return signalCtx, stop
 }
 
-func runFollowMode(ctx context.Context, cfg *types.Config) error {
+func runFollowMode(ctx context.Context, cfg *appconfig.Config) error {
 	followCtx, cancel := setupSignalHandler(ctx)
 	defer cancel()
 
@@ -681,7 +681,7 @@ func runFollowMode(ctx context.Context, cfg *types.Config) error {
 }
 
 // runFollowCycleWithIPC runs a single vectorization cycle with IPC status updates
-func runFollowCycleWithIPC(ctx context.Context, cfg *types.Config, ipcServer *ipc.Server) (*types.ProcessingResult, error) {
+func runFollowCycleWithIPC(ctx context.Context, cfg *appconfig.Config, ipcServer *ipc.Server) (*ingestion.ProcessingResult, error) {
 	if !startFollowProcessing() {
 		log.Println("[Follow Mode] Previous vectorization still running. Skipping this cycle.")
 		return nil, nil
@@ -752,12 +752,12 @@ func runFollowCycleWithIPC(ctx context.Context, cfg *types.Config, ipcServer *ip
 }
 
 // createVectorizerService creates a vectorizer service with concrete implementations
-func createVectorizerService(cfg *types.Config) (*vectorizer.VectorizerService, error) {
+func createVectorizerService(cfg *appconfig.Config) (*vectorizer.VectorizerService, error) {
 	return createVectorizerServiceWithCSVConfig(cfg, nil)
 }
 
 // createVectorizerServiceWithCSVConfig creates a vectorizer service with CSV configuration
-func createVectorizerServiceWithCSVConfig(cfg *types.Config, csvCfg *csv.Config) (*vectorizer.VectorizerService, error) {
+func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Config) (*vectorizer.VectorizerService, error) {
 	// Load AWS configuration with fixed region
 	awsConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
 	if err != nil {
@@ -811,7 +811,7 @@ func createVectorizerServiceWithCSVConfig(cfg *types.Config, csvCfg *csv.Config)
 }
 
 // printResults prints the processing results in a user-friendly format
-func printResults(result *types.ProcessingResult, dryRun bool) {
+func printResults(result *ingestion.ProcessingResult, dryRun bool) {
 	fmt.Println("\n" + strings.Repeat("=", 60))
 	if dryRun {
 		fmt.Println("DRY RUN RESULTS")
@@ -864,7 +864,7 @@ func printResults(result *types.ProcessingResult, dryRun bool) {
 		fmt.Println("\nErrors encountered:")
 		fmt.Println(strings.Repeat("-", 40))
 
-		errorCounts := make(map[types.ErrorType]int)
+		errorCounts := make(map[appconfig.ErrorType]int)
 		for _, err := range result.Errors {
 			errorCounts[err.Type]++
 		}
@@ -1008,7 +1008,7 @@ func validateOpenSearchFlags() error {
 }
 
 // runSpreadsheetVectorize handles spreadsheet mode vectorization
-func runSpreadsheetVectorize(ctx context.Context, cfg *types.Config) error {
+func runSpreadsheetVectorize(ctx context.Context, cfg *appconfig.Config) error {
 	log.Printf("Loading spreadsheet configuration: %s", spreadsheetConfigPath)
 
 	// Load spreadsheet configuration
@@ -1123,7 +1123,7 @@ func runSpreadsheetDryRun(ctx context.Context, fetcher *spreadsheet.Fetcher) err
 }
 
 // createVectorizerServiceForSpreadsheet creates a vectorizer service for spreadsheet processing
-func createVectorizerServiceForSpreadsheet(cfg *types.Config) (*vectorizer.VectorizerService, error) {
+func createVectorizerServiceForSpreadsheet(cfg *appconfig.Config) (*vectorizer.VectorizerService, error) {
 	// Load AWS configuration with fixed region
 	awsConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
 	if err != nil {
@@ -1191,9 +1191,9 @@ func estimateProcessingTime(rowCount int) int {
 }
 
 // printCSVConfigInfo prints CSV configuration details for dry-run mode
-func printCSVConfigInfo(files []*types.FileInfo, csvCfg *csv.Config) {
+func printCSVConfigInfo(files []*ingestion.FileInfo, csvCfg *csv.Config) {
 	// Filter CSV files
-	var csvFiles []*types.FileInfo
+	var csvFiles []*ingestion.FileInfo
 	for _, f := range files {
 		if f.IsCSV {
 			csvFiles = append(csvFiles, f)
@@ -1373,7 +1373,7 @@ func parseGitHubPath(path string) *githubPathParts {
 	}
 }
 
-func resolveS3VectorRegion(cfg *types.Config) string {
+func resolveS3VectorRegion(cfg *appconfig.Config) string {
 	if s3VectorRegion != "" {
 		return s3VectorRegion
 	}
@@ -1381,7 +1381,7 @@ func resolveS3VectorRegion(cfg *types.Config) string {
 }
 
 // resolveS3SourceRegion returns the S3 Source region with priority: flag > env > default
-func resolveS3SourceRegion(cfg *types.Config) string {
+func resolveS3SourceRegion(cfg *appconfig.Config) string {
 	if s3SourceRegion != "" {
 		return s3SourceRegion
 	}

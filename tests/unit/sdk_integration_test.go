@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/mcpserver"
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -40,8 +40,8 @@ func createTestSDKServer() *mcp.Server {
 }
 
 // createTestConfig creates a valid test configuration
-func createTestConfig() *types.Config {
-	return &types.Config{
+func createTestConfig() *appconfig.Config {
+	return &appconfig.Config{
 		MCPServerHost:             "localhost",
 		MCPServerPort:             8080,
 		MCPServerReadTimeout:      30 * time.Second,
@@ -96,7 +96,7 @@ func TestNewConfigAdapter(t *testing.T) {
 func TestConfigAdapter_ToSDKConfig(t *testing.T) {
 	tests := []struct {
 		name           string
-		config         *types.Config
+		config         *appconfig.Config
 		expectError    bool
 		validateFields func(*testing.T, *mcpserver.SDKServerConfig)
 	}{
@@ -122,7 +122,7 @@ func TestConfigAdapter_ToSDKConfig(t *testing.T) {
 		},
 		{
 			name: "invalid host",
-			config: func() *types.Config {
+			config: func() *appconfig.Config {
 				config := createTestConfig()
 				config.MCPServerHost = ""
 				return config
@@ -131,7 +131,7 @@ func TestConfigAdapter_ToSDKConfig(t *testing.T) {
 		},
 		{
 			name: "invalid port",
-			config: func() *types.Config {
+			config: func() *appconfig.Config {
 				config := createTestConfig()
 				config.MCPServerPort = 0
 				return config
@@ -164,7 +164,7 @@ func TestConfigAdapter_ToSDKConfig(t *testing.T) {
 func TestConfigAdapter_ValidateSDKCompatibility(t *testing.T) {
 	tests := []struct {
 		name        string
-		config      *types.Config
+		config      *appconfig.Config
 		expectError bool
 		errorMsg    string
 	}{
@@ -175,7 +175,7 @@ func TestConfigAdapter_ValidateSDKCompatibility(t *testing.T) {
 		},
 		{
 			name: "empty host",
-			config: func() *types.Config {
+			config: func() *appconfig.Config {
 				config := createTestConfig()
 				config.MCPServerHost = ""
 				return config
@@ -185,7 +185,7 @@ func TestConfigAdapter_ValidateSDKCompatibility(t *testing.T) {
 		},
 		{
 			name: "invalid port range",
-			config: func() *types.Config {
+			config: func() *appconfig.Config {
 				config := createTestConfig()
 				config.MCPServerPort = 70000
 				return config
@@ -195,7 +195,7 @@ func TestConfigAdapter_ValidateSDKCompatibility(t *testing.T) {
 		},
 		{
 			name: "empty allowed IPs with auth enabled",
-			config: func() *types.Config {
+			config: func() *appconfig.Config {
 				config := createTestConfig()
 				config.MCPIPAuthEnabled = true
 				config.MCPAllowedIPs = []string{}
@@ -271,7 +271,7 @@ func TestConfigAdapter_IsSecureTransport(t *testing.T) {
 func TestNewServerWrapper(t *testing.T) {
 	tests := []struct {
 		name        string
-		config      *types.Config
+		config      *appconfig.Config
 		expectError bool
 	}{
 		{
@@ -286,7 +286,7 @@ func TestNewServerWrapper(t *testing.T) {
 		},
 		{
 			name: "invalid configuration",
-			config: func() *types.Config {
+			config: func() *appconfig.Config {
 				config := createTestConfig()
 				config.MCPServerHost = ""
 				return config
@@ -387,9 +387,9 @@ func TestToolRegistryAdapter_RegisterTool(t *testing.T) {
 		InputSchema: createBasicInputSchema(),
 	}
 
-	mockHandler := func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
-		return &types.MCPToolCallResult{
-			Content: []types.MCPContent{{Type: "text", Text: "test result"}},
+	mockHandler := func(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
+		return &mcpserver.MCPToolCallResult{
+			Content: []mcpserver.MCPContent{{Type: "text", Text: "test result"}},
 			IsError: false,
 		}, nil
 	}
@@ -410,9 +410,9 @@ func TestToolRegistryAdapter_RegisterToolWithConfig(t *testing.T) {
 		InputSchema: createBasicInputSchema(),
 	}
 
-	mockHandler := func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
-		return &types.MCPToolCallResult{
-			Content: []types.MCPContent{{Type: "text", Text: "configured result"}},
+	mockHandler := func(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
+		return &mcpserver.MCPToolCallResult{
+			Content: []mcpserver.MCPContent{{Type: "text", Text: "configured result"}},
 			IsError: false,
 		}, nil
 	}
@@ -436,9 +436,9 @@ func TestToolRegistryAdapter_UnregisterTool(t *testing.T) {
 		InputSchema: createBasicInputSchema(),
 	}
 
-	mockHandler := func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
-		return &types.MCPToolCallResult{
-			Content: []types.MCPContent{{Type: "text", Text: "temp result"}},
+	mockHandler := func(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
+		return &mcpserver.MCPToolCallResult{
+			Content: []mcpserver.MCPContent{{Type: "text", Text: "temp result"}},
 			IsError: false,
 		}, nil
 	}
@@ -471,9 +471,9 @@ func TestToolRegistryAdapter_ListTools(t *testing.T) {
 			InputSchema: createBasicInputSchema(),
 		}
 
-		mockHandler := func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
-			return &types.MCPToolCallResult{
-				Content: []types.MCPContent{{Type: "text", Text: fmt.Sprintf("result %d", i)}},
+		mockHandler := func(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
+			return &mcpserver.MCPToolCallResult{
+				Content: []mcpserver.MCPContent{{Type: "text", Text: fmt.Sprintf("result %d", i)}},
 				IsError: false,
 			}, nil
 		}
@@ -496,12 +496,12 @@ func TestToolRegistryAdapter_ExecuteTool(t *testing.T) {
 		InputSchema: createBasicInputSchema(),
 	}
 
-	expectedResult := &types.MCPToolCallResult{
-		Content: []types.MCPContent{{Type: "text", Text: "execution result"}},
+	expectedResult := &mcpserver.MCPToolCallResult{
+		Content: []mcpserver.MCPContent{{Type: "text", Text: "execution result"}},
 		IsError: false,
 	}
 
-	mockHandler := func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+	mockHandler := func(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
 		return expectedResult, nil
 	}
 
@@ -544,7 +544,7 @@ func TestToolRegistryAdapter_ExecuteTool_HandlerError(t *testing.T) {
 	}
 
 	expectedError := errors.New("handler error")
-	errorHandler := func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+	errorHandler := func(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
 		return nil, expectedError
 	}
 
@@ -574,9 +574,9 @@ func TestToolRegistryAdapter_GetRegisteredToolNames(t *testing.T) {
 			InputSchema: createBasicInputSchema(),
 		}
 
-		mockHandler := func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
-			return &types.MCPToolCallResult{
-				Content: []types.MCPContent{{Type: "text", Text: name}},
+		mockHandler := func(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
+			return &mcpserver.MCPToolCallResult{
+				Content: []mcpserver.MCPContent{{Type: "text", Text: name}},
 				IsError: false,
 			}, nil
 		}
@@ -665,9 +665,9 @@ func BenchmarkToolRegistryAdapter_RegisterTool(b *testing.B) {
 		InputSchema: createBasicInputSchema(),
 	}
 
-	mockHandler := func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
-		return &types.MCPToolCallResult{
-			Content: []types.MCPContent{{Type: "text", Text: "bench result"}},
+	mockHandler := func(ctx context.Context, params map[string]interface{}) (*mcpserver.MCPToolCallResult, error) {
+		return &mcpserver.MCPToolCallResult{
+			Content: []mcpserver.MCPContent{{Type: "text", Text: "bench result"}},
 			IsError: false,
 		}, nil
 	}

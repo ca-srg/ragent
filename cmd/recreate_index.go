@@ -8,7 +8,7 @@ import (
 
 	"github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/vectorizer"
+	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	"github.com/spf13/cobra"
 )
 
