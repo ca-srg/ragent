@@ -18,7 +18,7 @@ import (
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/ingestion/domain"
 	"github.com/ca-srg/ragent/internal/query"
 )
 
@@ -102,7 +102,7 @@ func NewS3VectorService(cfg *S3Config) (*S3VectorService, error) {
 }
 
 // StoreVector saves a vector with its metadata to S3 Vectors
-func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *ingestion.VectorData) error {
+func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *domain.VectorData) error {
 	if vectorData == nil {
 		log.Printf("ERROR: vector data is nil")
 		return fmt.Errorf("vector data cannot be nil")
@@ -360,7 +360,7 @@ func (s *S3VectorService) DeleteVector(ctx context.Context, vectorID string) err
 }
 
 // GetVector retrieves a vector from S3 Vectors
-func (s *S3VectorService) GetVector(ctx context.Context, vectorID string) (*ingestion.VectorData, error) {
+func (s *S3VectorService) GetVector(ctx context.Context, vectorID string) (*domain.VectorData, error) {
 	if vectorID == "" {
 		return nil, fmt.Errorf("vector ID cannot be empty")
 	}
@@ -387,7 +387,7 @@ func (s *S3VectorService) GetVector(ctx context.Context, vectorID string) (*inge
 }
 
 // BatchStoreVectors stores multiple vectors in a single operation
-func (s *S3VectorService) BatchStoreVectors(ctx context.Context, vectors []*ingestion.VectorData) error {
+func (s *S3VectorService) BatchStoreVectors(ctx context.Context, vectors []*domain.VectorData) error {
 	if len(vectors) == 0 {
 		return nil
 	}

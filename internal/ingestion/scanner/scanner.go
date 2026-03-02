@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/ingestion/domain"
 )
 
 // Type alias for FileInfo
-type FileInfo = ingestion.FileInfo
+type FileInfo = domain.FileInfo
 
 // FileScanner implements the FileScanner interface for scanning markdown files
 type FileScanner struct{}

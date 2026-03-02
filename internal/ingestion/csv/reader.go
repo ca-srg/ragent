@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/ingestion/domain"
 )
 
 // Reader reads CSV files and converts rows to FileInfo
@@ -28,7 +28,7 @@ func NewReader(config *Config) *Reader {
 }
 
 // ReadFile reads a CSV file and returns FileInfo slice (one per row)
-func (r *Reader) ReadFile(filePath string) ([]*ingestion.FileInfo, error) {
+func (r *Reader) ReadFile(filePath string) ([]*domain.FileInfo, error) {
 	// Get configuration for this file
 	fileConfig := r.config.GetConfigForFile(filePath)
 	if fileConfig == nil {
@@ -45,7 +45,7 @@ func (r *Reader) ReadFile(filePath string) ([]*ingestion.FileInfo, error) {
 }
 
 // readWithConfig reads CSV data from an io.Reader using the specified FileConfig
-func (r *Reader) readWithConfig(reader io.Reader, sourcePath string, fileConfig *FileConfig) ([]*ingestion.FileInfo, error) {
+func (r *Reader) readWithConfig(reader io.Reader, sourcePath string, fileConfig *FileConfig) ([]*domain.FileInfo, error) {
 	csvReader := csv.NewReader(reader)
 
 	// Read all records
@@ -95,7 +95,7 @@ func (r *Reader) readWithConfig(reader io.Reader, sourcePath string, fileConfig 
 	}
 
 	// Convert rows to FileInfo
-	var files []*ingestion.FileInfo
+	var files []*domain.FileInfo
 	for rowIdx, row := range dataRows {
 		// Skip empty rows
 		if isEmptyRow(row) {
@@ -138,7 +138,7 @@ func (r *Reader) rowToFileInfo(
 	detector *ColumnDetector,
 	contentColumns []string,
 	fileConfig *FileConfig,
-) *ingestion.FileInfo {
+) *domain.FileInfo {
 	// Build content
 	content := buildContent(row, headers, contentColumns, fileConfig)
 	if strings.TrimSpace(content) == "" {
@@ -156,7 +156,7 @@ func (r *Reader) rowToFileInfo(
 	metadata.Source = "csv"
 	metadata.WordCount = len(strings.Fields(content))
 
-	return &ingestion.FileInfo{
+	return &domain.FileInfo{
 		Path:        fmt.Sprintf("csv://%s/%s", sourcePath, docID),
 		Name:        docID,
 		Size:        int64(len(content)),
@@ -202,8 +202,8 @@ func applyTemplate(row []string, headers []string, template string) string {
 }
 
 // extractMetadata extracts metadata from row data
-func extractMetadata(row []string, headers []string, detector *ColumnDetector, fileConfig *FileConfig) ingestion.DocumentMetadata {
-	metadata := ingestion.DocumentMetadata{
+func extractMetadata(row []string, headers []string, detector *ColumnDetector, fileConfig *FileConfig) domain.DocumentMetadata {
+	metadata := domain.DocumentMetadata{
 		Source:       "csv",
 		CustomFields: make(map[string]interface{}),
 	}

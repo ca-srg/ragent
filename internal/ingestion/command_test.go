@@ -1,4 +1,4 @@
-package cmd
+package ingestion
 
 import (
 	"bytes"
@@ -9,23 +9,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
-
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/spf13/cobra"
 )
+
+// newTestVectorizeCmd creates a minimal cobra.Command with the --interval flag
+// bound to the package-level followInterval var, for use in validateFollowModeFlags tests.
+func newTestVectorizeCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "vectorize"}
+	cmd.Flags().StringVar(&followInterval, "interval", DefaultFollowInterval, "test interval flag")
+	return cmd
+}
 
 func resetFollowModeState() {
 	followMode = false
-	followInterval = defaultFollowInterval
+	followInterval = DefaultFollowInterval
 	followIntervalDuration = 0
 	dryRun = false
 	clearVectors = false
 	followModeProcessing.Store(false)
-
-	if flag := vectorizeCmd.Flags().Lookup("interval"); flag != nil {
-		_ = flag.Value.Set(defaultFollowInterval)
-		flag.Changed = false
-	}
 
 	vectorizationRunner = executeVectorizationOnce
 }
@@ -36,17 +38,16 @@ func TestValidateFollowModeFlags(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		setup        func()
+		setup        func(*cobra.Command)
 		wantErr      bool
 		errContains  string
 		wantDuration time.Duration
 	}{
 		{
 			name: "valid custom interval",
-			setup: func() {
-				resetFollowModeState()
+			setup: func(cmd *cobra.Command) {
 				followMode = true
-				flag := vectorizeCmd.Flags().Lookup("interval")
+				flag := cmd.Flags().Lookup("interval")
 				_ = flag.Value.Set("45m")
 				flag.Changed = true
 			},
@@ -54,16 +55,14 @@ func TestValidateFollowModeFlags(t *testing.T) {
 		},
 		{
 			name: "valid default interval",
-			setup: func() {
-				resetFollowModeState()
+			setup: func(cmd *cobra.Command) {
 				followMode = true
 			},
 			wantDuration: 30 * time.Minute,
 		},
 		{
 			name: "dry-run incompatible",
-			setup: func() {
-				resetFollowModeState()
+			setup: func(cmd *cobra.Command) {
 				followMode = true
 				dryRun = true
 			},
@@ -72,8 +71,7 @@ func TestValidateFollowModeFlags(t *testing.T) {
 		},
 		{
 			name: "clear incompatible",
-			setup: func() {
-				resetFollowModeState()
+			setup: func(cmd *cobra.Command) {
 				followMode = true
 				clearVectors = true
 			},
@@ -82,10 +80,9 @@ func TestValidateFollowModeFlags(t *testing.T) {
 		},
 		{
 			name: "interval too short",
-			setup: func() {
-				resetFollowModeState()
+			setup: func(cmd *cobra.Command) {
 				followMode = true
-				flag := vectorizeCmd.Flags().Lookup("interval")
+				flag := cmd.Flags().Lookup("interval")
 				_ = flag.Value.Set("4m")
 				flag.Changed = true
 			},
@@ -94,10 +91,9 @@ func TestValidateFollowModeFlags(t *testing.T) {
 		},
 		{
 			name: "invalid interval format",
-			setup: func() {
-				resetFollowModeState()
+			setup: func(cmd *cobra.Command) {
 				followMode = true
-				flag := vectorizeCmd.Flags().Lookup("interval")
+				flag := cmd.Flags().Lookup("interval")
 				_ = flag.Value.Set("abc")
 				flag.Changed = true
 			},
@@ -106,9 +102,8 @@ func TestValidateFollowModeFlags(t *testing.T) {
 		},
 		{
 			name: "interval without follow",
-			setup: func() {
-				resetFollowModeState()
-				flag := vectorizeCmd.Flags().Lookup("interval")
+			setup: func(cmd *cobra.Command) {
+				flag := cmd.Flags().Lookup("interval")
 				_ = flag.Value.Set("15m")
 				flag.Changed = true
 			},
@@ -117,8 +112,7 @@ func TestValidateFollowModeFlags(t *testing.T) {
 		},
 		{
 			name: "follow disabled resets duration",
-			setup: func() {
-				resetFollowModeState()
+			setup: func(cmd *cobra.Command) {
 				followIntervalDuration = time.Hour
 			},
 			wantDuration: 0,
@@ -128,8 +122,12 @@ func TestValidateFollowModeFlags(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			tc.setup()
-			err := validateFollowModeFlags(vectorizeCmd)
+			resetFollowModeState()
+			cmd := newTestVectorizeCmd()
+			if tc.setup != nil {
+				tc.setup(cmd)
+			}
+			err := validateFollowModeFlags(cmd)
 
 			if tc.wantErr {
 				if err == nil {
@@ -163,11 +161,11 @@ func TestRunFollowMode_BasicExecution(t *testing.T) {
 
 	var mu sync.Mutex
 	callCount := 0
-	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*ingestion.ProcessingResult, error) {
+	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*ProcessingResult, error) {
 		mu.Lock()
 		callCount++
 		mu.Unlock()
-		return &ingestion.ProcessingResult{ProcessedFiles: 3}, nil
+		return &ProcessingResult{ProcessedFiles: 3}, nil
 	}
 
 	followIntervalDuration = 20 * time.Millisecond
@@ -245,7 +243,7 @@ func TestRunFollowCycle_SkipWhenProcessing(t *testing.T) {
 	resetFollowModeState()
 	t.Cleanup(resetFollowModeState)
 
-	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*ingestion.ProcessingResult, error) {
+	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*ProcessingResult, error) {
 		t.Fatalf("vectorization runner should not be called when processing flag is set")
 		return nil, nil
 	}

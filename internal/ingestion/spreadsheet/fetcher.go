@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/ingestion/domain"
 )
 
 // Fetcher fetches data from Google Spreadsheets and converts to FileInfo
@@ -33,8 +33,8 @@ func NewFetcher(ctx context.Context, config *Config) (*Fetcher, error) {
 }
 
 // Fetch retrieves all rows from configured spreadsheets and converts to FileInfo slice
-func (f *Fetcher) Fetch(ctx context.Context) ([]*ingestion.FileInfo, error) {
-	var allFiles []*ingestion.FileInfo
+func (f *Fetcher) Fetch(ctx context.Context) ([]*domain.FileInfo, error) {
+	var allFiles []*domain.FileInfo
 
 	for _, sheetCfg := range f.config.Spreadsheets {
 		log.Printf("Fetching spreadsheet: %s (%s)", sheetCfg.ID, sheetCfg.Sheet)
@@ -70,7 +70,7 @@ func (f *Fetcher) FetchWithDryRun(ctx context.Context) ([]*DryRunInfo, error) {
 }
 
 // fetchSheet fetches a single spreadsheet and converts to FileInfo slice
-func (f *Fetcher) fetchSheet(ctx context.Context, cfg SheetConfig) ([]*ingestion.FileInfo, error) {
+func (f *Fetcher) fetchSheet(ctx context.Context, cfg SheetConfig) ([]*domain.FileInfo, error) {
 	// Get sheet data
 	valueRange, err := f.service.GetSheetData(ctx, cfg.ID, cfg.Sheet)
 	if err != nil {
@@ -107,7 +107,7 @@ func (f *Fetcher) fetchSheet(ctx context.Context, cfg SheetConfig) ([]*ingestion
 	}
 
 	// Convert rows to FileInfo
-	var files []*ingestion.FileInfo
+	var files []*domain.FileInfo
 	skippedRows := 0
 
 	for rowIdx, row := range dataRows {
@@ -192,7 +192,7 @@ func (f *Fetcher) rowToFileInfo(
 	rowIndex int,
 	detector *ColumnDetector,
 	contentColumns []string,
-) *ingestion.FileInfo {
+) *domain.FileInfo {
 	// Build content
 	content := f.buildContent(row, headers, cfg, contentColumns)
 	if strings.TrimSpace(content) == "" {
@@ -208,7 +208,7 @@ func (f *Fetcher) rowToFileInfo(
 	// Set FilePath in metadata for consistency with markdown files
 	metadata.FilePath = fmt.Sprintf("spreadsheet://%s/%s/row/%d", cfg.ID, cfg.Sheet, rowIndex)
 
-	return &ingestion.FileInfo{
+	return &domain.FileInfo{
 		Path:       fmt.Sprintf("spreadsheet://%s/%s/%s", cfg.ID, cfg.Sheet, docID),
 		Name:       docID,
 		Size:       int64(len(content)),
@@ -310,8 +310,8 @@ func (f *Fetcher) applyTemplate(row []string, headers []string, template string)
 }
 
 // extractMetadata extracts metadata from row data
-func (f *Fetcher) extractMetadata(row []string, headers []string, cfg SheetConfig, detector *ColumnDetector) ingestion.DocumentMetadata {
-	metadata := ingestion.DocumentMetadata{
+func (f *Fetcher) extractMetadata(row []string, headers []string, cfg SheetConfig, detector *ColumnDetector) domain.DocumentMetadata {
+	metadata := domain.DocumentMetadata{
 		Source:       "spreadsheet",
 		CustomFields: make(map[string]interface{}),
 	}

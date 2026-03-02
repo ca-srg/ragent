@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/ingestion/domain"
 )
 
 // S3Scanner implements file scanning from S3 buckets
@@ -54,8 +54,8 @@ func NewS3Scanner(bucket, prefix, region string) (*S3Scanner, error) {
 }
 
 // ScanBucket scans S3 bucket for supported files (markdown and CSV) with pagination
-func (s *S3Scanner) ScanBucket(ctx context.Context) ([]*ingestion.FileInfo, error) {
-	var files []*ingestion.FileInfo
+func (s *S3Scanner) ScanBucket(ctx context.Context) ([]*domain.FileInfo, error) {
+	var files []*domain.FileInfo
 
 	log.Printf("Scanning S3 bucket: s3://%s/%s", s.bucket, s.prefix)
 
@@ -117,7 +117,7 @@ func (s *S3Scanner) ScanBucket(ctx context.Context) ([]*ingestion.FileInfo, erro
 			}
 
 			// Create FileInfo
-			fileInfo := &ingestion.FileInfo{
+			fileInfo := &domain.FileInfo{
 				Path:        fmt.Sprintf("s3://%s/%s", s.bucket, key),
 				Name:        filepath.Base(key),
 				Size:        size,
