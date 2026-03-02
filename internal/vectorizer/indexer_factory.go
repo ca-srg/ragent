@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/ca-srg/ragent/internal/csv"
-	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/types"
 )
 

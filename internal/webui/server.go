@@ -12,11 +12,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 
-	appconfig "github.com/ca-srg/ragent/internal/config"
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/ipc"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/ipc"
 	"github.com/ca-srg/ragent/internal/metadata"
-	"github.com/ca-srg/ragent/internal/s3vector"
+	"github.com/ca-srg/ragent/internal/pkg/s3vector"
 	"github.com/ca-srg/ragent/internal/scanner"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/ca-srg/ragent/internal/vectorizer"

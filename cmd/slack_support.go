@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	appconfig "github.com/ca-srg/ragent/internal/config"
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/opensearch"
-	"github.com/ca-srg/ragent/internal/slacksearch"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 	"github.com/slack-go/slack"
 )

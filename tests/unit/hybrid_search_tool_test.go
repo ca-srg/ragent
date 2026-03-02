@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/mcpserver"
-	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 )
 
 // Helper function to create test adapter

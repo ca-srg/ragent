@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/metrics"
-	"github.com/ca-srg/ragent/internal/slacksearch"
+	"github.com/ca-srg/ragent/internal/pkg/metrics"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"

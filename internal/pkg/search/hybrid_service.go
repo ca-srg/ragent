@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/opensearch"
-	"github.com/ca-srg/ragent/internal/slacksearch"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/ca-srg/ragent/internal/types"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel"

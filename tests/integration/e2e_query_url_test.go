@@ -13,7 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/ca-srg/ragent/cmd"
-	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

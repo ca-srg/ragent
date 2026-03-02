@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/metrics"
+	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

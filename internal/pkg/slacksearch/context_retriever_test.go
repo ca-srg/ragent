@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"

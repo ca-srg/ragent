@@ -13,12 +13,12 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/spf13/cobra"
 
-	appcfg "github.com/ca-srg/ragent/internal/config"
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/metrics"
-	"github.com/ca-srg/ragent/internal/observability"
+	appcfg "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/metrics"
+	"github.com/ca-srg/ragent/internal/pkg/observability"
 	"github.com/ca-srg/ragent/internal/slackbot"
-	"github.com/ca-srg/ragent/internal/slacksearch"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	commontypes "github.com/ca-srg/ragent/internal/types"
 )
 

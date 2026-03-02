@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )

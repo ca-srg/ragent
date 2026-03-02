@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/config"
-	"github.com/ca-srg/ragent/internal/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/vectorizer"
 	"github.com/spf13/cobra"
 )

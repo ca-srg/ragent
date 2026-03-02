@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ca-srg/ragent/internal/metrics"
+	"github.com/ca-srg/ragent/internal/pkg/metrics"
 )
 
 var rootCmd = &cobra.Command{
