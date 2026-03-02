@@ -7,70 +7,71 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	queryimpl "github.com/ca-srg/ragent/internal/query"
 )
 
 type QueryDependencyOverrides struct {
-	LoadConfig          appConfigLoader
-	LoadAWSConfig       awsConfigLoader
-	NewEmbeddingClient  bedrockClientFactory
-	NewOpenSearchClient openSearchClientFactory
-	NewHybridEngine     hybridEngineFactory
+	LoadConfig          queryimpl.AppConfigLoader
+	LoadAWSConfig       queryimpl.AWSConfigLoader
+	NewEmbeddingClient  queryimpl.BedrockClientFactory
+	NewOpenSearchClient queryimpl.OpenSearchClientFactory
+	NewHybridEngine     queryimpl.HybridEngineFactory
 }
 
 func OverrideQueryDependencies(overrides QueryDependencyOverrides) func() {
-	prevLoadConfig := loadAppConfig
-	prevLoadAWS := loadAWSConfig
-	prevEmbedding := newEmbeddingClient
-	prevOpenSearch := newOpenSearchClient
-	prevHybrid := newHybridEngine
+	prevLoadConfig := queryimpl.LoadAppConfig
+	prevLoadAWS := queryimpl.LoadAWSConfig
+	prevEmbedding := queryimpl.NewEmbeddingClient
+	prevOpenSearch := queryimpl.NewOpenSearchClient
+	prevHybrid := queryimpl.NewHybridEngine
 
 	if overrides.LoadConfig != nil {
-		loadAppConfig = overrides.LoadConfig
+		queryimpl.LoadAppConfig = overrides.LoadConfig
 	}
 	if overrides.LoadAWSConfig != nil {
-		loadAWSConfig = overrides.LoadAWSConfig
+		queryimpl.LoadAWSConfig = overrides.LoadAWSConfig
 	}
 	if overrides.NewEmbeddingClient != nil {
-		newEmbeddingClient = overrides.NewEmbeddingClient
+		queryimpl.NewEmbeddingClient = overrides.NewEmbeddingClient
 	}
 	if overrides.NewOpenSearchClient != nil {
-		newOpenSearchClient = overrides.NewOpenSearchClient
+		queryimpl.NewOpenSearchClient = overrides.NewOpenSearchClient
 	}
 	if overrides.NewHybridEngine != nil {
-		newHybridEngine = overrides.NewHybridEngine
+		queryimpl.NewHybridEngine = overrides.NewHybridEngine
 	}
 
 	return func() {
-		loadAppConfig = prevLoadConfig
-		loadAWSConfig = prevLoadAWS
-		newEmbeddingClient = prevEmbedding
-		newOpenSearchClient = prevOpenSearch
-		newHybridEngine = prevHybrid
+		queryimpl.LoadAppConfig = prevLoadConfig
+		queryimpl.LoadAWSConfig = prevLoadAWS
+		queryimpl.NewEmbeddingClient = prevEmbedding
+		queryimpl.NewOpenSearchClient = prevOpenSearch
+		queryimpl.NewHybridEngine = prevHybrid
 	}
 }
 
 // Helpers to build default override closures without importing internal types in tests.
-func DefaultLoadConfigOverride(cfg *appconfig.Config, err error) appConfigLoader {
+func DefaultLoadConfigOverride(cfg *appconfig.Config, err error) queryimpl.AppConfigLoader {
 	return func() (*appconfig.Config, error) {
 		return cfg, err
 	}
 }
 
-func DefaultAWSConfigOverride(cfg aws.Config, err error) awsConfigLoader {
+func DefaultAWSConfigOverride(cfg aws.Config, err error) queryimpl.AWSConfigLoader {
 	return func(ctx context.Context, optFns ...func(*awsconfig.LoadOptions) error) (aws.Config, error) {
 		return cfg, err
 	}
 }
 
-func EmbeddingClientOverride(factory bedrockClientFactory) bedrockClientFactory {
+func EmbeddingClientOverride(factory queryimpl.BedrockClientFactory) queryimpl.BedrockClientFactory {
 	return factory
 }
 
-func OpenSearchClientOverride(factory openSearchClientFactory) openSearchClientFactory {
+func OpenSearchClientOverride(factory queryimpl.OpenSearchClientFactory) queryimpl.OpenSearchClientFactory {
 	return factory
 }
 
-func HybridEngineOverride(factory hybridEngineFactory) hybridEngineFactory {
+func HybridEngineOverride(factory queryimpl.HybridEngineFactory) queryimpl.HybridEngineFactory {
 	return factory
 }
 
@@ -86,4 +87,6 @@ func ResetQueryState() {
 	fusionMethod = "rrf"
 	useJapaneseNLP = false
 	timeout = 30
+	queryOnlySlack = false
+	slackChannels = nil
 }
