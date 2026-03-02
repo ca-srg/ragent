@@ -891,15 +891,34 @@ RAGent/
 │   ├── query.go           # queryコマンド
 │   ├── list.go            # listコマンド
 │   ├── chat.go            # chatコマンド
-│   ├── slack.go           # slack-botコマンド（新規）
+│   ├── slack.go           # slack-botコマンド
+│   ├── mcp-server.go      # mcp-serverコマンド
+│   ├── webui.go           # webuiコマンド
 │   └── vectorize.go       # vectorizeコマンド
 ├── internal/              # 内部ライブラリ
-│   ├── config/           # 設定管理
-│   ├── csv/              # CSVファイル処理
-│   ├── embedding/        # Embedding生成
-│   ├── s3vector/         # S3 Vector統合
-│   ├── opensearch/       # OpenSearch統合
-│   └── vectorizer/       # ベクトル化サービス
+│   ├── pkg/              # 共有インフラストラクチャ（フィーチャー非依存）
+│   │   ├── config/       # Config struct（91フィールド）
+│   │   ├── embedding/    # Embedding生成
+│   │   │   └── bedrock/  # Amazon Bedrockクライアント
+│   │   ├── opensearch/   # OpenSearchクライアント
+│   │   ├── slacksearch/  # Slack検索サービス
+│   │   ├── search/       # HybridSearchService
+│   │   ├── s3vector/     # S3 Vectorクライアント
+│   │   ├── metrics/      # メトリクス収集
+│   │   ├── observability/ # OpenTelemetry
+│   │   └── ipc/          # プロセス間通信
+│   ├── ingestion/        # vectorize/list/recreate-index スライス
+│   │   ├── csv/
+│   │   ├── hashstore/
+│   │   ├── metadata/
+│   │   ├── scanner/
+│   │   ├── spreadsheet/
+│   │   └── vectorizer/
+│   ├── query/            # query/chat スライス
+│   │   └── filter/
+│   ├── slackbot/         # slack-bot スライス
+│   ├── mcpserver/        # mcp-server スライス
+│   └── webui/            # webui スライス
 ├── source/               # ソースドキュメント（markdownおよびCSV、使用前に準備）
 ├── export/               # Kibela用エクスポートツール（別ツール）
 ├── doc/                  # プロジェクトドキュメント

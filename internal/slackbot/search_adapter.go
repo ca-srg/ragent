@@ -29,18 +29,25 @@ type SearchOptions struct {
 	ThreadTimestamp string
 }
 
+// slackConvSearcher is the package-internal interface for Slack conversation search.
+// The public definition lives in internal/pkg/slacksearch; this unexported alias
+// avoids importing slacksearch from slackbot (which would create a circular dep).
+type slackConvSearcher interface {
+	SearchConversations(ctx context.Context, query string, opts SearchOptions) (*SlackConversationResult, error)
+}
+
 // HybridSearchAdapter uses OpenSearch Hybrid + Bedrock embedding
 type HybridSearchAdapter struct {
 	cfg         *appconfig.Config
 	maxResults  int
-	slackSearch SlackConversationSearcher
+	slackSearch slackConvSearcher
 	slackClient *slack.Client
 
 	awsCfgMu sync.RWMutex
 	awsCfg   *aws.Config
 }
 
-func NewHybridSearchAdapter(cfg *appconfig.Config, maxResults int, slackSearch SlackConversationSearcher, awsCfg *aws.Config) *HybridSearchAdapter {
+func NewHybridSearchAdapter(cfg *appconfig.Config, maxResults int, slackSearch slackConvSearcher, awsCfg *aws.Config) *HybridSearchAdapter {
 	if maxResults <= 0 {
 		maxResults = 5
 	}

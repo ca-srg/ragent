@@ -18,7 +18,7 @@ import (
 type SlackOnlySearchAdapter struct {
 	cfg         *appconfig.Config
 	maxResults  int
-	slackSearch SlackConversationSearcher
+	slackSearch slackConvSearcher
 	chatClient  *bedrock.BedrockClient
 
 	awsCfg *aws.Config
@@ -28,7 +28,7 @@ type SlackOnlySearchAdapter struct {
 func NewSlackOnlySearchAdapter(
 	cfg *appconfig.Config,
 	maxResults int,
-	slackSearch SlackConversationSearcher,
+	slackSearch slackConvSearcher,
 	chatClient *bedrock.BedrockClient,
 	awsCfg *aws.Config,
 ) *SlackOnlySearchAdapter {
