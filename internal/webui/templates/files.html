@@ -1,0 +1,33 @@
+{{template "base" .}}
+
+{{define "title"}}ファイル - RAGent{{end}}
+
+{{define "content"}}
+<div class="files-page">
+    <h1>対象ファイル</h1>
+    
+    <!-- Search -->
+    <div class="search-box">
+        <input type="search" 
+               name="search" 
+               placeholder="ファイルを検索..."
+               value="{{.SearchQuery}}"
+               hx-get="/partials/file-list"
+               hx-trigger="keyup changed delay:300ms"
+               hx-target="#file-list"
+               hx-include="this">
+    </div>
+    
+    <!-- File Stats -->
+    <div class="file-stats">
+        <span class="stat">合計: <strong>{{.TotalFiles}}</strong> ファイル</span>
+        <span class="stat">Markdown: <strong>{{.MarkdownCount}}</strong></span>
+        <span class="stat">CSV: <strong>{{.CSVCount}}</strong></span>
+    </div>
+    
+    <!-- File List -->
+    <div id="file-list">
+        {{template "file_list.html" .Files}}
+    </div>
+</div>
+{{end}}

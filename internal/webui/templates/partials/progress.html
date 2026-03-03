@@ -1,0 +1,29 @@
+<div class="progress-container">
+    {{if or (eq .Status "running") (eq .Status "waiting")}}
+    <div class="progress-bar">
+        <div class="progress-fill" style="width: {{formatPercent .PercentComplete}}">
+            {{formatPercent .PercentComplete}}
+        </div>
+    </div>
+    <div class="progress-stats">
+        <span class="processed">{{.ProcessedFiles}} / {{.TotalFiles}}</span>
+    </div>
+    <div class="progress-details">
+        <span class="success">✓ {{.SuccessCount}}</span>
+        <span class="failed">✗ {{.FailedCount}}</span>
+        <span class="elapsed">{{.ElapsedTime}}</span>
+        {{if .EstimatedRemain}}
+        <span class="remaining">残り約 {{.EstimatedRemain}}</span>
+        {{end}}
+    </div>
+    {{if .CurrentFile}}
+    <div class="current-file">
+        処理中: <code>{{.CurrentFile}}</code>
+    </div>
+    {{end}}
+    {{else}}
+    <div class="progress-idle">
+        <p>ベクトル化は実行されていません</p>
+    </div>
+    {{end}}
+</div>

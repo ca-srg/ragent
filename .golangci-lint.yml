@@ -1,0 +1,80 @@
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+  skip-dirs:
+    - doc
+    - markdown
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck
+    - revive
+    - errcheck
+    - gofmt
+    - goimports
+    - ineffassign
+    - misspell
+    - prealloc
+    - cyclop
+    - gocognit
+    - nakedret
+    - unparam
+    - exportloopref
+    - dogsled
+    - nilerr
+    - errname
+    - errorlint
+    - durationcheck
+    - tparallel
+    - tenv
+    - contextcheck
+    - lll
+    - nolintlint
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/ca-srg/ragent
+
+  cyclop:
+    max-complexity: 12
+    skip-tests: true
+
+  gocognit:
+    min-complexity: 20
+
+  misspell:
+    locale: US
+
+  nakedret:
+    max-func-lines: 80
+
+  lll:
+    line-length: 140
+    tab-width: 4
+
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-use-default: false
+  exclude-rules:
+    - path: ".*_test\\.go$"
+      linters:
+        - errcheck
+        - gocognit
+        - cyclop
+        - lll
+        - wrapcheck
+        - dupl
+

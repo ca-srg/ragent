@@ -1,0 +1,131 @@
+# CSV Vectorization Configuration
+# Copy this file to csv-config.yaml and customize for your use case
+#
+# This configuration file defines how CSV files should be processed
+# for vectorization. Each row in a CSV file becomes a separate document.
+#
+# IMPORTANT: The 'files' array is required. Each entry specifies a pattern
+# and its corresponding configuration. Patterns are matched in order,
+# so more specific patterns should come before general ones (like "*.csv").
+
+csv:
+  files:
+    # Example 1: Configuration for important*.csv files
+    - pattern: "important*.csv"
+      # Header row position (1-indexed, default: 1)
+      # Use this when the CSV has metadata rows before the actual header
+      # header_row: 1
+
+      content:
+        # Columns to use for vectorization content
+        columns: ["詳細"]
+
+        # Custom template for combining multiple columns (optional)
+        # Use {{column_name}} placeholders to reference column values
+        template: "【{{タイトル}}】\n\nプロジェクト: {{PJ}}\nカテゴリ: {{カテゴリ}}\n\n{{詳細}}"
+
+        # Disable auto-detection when explicit columns are specified
+        auto_detect: false
+
+      metadata:
+        # Document title column
+        title: "タイトル"
+        # Document category column
+        category: "カテゴリ"
+        # Tags columns (multiple columns can be specified)
+        tags: ["発生区分1", "発生区分2", "症状区分1", "症状区分2"]
+        # Document ID column (used for unique identification)
+        id: "#"
+        # Creation date column (supports various date formats)
+        created_at: "起票日"
+        # Update date column
+        updated_at: "完了日"
+        # Reference column (e.g., ticket number, external link)
+        reference: "BTS#"
+
+    # Example 2: Configuration for sample*.csv files
+    # This example shows how to use header_row for files with metadata rows
+    - pattern: "sample*.csv"
+      # Row 7 contains the actual headers (rows 1-6 are skipped)
+      # Data rows start from row 8
+      header_row: 7
+
+      content:
+        columns: ["施作", "機能"]
+        template: "【{{施作}}】\n\n機能: {{機能}}\n計上月: {{計上月}}"
+        auto_detect: false
+
+      metadata:
+        title: "施作"
+        category: "機能"
+        reference: "項目書"
+        created_at: "計上月"
+        id: ""
+
+    # Example 3: Default configuration for all other CSV files
+    # This should be placed last as a fallback
+    - pattern: "*.csv"
+      content:
+        # Enable auto-detection for unspecified CSV files
+        auto_detect: true
+
+      metadata:
+        # Leave empty to use auto-detection
+        title: ""
+        category: ""
+
+# Pattern Matching:
+# - Patterns use glob syntax (e.g., "*.csv", "data_*.csv", "report?.csv")
+# - Patterns are matched against the filename only (not the full path)
+# - Patterns are evaluated in order; first match wins
+# - Place specific patterns before general ones
+#
+# Examples:
+#   "important*.csv"  - matches important.csv, important_data.csv
+#   "data_*.csv"      - matches data_2024.csv, data_report.csv
+#   "report?.csv"     - matches report1.csv, reportA.csv (single char)
+#   "*.csv"           - matches all CSV files (use as fallback)
+
+# Header Row Configuration:
+# Use header_row to specify which row contains the column headers (1-indexed).
+# This is useful when the CSV file has metadata or summary rows before the actual data.
+#
+# Examples:
+#   header_row: 1     - First row is the header (default)
+#   header_row: 7     - Row 7 is the header, rows 1-6 are skipped, data starts from row 8
+#   header_row: 3     - Row 3 is the header, rows 1-2 are skipped, data starts from row 4
+
+# Auto-detection behavior:
+# When auto_detect is enabled and no explicit columns are specified:
+#
+# Content columns: Looks for columns named:
+#   - Japanese: "詳細", "本文", "内容", "説明", "備考", "コメント", "メモ"
+#   - English: "content", "description", "body", "text", "details", "notes", "comment", "memo"
+#   Falls back to the column with the highest average text length (min 50 chars)
+#
+# Title column: Looks for:
+#   - Japanese: "タイトル", "件名", "題名", "名前", "名称"
+#   - English: "title", "subject", "name", "heading"
+#
+# Category column: Looks for:
+#   - Japanese: "カテゴリ", "カテゴリー", "分類", "種別", "種類"
+#   - English: "category", "type", "classification", "kind"
+#
+# ID column: Looks for:
+#   - "id", "ID", "#", "番号", "No", "num", "number"
+
+# Supported date formats:
+#   - YYYY/MM/DD, YYYY-MM-DD
+#   - YYYY/M/D, YYYY-M-D
+#   - YYYY/MM/DD HH:MM:SS, YYYY-MM-DD HH:MM:SS
+#   - RFC3339
+
+# Usage:
+#   # Process CSV files with configuration
+#   go run main.go vectorize --csv-config csv-config.yaml
+#
+#   # Preview what would be processed (dry-run)
+#   go run main.go vectorize --csv-config csv-config.yaml --dry-run
+#
+#   # Process files from a specific directory
+#   go run main.go vectorize --directory ./data --csv-config csv-config.yaml

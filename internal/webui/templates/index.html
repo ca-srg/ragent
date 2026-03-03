@@ -1,0 +1,105 @@
+{{template "base" .}}
+
+{{define "title"}}ダッシュボード - RAGent{{end}}
+
+{{define "content"}}
+<div class="dashboard">
+    <!-- Status Card -->
+    <section class="card status-card">
+        <h2>ベクトル化ステータス</h2>
+        <div id="status-display" 
+             hx-get="/partials/stats" 
+             hx-trigger="every 5s"
+             hx-swap="innerHTML">
+            {{template "stats.html" .State}}
+        </div>
+    </section>
+    
+    <!-- Control Panel -->
+    <section class="card control-panel">
+        <h2>コントロール</h2>
+        <div class="button-group">
+            <button hx-post="/api/vectorize/start"
+                    hx-swap="none"
+                    hx-on::after-request="htmx.trigger('#status-display', 'refresh')"
+                    {{if or (eq .State.Status "running") (eq .State.Status "waiting")}}disabled{{end}}
+                    class="btn btn-primary">
+                ベクトル化開始
+            </button>
+            <button hx-post="/api/vectorize/stop"
+                    hx-swap="none"
+                    {{if and (ne .State.Status "running") (ne .State.Status "waiting")}}disabled{{end}}
+                    class="btn btn-danger">
+                停止
+            </button>
+        </div>
+        
+        <!-- Scheduler -->
+        <div class="scheduler-controls">
+            <h3>スケジューラー（フォローモード）</h3>
+            <div class="scheduler-row">
+                <button hx-post="/api/scheduler/toggle"
+                        hx-target="#scheduler-status"
+                        class="btn {{if .Scheduler.Enabled}}btn-danger{{else}}btn-primary{{end}}">
+                    {{if .Scheduler.Enabled}}スケジューラー停止{{else}}スケジューラー開始{{end}}
+                </button>
+                <div id="scheduler-status">
+                    {{if .Scheduler.Enabled}}
+                    <p>次回実行: {{formatTime .Scheduler.NextRunAt}}</p>
+                    <p>間隔: {{.Scheduler.Interval}}</p>
+                    {{else}}
+                    <p>スケジューラーは停止中です</p>
+                    {{end}}
+                </div>
+            </div>
+            <div class="interval-input">
+                <label for="interval">間隔:</label>
+                <input type="text" 
+                       id="interval"
+                       name="interval" 
+                       value="30m"
+                       placeholder="30m, 1h など"
+                       hx-put="/api/scheduler/interval"
+                       hx-trigger="change"
+                       hx-target="#scheduler-status">
+            </div>
+        </div>
+    </section>
+    
+    <!-- Progress -->
+    <section class="card progress-card" id="progress-section">
+        <h2>進捗</h2>
+        <div id="progress-content"
+             hx-get="/partials/progress"
+             hx-trigger="every 2s"
+             hx-swap="innerHTML">
+            {{template "progress.html" .State}}
+        </div>
+    </section>
+    
+    <!-- Recent Errors -->
+    <section class="card errors-card">
+        <h2>最近のエラー</h2>
+        <div id="error-list"
+             hx-get="/partials/error-list"
+             hx-trigger="every 10s"
+             hx-swap="innerHTML">
+            {{template "error_list.html" .RecentErrors}}
+        </div>
+    </section>
+    
+    <!-- Last Run -->
+    {{if .LastRun}}
+    <section class="card last-run-card">
+        <h2>前回の実行</h2>
+        <div class="last-run-info">
+            <p><strong>ID:</strong> {{.LastRun.ID}}</p>
+            <p><strong>ステータス:</strong> <span class="{{statusClass .LastRun.Status}}">{{.LastRun.Status}}</span></p>
+            <p><strong>開始:</strong> {{formatTime .LastRun.StartTime}}</p>
+            <p><strong>完了:</strong> {{formatTime .LastRun.EndTime}}</p>
+            <p><strong>ファイル:</strong> {{.LastRun.ProcessedFiles}} 処理済み, {{.LastRun.SuccessCount}} 成功, {{.LastRun.FailedCount}} 失敗</p>
+        </div>
+    </section>
+    {{end}}
+</div>
+{{end}}

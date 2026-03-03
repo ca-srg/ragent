@@ -1,0 +1,18 @@
+markdown/*.md
+.env
+.kiro
+.kiri
+.serena
+ragent*
+.spec-workflow
+opencode.json
+doc/debug.md
+# Added by goreleaser init:
+dist/
+source/*.md
+.opencode/plans/*.md
+terraform/test/.terraform
+terraform/test/.terraform.lock.hcl
+terraform/test/terraform.tfstate
+terraform/test/terraform.tfstate.backup
+terraform/test/terraform.tfvars

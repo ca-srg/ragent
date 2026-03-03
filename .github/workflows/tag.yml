@@ -1,0 +1,30 @@
+name: Auto-tag on main
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: autotag-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  autotag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: tagger
+        uses: anothrNick/github-tag-action@c360518fb8131e99795f8208f8a6105ceca55ec2 # 1.64.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          DEFAULT_BUMP: patch   # fallback when commit messages don't specify bump
+          WITH_V: "true"        # produce tags like v1.2.3
+
