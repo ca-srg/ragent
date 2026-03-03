@@ -563,7 +563,7 @@ func TestReader_ReadFile_WithHeaderRow(t *testing.T) {
 
 	// CSV with metadata rows before the actual header
 	// Rows 1-6 are metadata/summary rows, row 7 is the header
-	csvContent := `計算,平均,WinTicket
+	csvContent := `計算,平均,SRG
 テスト規模,dummy,QC期間
 社外障害,社外あり,インシデント
 計算範囲,現在,リリース前通し
