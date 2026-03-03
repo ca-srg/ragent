@@ -59,18 +59,18 @@ func (r *SlackSearchResult) ForPrompt() string {
 	sb.WriteString("Slack Conversations:\n")
 	for _, msg := range r.EnrichedMessages {
 		orig := msg.OriginalMessage
-		sb.WriteString(fmt.Sprintf("- #%s at %s by %s: %s\n",
+		fmt.Fprintf(&sb, "- #%s at %s by %s: %s\n",
 			orig.Channel,
 			formatSlackTimestamp(orig.Timestamp),
 			displaySlackUser(orig.User, orig.Username),
 			strings.TrimSpace(orig.Text),
-		))
+		)
 		for _, reply := range msg.ThreadMessages {
-			sb.WriteString(fmt.Sprintf("    • Reply at %s by %s: %s\n",
+			fmt.Fprintf(&sb, "    • Reply at %s by %s: %s\n",
 				formatSlackTimestamp(reply.Timestamp),
 				displaySlackUser(reply.User, reply.Username),
 				strings.TrimSpace(reply.Text),
-			))
+			)
 		}
 	}
 	return sb.String()

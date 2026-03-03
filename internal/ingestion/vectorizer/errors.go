@@ -133,10 +133,10 @@ func FormatErrorSummary(errors []ProcessingError) string {
 	}
 
 	var summary strings.Builder
-	summary.WriteString(fmt.Sprintf("Processing completed with %d error(s):\n", len(errors)))
+	fmt.Fprintf(&summary, "Processing completed with %d error(s):\n", len(errors))
 
 	for errorType, count := range errorCounts {
-		summary.WriteString(fmt.Sprintf("  - %s: %d error(s)\n", errorType, count))
+		fmt.Fprintf(&summary, "  - %s: %d error(s)\n", errorType, count)
 	}
 
 	// Show first few specific errors for debugging
@@ -148,11 +148,11 @@ func FormatErrorSummary(errors []ProcessingError) string {
 
 	for i := 0; i < maxShow; i++ {
 		err := errors[i]
-		summary.WriteString(fmt.Sprintf("  %d. [%s] %s\n", i+1, err.Type, err.Error()))
+		fmt.Fprintf(&summary, "  %d. [%s] %s\n", i+1, err.Type, err.Error())
 	}
 
 	if len(errors) > maxShow {
-		summary.WriteString(fmt.Sprintf("  ... and %d more error(s)\n", len(errors)-maxShow))
+		fmt.Fprintf(&summary, "  ... and %d more error(s)\n", len(errors)-maxShow)
 	}
 
 	return summary.String()

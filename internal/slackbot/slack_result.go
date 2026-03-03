@@ -30,12 +30,12 @@ func (r *SlackConversationResult) ForPrompt() string {
 		if user == "" {
 			user = "unknown"
 		}
-		sb.WriteString(fmt.Sprintf("- #%s at %s by %s: %s\n",
+		fmt.Fprintf(&sb, "- #%s at %s by %s: %s\n",
 			msg.Channel,
 			msg.Timestamp,
 			user,
 			strings.TrimSpace(msg.Text),
-		))
+		)
 		for _, reply := range msg.Thread {
 			replyUser := reply.Username
 			if replyUser == "" {
@@ -44,11 +44,11 @@ func (r *SlackConversationResult) ForPrompt() string {
 			if replyUser == "" {
 				replyUser = "unknown"
 			}
-			sb.WriteString(fmt.Sprintf("    • Reply at %s by %s: %s\n",
+			fmt.Fprintf(&sb, "    • Reply at %s by %s: %s\n",
 				reply.Timestamp,
 				replyUser,
 				strings.TrimSpace(reply.Text),
-			))
+			)
 		}
 	}
 	return sb.String()

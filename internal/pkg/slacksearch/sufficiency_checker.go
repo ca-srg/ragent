@@ -199,28 +199,28 @@ func (s *SufficiencyChecker) buildPromptMessages(req *SufficiencyRequest) []bedr
 	sb.WriteString("Messages:\n")
 
 	for i, msg := range req.Messages {
-		sb.WriteString(fmt.Sprintf("Message %d (channel=%s user=%s ts=%s):\n", i, msg.OriginalMessage.Channel, msg.OriginalMessage.User, msg.OriginalMessage.Timestamp))
-		sb.WriteString(fmt.Sprintf("- Text: %s\n", strings.TrimSpace(msg.OriginalMessage.Text)))
+		fmt.Fprintf(&sb, "Message %d (channel=%s user=%s ts=%s):\n", i, msg.OriginalMessage.Channel, msg.OriginalMessage.User, msg.OriginalMessage.Timestamp)
+		fmt.Fprintf(&sb, "- Text: %s\n", strings.TrimSpace(msg.OriginalMessage.Text))
 		if len(msg.ThreadMessages) > 0 {
 			sb.WriteString("- Thread replies:\n")
 			for _, reply := range msg.ThreadMessages {
-				sb.WriteString(fmt.Sprintf("    • [%s] %s: %s\n", reply.Timestamp, reply.User, strings.TrimSpace(reply.Text)))
+				fmt.Fprintf(&sb, "    • [%s] %s: %s\n", reply.Timestamp, reply.User, strings.TrimSpace(reply.Text))
 			}
 		}
 		if len(msg.PreviousMessages) > 0 {
 			sb.WriteString("- Previous context:\n")
 			for _, prev := range msg.PreviousMessages {
-				sb.WriteString(fmt.Sprintf("    • [%s] %s: %s\n", prev.Timestamp, prev.User, strings.TrimSpace(prev.Text)))
+				fmt.Fprintf(&sb, "    • [%s] %s: %s\n", prev.Timestamp, prev.User, strings.TrimSpace(prev.Text))
 			}
 		}
 		if len(msg.NextMessages) > 0 {
 			sb.WriteString("- Subsequent context:\n")
 			for _, next := range msg.NextMessages {
-				sb.WriteString(fmt.Sprintf("    • [%s] %s: %s\n", next.Timestamp, next.User, strings.TrimSpace(next.Text)))
+				fmt.Fprintf(&sb, "    • [%s] %s: %s\n", next.Timestamp, next.User, strings.TrimSpace(next.Text))
 			}
 		}
 		if msg.Permalink != "" {
-			sb.WriteString(fmt.Sprintf("- Permalink: %s\n", msg.Permalink))
+			fmt.Fprintf(&sb, "- Permalink: %s\n", msg.Permalink)
 		}
 		sb.WriteString("\n")
 	}

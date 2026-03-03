@@ -187,7 +187,7 @@ func (g *QueryGenerator) buildUserPrompt(req *QueryGenerationRequest, alternativ
 			sb.WriteString(pq)
 			sb.WriteString("\n")
 		}
-		sb.WriteString(fmt.Sprintf("Previous result count: %d\n", req.PreviousResults))
+		fmt.Fprintf(&sb, "Previous result count: %d\n", req.PreviousResults)
 	}
 
 	if alternative {

@@ -307,7 +307,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 		if len(references) > 0 {
 			builder.WriteString("\n\n## 参考文献\n\n")
 			for title, ref := range references {
-				builder.WriteString(fmt.Sprintf("- %s: %s\n", title, ref))
+				fmt.Fprintf(&builder, "- %s: %s\n", title, ref)
 			}
 		}
 
@@ -315,9 +315,9 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 			builder.WriteString("\n\n## Slack Conversations\n\n")
 			for _, msg := range slackResult.EnrichedMessages {
 				orig := msg.OriginalMessage
-				builder.WriteString(fmt.Sprintf("- #%s (%s): %s", channelName(orig.Channel), humanTimestamp(orig.Timestamp), strings.TrimSpace(orig.Text)))
+				fmt.Fprintf(&builder, "- #%s (%s): %s", channelName(orig.Channel), humanTimestamp(orig.Timestamp), strings.TrimSpace(orig.Text))
 				if msg.Permalink != "" {
-					builder.WriteString(fmt.Sprintf(" (%s)", msg.Permalink))
+					fmt.Fprintf(&builder, " (%s)", msg.Permalink)
 				}
 				builder.WriteString("\n")
 			}

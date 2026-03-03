@@ -253,12 +253,12 @@ func (c *ContextRetriever) buildSelectionPrompt(req *ContextRequest) string {
 	sb.WriteString("\n\nMessages:\n")
 
 	for idx, msg := range req.Messages {
-		sb.WriteString(fmt.Sprintf("- Index %d | Channel: %s | User: %s | HasThread: %t | Text: %s\n",
+		fmt.Fprintf(&sb, "- Index %d | Channel: %s | User: %s | HasThread: %t | Text: %s\n",
 			idx,
 			defaultString(msg.Channel, "unknown"),
 			defaultString(msg.User, msg.Username),
 			msg.ThreadTimestamp != "",
-			trimPreview(msg.Text)))
+			trimPreview(msg.Text))
 	}
 
 	sb.WriteString("\nRespond with JSON: {\"message_indices\": [int,...]}")
