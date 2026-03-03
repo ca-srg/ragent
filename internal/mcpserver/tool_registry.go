@@ -7,16 +7,14 @@ import (
 	"os"
 	"strings"
 	"sync"
-
-	"github.com/ca-srg/ragent/internal/types"
 )
 
 // ToolHandler represents a function that handles tool execution
-type ToolHandler func(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error)
+type ToolHandler func(ctx context.Context, params map[string]interface{}) (*MCPToolCallResult, error)
 
 // ToolInfo contains metadata about a registered tool
 type ToolInfo struct {
-	Definition types.MCPToolDefinition
+	Definition MCPToolDefinition
 	Handler    ToolHandler
 }
 
@@ -39,7 +37,7 @@ func NewToolRegistry() *ToolRegistry {
 }
 
 // RegisterTool registers a new tool in the registry
-func (tr *ToolRegistry) RegisterTool(internalName string, definition types.MCPToolDefinition, handler ToolHandler) error {
+func (tr *ToolRegistry) RegisterTool(internalName string, definition MCPToolDefinition, handler ToolHandler) error {
 	if internalName == "" {
 		return fmt.Errorf("internal tool name cannot be empty")
 	}
@@ -96,7 +94,7 @@ func (tr *ToolRegistry) UnregisterTool(internalName string) error {
 }
 
 // ExecuteTool executes a tool by name
-func (tr *ToolRegistry) ExecuteTool(ctx context.Context, toolName string, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+func (tr *ToolRegistry) ExecuteTool(ctx context.Context, toolName string, params map[string]interface{}) (*MCPToolCallResult, error) {
 	tr.mutex.RLock()
 	defer tr.mutex.RUnlock()
 
@@ -118,7 +116,7 @@ func (tr *ToolRegistry) ExecuteTool(ctx context.Context, toolName string, params
 	tr.logger.Printf("Executing tool: %s (internal: %s)", toolName, internalName)
 
 	type execResult struct {
-		result *types.MCPToolCallResult
+		result *MCPToolCallResult
 		err    error
 	}
 
@@ -133,8 +131,8 @@ func (tr *ToolRegistry) ExecuteTool(ctx context.Context, toolName string, params
 	case <-ctx.Done():
 		err := ctx.Err()
 		tr.logger.Printf("Tool execution timed out or was cancelled for %s: %v", toolName, err)
-		return &types.MCPToolCallResult{
-			Content: []types.MCPContent{
+		return &MCPToolCallResult{
+			Content: []MCPContent{
 				{
 					Type: "text",
 					Text: fmt.Sprintf("Tool execution cancelled: %v", err),
@@ -145,8 +143,8 @@ func (tr *ToolRegistry) ExecuteTool(ctx context.Context, toolName string, params
 	case exec := <-resultCh:
 		if exec.err != nil {
 			tr.logger.Printf("Tool execution failed for %s: %v", toolName, exec.err)
-			return &types.MCPToolCallResult{
-				Content: []types.MCPContent{
+			return &MCPToolCallResult{
+				Content: []MCPContent{
 					{
 						Type: "text",
 						Text: fmt.Sprintf("Tool execution failed: %v", exec.err),
@@ -162,11 +160,11 @@ func (tr *ToolRegistry) ExecuteTool(ctx context.Context, toolName string, params
 }
 
 // ListTools returns all registered tools
-func (tr *ToolRegistry) ListTools() []types.MCPToolDefinition {
+func (tr *ToolRegistry) ListTools() []MCPToolDefinition {
 	tr.mutex.RLock()
 	defer tr.mutex.RUnlock()
 
-	tools := make([]types.MCPToolDefinition, 0, len(tr.tools))
+	tools := make([]MCPToolDefinition, 0, len(tr.tools))
 	for _, toolInfo := range tr.tools {
 		tools = append(tools, toolInfo.Definition)
 	}
@@ -175,7 +173,7 @@ func (tr *ToolRegistry) ListTools() []types.MCPToolDefinition {
 }
 
 // GetTool returns a specific tool definition by name
-func (tr *ToolRegistry) GetTool(toolName string) (*types.MCPToolDefinition, error) {
+func (tr *ToolRegistry) GetTool(toolName string) (*MCPToolDefinition, error) {
 	tr.mutex.RLock()
 	defer tr.mutex.RUnlock()
 
@@ -246,7 +244,7 @@ func (tr *ToolRegistry) GetToolNameMapping() map[string]string {
 }
 
 // ValidateToolDefinition validates a tool definition
-func ValidateToolDefinition(definition types.MCPToolDefinition) error {
+func ValidateToolDefinition(definition MCPToolDefinition) error {
 	if definition.Name == "" {
 		return fmt.Errorf("tool name cannot be empty")
 	}
@@ -261,9 +259,9 @@ func ValidateToolDefinition(definition types.MCPToolDefinition) error {
 }
 
 // CreateToolCallResult creates a successful tool call result
-func CreateToolCallResult(content string) *types.MCPToolCallResult {
-	return &types.MCPToolCallResult{
-		Content: []types.MCPContent{
+func CreateToolCallResult(content string) *MCPToolCallResult {
+	return &MCPToolCallResult{
+		Content: []MCPContent{
 			{
 				Type: "text",
 				Text: content,
@@ -274,9 +272,9 @@ func CreateToolCallResult(content string) *types.MCPToolCallResult {
 }
 
 // CreateToolCallErrorResult creates an error tool call result
-func CreateToolCallErrorResult(errorMsg string) *types.MCPToolCallResult {
-	return &types.MCPToolCallResult{
-		Content: []types.MCPContent{
+func CreateToolCallErrorResult(errorMsg string) *MCPToolCallResult {
+	return &MCPToolCallResult{
+		Content: []MCPContent{
 			{
 				Type: "text",
 				Text: errorMsg,
@@ -287,9 +285,9 @@ func CreateToolCallErrorResult(errorMsg string) *types.MCPToolCallResult {
 }
 
 // CreateToolCallResultWithMetadata creates a tool call result with metadata
-func CreateToolCallResultWithMetadata(content string, metadata map[string]interface{}) *types.MCPToolCallResult {
-	result := &types.MCPToolCallResult{
-		Content: []types.MCPContent{
+func CreateToolCallResultWithMetadata(content string, metadata map[string]interface{}) *MCPToolCallResult {
+	result := &MCPToolCallResult{
+		Content: []MCPContent{
 			{
 				Type: "text",
 				Text: content,
@@ -300,7 +298,7 @@ func CreateToolCallResultWithMetadata(content string, metadata map[string]interf
 
 	// Add metadata as additional content if provided
 	for key, value := range metadata {
-		result.Content = append(result.Content, types.MCPContent{
+		result.Content = append(result.Content, MCPContent{
 			Type: "text",
 			Text: fmt.Sprintf("%s: %v", key, value),
 		})

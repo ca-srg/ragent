@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/opensearch"
-	"github.com/ca-srg/ragent/internal/slacksearch"
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -68,7 +67,7 @@ func NewHybridSearchToolAdapter(searchClient SearchClient, embeddingClient opens
 }
 
 // GetToolDefinition returns the MCP tool definition for hybrid search
-func (hsta *HybridSearchToolAdapter) GetToolDefinition() types.MCPToolDefinition {
+func (hsta *HybridSearchToolAdapter) GetToolDefinition() MCPToolDefinition {
 	// Define the input schema as a map first
 	schemaMap := map[string]interface{}{
 		"type": "object",
@@ -158,7 +157,7 @@ func (hsta *HybridSearchToolAdapter) GetToolDefinition() types.MCPToolDefinition
 		_ = json.Unmarshal(schemaBytes, inputSchema)
 	}
 
-	return types.MCPToolDefinition{
+	return MCPToolDefinition{
 		Name:        "hybrid_search",
 		Description: "Perform hybrid search using BM25 + vector search with configurable fusion methods",
 		InputSchema: inputSchema,
@@ -169,13 +168,13 @@ func (hsta *HybridSearchToolAdapter) GetToolDefinition() types.MCPToolDefinition
 type ProgressCallback func(progress, total float64, message string)
 
 // HandleToolCall executes the hybrid search tool
-func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+func (hsta *HybridSearchToolAdapter) HandleToolCall(ctx context.Context, params map[string]interface{}) (*MCPToolCallResult, error) {
 	return hsta.HandleToolCallWithProgress(ctx, params, nil)
 }
 
 // HandleToolCallWithProgress executes the hybrid search tool with optional progress notifications.
 // If progressFn is non-nil, it will be called at key phases of the search process.
-func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Context, params map[string]interface{}, progressFn ProgressCallback) (*types.MCPToolCallResult, error) {
+func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Context, params map[string]interface{}, progressFn ProgressCallback) (*MCPToolCallResult, error) {
 	hsta.logger.Printf("Executing hybrid search tool with params: %+v", params)
 
 	// Helper to send progress if callback is set
@@ -293,8 +292,8 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 }
 
 // parseParams extracts and validates parameters from MCP tool call
-func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) (*types.HybridSearchRequest, error) {
-	request := &types.HybridSearchRequest{
+func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) (*HybridSearchRequest, error) {
+	request := &HybridSearchRequest{
 		SearchMode:      "hybrid",
 		TopK:            hsta.defaultConfig.DefaultSize,
 		BM25Weight:      hsta.defaultConfig.DefaultBM25Weight,
@@ -315,28 +314,19 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 		return nil, fmt.Errorf("query parameter is required")
 	}
 
-	// Optional parameters
+	// Optional parameters: top_k or max_results (alias)
 	if topKInterface, ok := params["top_k"]; ok {
-		switch v := topKInterface.(type) {
-		case float64:
-			request.TopK = int(v)
-		case float32:
-			request.TopK = int(v)
-		case int:
-			request.TopK = v
-		case int32:
-			request.TopK = int(v)
-		case int64:
-			request.TopK = int(v)
-		case json.Number:
-			if n, err := v.Int64(); err == nil {
-				request.TopK = int(n)
-			}
-		case string:
-			if topK, err := strconv.Atoi(v); err == nil {
-				request.TopK = topK
-			}
+		parsed, parseErr := parseIntParamStrict(topKInterface)
+		if parseErr != nil {
+			return nil, fmt.Errorf("top_k must be an integer: %w", parseErr)
 		}
+		request.TopK = parsed
+	} else if maxResultsInterface, ok := params["max_results"]; ok {
+		parsed, parseErr := parseIntParamStrict(maxResultsInterface)
+		if parseErr != nil {
+			return nil, fmt.Errorf("max_results must be an integer: %w", parseErr)
+		}
+		request.TopK = parsed
 	}
 
 	if searchModeInterface, ok := params["search_mode"]; ok {
@@ -419,26 +409,56 @@ func parseFloatParam(value interface{}, fallback float64) float64 {
 	return fallback
 }
 
+// parseIntParamStrict parses an integer parameter and returns an error for invalid types.
+func parseIntParamStrict(value interface{}) (int, error) {
+	switch v := value.(type) {
+	case float64:
+		return int(v), nil
+	case float32:
+		return int(v), nil
+	case int:
+		return v, nil
+	case int32:
+		return int(v), nil
+	case int64:
+		return int(v), nil
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("invalid number: %w", err)
+		}
+		return int(n), nil
+	case string:
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("cannot convert %q to integer", v)
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("unsupported type %T", value)
+	}
+}
+
 // executeHybridSearch performs hybrid search
-func (hsta *HybridSearchToolAdapter) executeHybridSearch(ctx context.Context, request *types.HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
+func (hsta *HybridSearchToolAdapter) executeHybridSearch(ctx context.Context, request *HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
 	hybridQuery := hsta.buildHybridQuery(request)
 	return hsta.hybridEngine.Search(ctx, hybridQuery)
 }
 
 // executeBM25Search performs BM25-only search
-func (hsta *HybridSearchToolAdapter) executeBM25Search(ctx context.Context, request *types.HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
+func (hsta *HybridSearchToolAdapter) executeBM25Search(ctx context.Context, request *HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
 	hybridQuery := hsta.buildHybridQuery(request)
 	return hsta.hybridEngine.SearchBM25Only(ctx, hybridQuery)
 }
 
 // executeVectorSearch performs vector-only search
-func (hsta *HybridSearchToolAdapter) executeVectorSearch(ctx context.Context, request *types.HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
+func (hsta *HybridSearchToolAdapter) executeVectorSearch(ctx context.Context, request *HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
 	hybridQuery := hsta.buildHybridQuery(request)
 	return hsta.hybridEngine.SearchVectorOnly(ctx, hybridQuery)
 }
 
 // buildHybridQuery constructs HybridQuery from MCP request
-func (hsta *HybridSearchToolAdapter) buildHybridQuery(request *types.HybridSearchRequest) *opensearch.HybridQuery {
+func (hsta *HybridSearchToolAdapter) buildHybridQuery(request *HybridSearchRequest) *opensearch.HybridQuery {
 	fusionMethod := opensearch.FusionMethodWeightedSum
 	if request.SearchMode == "rrf" || len(request.Query) > 0 {
 		// Can be extended to support different fusion methods
@@ -461,15 +481,15 @@ func (hsta *HybridSearchToolAdapter) buildHybridQuery(request *types.HybridSearc
 }
 
 // convertToMCPResponse converts HybridSearchResult to MCP response format
-func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridSearchRequest, result *opensearch.HybridSearchResult, slackResult *slacksearch.SlackSearchResult, urlMessages []slacksearch.EnrichedMessage) *types.HybridSearchResponse {
-	response := &types.HybridSearchResponse{
+func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *HybridSearchRequest, result *opensearch.HybridSearchResult, slackResult *slacksearch.SlackSearchResult, urlMessages []slacksearch.EnrichedMessage) *HybridSearchResponse {
+	response := &HybridSearchResponse{
 		Query:          request.Query,
 		Total:          result.FusionResult.TotalHits,
 		SearchMode:     request.SearchMode,
 		SearchMethod:   result.SearchMethod,
 		URLDetected:    result.URLDetected,
 		FallbackReason: result.FallbackReason,
-		Results:        make([]types.HybridSearchResultItem, 0, len(result.FusionResult.Documents)),
+		Results:        make([]HybridSearchResultItem, 0, len(result.FusionResult.Documents)),
 	}
 
 	// Convert documents to result items
@@ -479,7 +499,7 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridS
 			continue // Skip documents that can't be parsed
 		}
 
-		item := types.HybridSearchResultItem{
+		item := HybridSearchResultItem{
 			ID:     doc.ID,
 			Score:  doc.FusedScore,
 			Source: request.SearchMode,
@@ -526,7 +546,7 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *types.HybridS
 
 	// Add metadata if requested
 	if request.IncludeMetadata {
-		response.Metadata = &types.HybridSearchMetadata{
+		response.Metadata = &HybridSearchMetadata{
 			ExecutionTimeMs: result.ExecutionTime.Milliseconds(),
 			BM25Weight:      request.BM25Weight,
 			VectorWeight:    request.VectorWeight,
@@ -657,25 +677,25 @@ func normalizeSlackChannel(value string) string {
 	return strings.ToLower(trimmed)
 }
 
-func convertSlackResult(src *slacksearch.SlackSearchResult) []types.HybridSearchSlackResult {
+func convertSlackResult(src *slacksearch.SlackSearchResult) []HybridSearchSlackResult {
 	if src == nil {
 		return nil
 	}
 	return convertEnrichedMessages(src.EnrichedMessages)
 }
 
-func convertEnrichedMessages(messages []slacksearch.EnrichedMessage) []types.HybridSearchSlackResult {
+func convertEnrichedMessages(messages []slacksearch.EnrichedMessage) []HybridSearchSlackResult {
 	if len(messages) == 0 {
 		return nil
 	}
-	results := make([]types.HybridSearchSlackResult, 0, len(messages))
+	results := make([]HybridSearchSlackResult, 0, len(messages))
 	for _, msg := range messages {
 		primary := msg.OriginalMessage
 		text := strings.TrimSpace(primary.Text)
 		if text == "" && len(msg.ThreadMessages) > 0 {
 			text = strings.TrimSpace(msg.ThreadMessages[0].Text)
 		}
-		results = append(results, types.HybridSearchSlackResult{
+		results = append(results, HybridSearchSlackResult{
 			Message:   text,
 			Timestamp: primary.Timestamp,
 			User:      selectSlackUser(primary.User, primary.Username),

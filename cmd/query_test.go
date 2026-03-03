@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/opensearch"
-	"github.com/ca-srg/ragent/internal/slacksearch"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
+	queryimpl "github.com/ca-srg/ragent/internal/query"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,13 +61,6 @@ func TestPrintSlackResultsIncludesPermalink(t *testing.T) {
 }
 
 func TestOutputCombinedResultsWithoutSlack(t *testing.T) {
-	ResetQueryState()
-	restoreQuery := queryText
-	queryText = "hybrid test"
-	t.Cleanup(func() {
-		queryText = restoreQuery
-	})
-
 	sourceBytes, err := json.Marshal(map[string]string{
 		"title":     "Doc Title",
 		"category":  "Guides",
@@ -95,7 +89,7 @@ func TestOutputCombinedResultsWithoutSlack(t *testing.T) {
 	}
 
 	output := captureOutput(t, func() {
-		require.NoError(t, outputCombinedResults(result, nil, "hybrid"))
+		require.NoError(t, queryimpl.OutputCombinedResults(result, nil, "hybrid", "hybrid test", false, nil))
 	})
 
 	assert.Contains(t, output, "Query: hybrid test")

@@ -1,0 +1,93 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    environment: e2e-test
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Start OpenSearch
+        run: docker compose up -d opensearch
+
+      - name: Wait for OpenSearch to be healthy
+        run: |
+          echo "Waiting for OpenSearch to be healthy..."
+          for i in $(seq 1 36); do
+            if curl -sf http://localhost:9200/_cluster/health | grep -qE '"status":"(green|yellow)"'; then
+              echo "OpenSearch is ready!"
+              curl -s http://localhost:9200/_cluster/health | python3 -m json.tool
+              exit 0
+            fi
+            echo "  Waiting... ($i/36)"
+            sleep 5
+          done
+          echo "::error::OpenSearch failed to become healthy within 3 minutes"
+          docker compose logs opensearch
+          exit 1
+
+      - name: Create E2E test index
+        run: |
+          curl -sf -X PUT "http://localhost:9200/ragent-e2e-test" \
+            -H "Content-Type: application/json" \
+            -d @tests/testdata/e2e-index-mapping.json
+          echo ""
+          echo "Index ragent-e2e-test created successfully"
+
+      - name: Create sample source files
+        run: |
+          mkdir -p source
+          cat > source/e2e-test-sample.md << 'MARKDOWN'
+          ---
+          title: E2E Test Sample Document
+          category: test
+          ---
+
+          # E2E Test Sample
+
+          This is a sample document for E2E testing.
+          MARKDOWN
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run E2E tests
+        env:
+          OPENSEARCH_ENDPOINT: http://localhost:9200
+          OPENSEARCH_INDEX: ragent-e2e-test
+          AWS_S3_VECTOR_BUCKET: ${{ secrets.AWS_S3_VECTOR_BUCKET }}
+          AWS_S3_VECTOR_INDEX: ${{ secrets.AWS_S3_VECTOR_INDEX }}
+          S3_VECTOR_REGION: ${{ secrets.S3_VECTOR_REGION }}
+        run: go test -v -run "TestE2E_" ./tests/integration/... -timeout 120s

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ca-srg/ragent/internal/config"
+	"github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/slack-go/slack"
 )
 

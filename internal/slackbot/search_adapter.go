@@ -13,9 +13,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/opensearch"
-	commontypes "github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/slack-go/slack"
 )
 
@@ -29,18 +29,25 @@ type SearchOptions struct {
 	ThreadTimestamp string
 }
 
+// slackConvSearcher is the package-internal interface for Slack conversation search.
+// The public definition lives in internal/pkg/slacksearch; this unexported alias
+// avoids importing slacksearch from slackbot (which would create a circular dep).
+type slackConvSearcher interface {
+	SearchConversations(ctx context.Context, query string, opts SearchOptions) (*SlackConversationResult, error)
+}
+
 // HybridSearchAdapter uses OpenSearch Hybrid + Bedrock embedding
 type HybridSearchAdapter struct {
-	cfg         *commontypes.Config
+	cfg         *appconfig.Config
 	maxResults  int
-	slackSearch SlackConversationSearcher
+	slackSearch slackConvSearcher
 	slackClient *slack.Client
 
 	awsCfgMu sync.RWMutex
 	awsCfg   *aws.Config
 }
 
-func NewHybridSearchAdapter(cfg *commontypes.Config, maxResults int, slackSearch SlackConversationSearcher, awsCfg *aws.Config) *HybridSearchAdapter {
+func NewHybridSearchAdapter(cfg *appconfig.Config, maxResults int, slackSearch slackConvSearcher, awsCfg *aws.Config) *HybridSearchAdapter {
 	if maxResults <= 0 {
 		maxResults = 5
 	}
@@ -255,11 +262,11 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 			fp := filePathRefs[title]
 			switch {
 			case ref != "" && fp != "":
-				referenceBuilder.WriteString(fmt.Sprintf("- %s: %s (%s)\n", title, ref, fp))
+				fmt.Fprintf(&referenceBuilder, "- %s: %s (%s)\n", title, ref, fp)
 			case ref != "":
-				referenceBuilder.WriteString(fmt.Sprintf("- %s: %s\n", title, ref))
+				fmt.Fprintf(&referenceBuilder, "- %s: %s\n", title, ref)
 			case fp != "":
-				referenceBuilder.WriteString(fmt.Sprintf("- %s: %s\n", title, fp))
+				fmt.Fprintf(&referenceBuilder, "- %s: %s\n", title, fp)
 			}
 		}
 
@@ -405,9 +412,9 @@ func fetchSlackURLMessages(ctx context.Context, client *slack.Client, urls []*sl
 			user = msg.Username
 		}
 
-		builder.WriteString(fmt.Sprintf("\n[%d] Channel: %s | User: %s\n", i+1, info.ChannelID, user))
-		builder.WriteString(fmt.Sprintf("Message: %s\n", msg.Text))
-		builder.WriteString(fmt.Sprintf("URL: %s\n", info.OriginalURL))
+		fmt.Fprintf(&builder, "\n[%d] Channel: %s | User: %s\n", i+1, info.ChannelID, user)
+		fmt.Fprintf(&builder, "Message: %s\n", msg.Text)
+		fmt.Fprintf(&builder, "URL: %s\n", info.OriginalURL)
 
 		// Fetch thread replies if applicable
 		if info.ThreadTS != "" || msg.ThreadTimestamp != "" {
@@ -424,7 +431,7 @@ func fetchSlackURLMessages(ctx context.Context, client *slack.Client, urls []*sl
 
 			replies, _, _, err := client.GetConversationRepliesContext(ctx, repliesParams)
 			if err == nil && len(replies) > 1 {
-				builder.WriteString(fmt.Sprintf("Thread Replies (%d):\n", len(replies)-1))
+				fmt.Fprintf(&builder, "Thread Replies (%d):\n", len(replies)-1)
 				for j, reply := range replies {
 					if reply.Timestamp == msg.Timestamp {
 						continue
@@ -437,7 +444,7 @@ func fetchSlackURLMessages(ctx context.Context, client *slack.Client, urls []*sl
 					if reply.Username != "" {
 						replyUser = reply.Username
 					}
-					builder.WriteString(fmt.Sprintf("  - %s: %s\n", replyUser, reply.Text))
+					fmt.Fprintf(&builder, "  - %s: %s\n", replyUser, reply.Text)
 				}
 			}
 		}

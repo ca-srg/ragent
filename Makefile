@@ -9,7 +9,8 @@ OPENSEARCH_PORT ?= 9200
 OPENSEARCH_ADMIN_PASSWORD ?= Admin_123456
 
 .PHONY: lint fmtvet build-linux-arm64 deploy-ec2 \
-        opensearch-start opensearch-stop opensearch-restart opensearch-logs opensearch-status
+        opensearch-start opensearch-stop opensearch-restart opensearch-logs opensearch-status \
+        test test-setup test-teardown
 
 ## go fmt と go vet のみ（CI で使用）
 fmtvet:
@@ -104,3 +105,61 @@ opensearch-status:
 	@echo ""
 	@echo "==> Health check:"
 	@curl -s http://localhost:$(OPENSEARCH_PORT) 2>/dev/null | head -20 || echo "OpenSearch is not responding"
+
+## ============================================================================
+## E2E Tests (CI ワークフローのローカル再現)
+## ============================================================================
+
+# E2E テスト用の設定
+E2E_OPENSEARCH_ENDPOINT ?= http://localhost:9200
+E2E_OPENSEARCH_INDEX ?= ragent-e2e-test
+E2E_INDEX_MAPPING := tests/testdata/e2e-index-mapping.json
+E2E_SAMPLE_FILE := source/e2e-test-sample.md
+
+## E2Eテストを実行（OpenSearch起動→インデックス作成→テスト実行）
+## 使い方: make test
+## テスト後のクリーンアップ: make test-teardown
+test: test-setup
+	@echo "==> Running go vet"
+	@go vet ./...
+	@echo "==> Running E2E tests"
+	@OPENSEARCH_ENDPOINT=$(E2E_OPENSEARCH_ENDPOINT) \
+	 OPENSEARCH_INDEX=$(E2E_OPENSEARCH_INDEX) \
+	 go test -v -run "TestE2E_" ./tests/integration/... -timeout 120s
+
+## E2Eテスト環境のセットアップ（OpenSearch起動・インデックス作成・サンプルファイル配置）
+test-setup:
+	@echo "==> Starting OpenSearch via docker compose"
+	@docker compose up -d opensearch
+	@echo "==> Waiting for OpenSearch to be healthy..."
+	@for i in $$(seq 1 36); do \
+		if curl -sf $(E2E_OPENSEARCH_ENDPOINT)/_cluster/health | grep -qE '"status":"(green|yellow)"'; then \
+			echo "  OpenSearch is ready!"; \
+			curl -s $(E2E_OPENSEARCH_ENDPOINT)/_cluster/health | python3 -m json.tool 2>/dev/null || true; \
+			break; \
+		fi; \
+		if [ $$i -eq 36 ]; then \
+			echo "ERROR: OpenSearch failed to become healthy within 3 minutes"; \
+			docker compose logs opensearch; \
+			exit 1; \
+		fi; \
+		echo "  Waiting... ($$i/36)"; \
+		sleep 5; \
+	done
+	@echo "==> Creating E2E test index"
+	@curl -sf -X PUT "$(E2E_OPENSEARCH_ENDPOINT)/$(E2E_OPENSEARCH_INDEX)" \
+		-H "Content-Type: application/json" \
+		-d @$(E2E_INDEX_MAPPING) && echo "  Index created" \
+		|| echo "  Index already exists (skipped)"
+	@echo "==> Creating sample source files"
+	@mkdir -p source
+	@printf '%s\n' '---' 'title: E2E Test Sample Document' 'category: test' '---' '' '# E2E Test Sample' '' 'This is a sample document for E2E testing.' > $(E2E_SAMPLE_FILE)
+	@echo "==> E2E test environment is ready"
+
+## E2Eテスト環境のクリーンアップ（OpenSearchコンテナ停止・サンプルファイル削除）
+test-teardown:
+	@echo "==> Stopping OpenSearch"
+	@docker compose down
+	@echo "==> Removing sample source files"
+	@rm -f $(E2E_SAMPLE_FILE)
+	@echo "==> E2E test environment cleaned up"

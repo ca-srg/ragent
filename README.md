@@ -1099,18 +1099,33 @@ RAGent/
 │   ├── list.go            # list command
 │   ├── chat.go            # chat command
 │   ├── slack.go           # slack-bot command
-│   ├── mcp-server.go      # mcp-server command (new)
+│   ├── mcp-server.go      # mcp-server command
+│   ├── webui.go           # webui command
 │   └── vectorize.go       # vectorize command
 ├── internal/              # Internal libraries
-│   ├── config/           # Configuration management
-│   ├── csv/              # CSV file processing
-│   ├── embedding/        # Embedding generation
-│   ├── s3vector/         # S3 Vector integration
-│   ├── opensearch/       # OpenSearch integration
-│   ├── vectorizer/       # Vectorization service
-│   ├── slackbot/         # Slack Bot integration
-│   ├── mcpserver/        # MCP Server integration (new)
-│   └── webui/            # Web UI server (new)
+│   ├── pkg/              # Shared infrastructure (feature-agnostic)
+│   │   ├── config/       # Config struct (91 fields)
+│   │   ├── embedding/    # Embedding generation
+│   │   │   └── bedrock/  # Amazon Bedrock client
+│   │   ├── opensearch/   # OpenSearch client and queries
+│   │   ├── slacksearch/  # Slack search service
+│   │   ├── search/       # HybridSearchService
+│   │   ├── s3vector/     # S3 Vector client
+│   │   ├── metrics/      # Metrics collection
+│   │   ├── observability/ # OpenTelemetry
+│   │   └── ipc/          # Inter-process communication
+│   ├── ingestion/        # vectorize/list/recreate-index slice
+│   │   ├── csv/
+│   │   ├── hashstore/
+│   │   ├── metadata/
+│   │   ├── scanner/
+│   │   ├── spreadsheet/
+│   │   └── vectorizer/
+│   ├── query/            # query/chat slice
+│   │   └── filter/
+│   ├── slackbot/         # slack-bot slice
+│   ├── mcpserver/        # mcp-server slice
+│   └── webui/            # webui slice
 ├── source/               # Source documents (markdown and CSV, prepare before use)
 ├── export/               # Separate export tool for Kibela
 ├── doc/                  # Project documentation

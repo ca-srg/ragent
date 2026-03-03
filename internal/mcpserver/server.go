@@ -12,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/ca-srg/ragent/internal/types"
 )
 
 // MCPServer represents the MCP server implementation
@@ -255,14 +253,14 @@ func (s *MCPServer) handleMCPRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Only allow POST requests for JSON-RPC
 	if r.Method != http.MethodPost {
-		s.writeErrorResponse(w, nil, types.MCPErrorMethodNotFound, "Only POST method is allowed", nil)
+		s.writeErrorResponse(w, nil, MCPErrorMethodNotFound, "Only POST method is allowed", nil)
 		return
 	}
 
 	// Check Content-Type
 	contentType := r.Header.Get("Content-Type")
 	if !strings.Contains(contentType, "application/json") {
-		s.writeErrorResponse(w, nil, types.MCPErrorInvalidRequest, "Content-Type must be application/json", nil)
+		s.writeErrorResponse(w, nil, MCPErrorInvalidRequest, "Content-Type must be application/json", nil)
 		return
 	}
 
@@ -270,7 +268,7 @@ func (s *MCPServer) handleMCPRequest(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Printf("Failed to read request body: %v", err)
-		s.writeErrorResponse(w, nil, types.MCPErrorParseError, "Failed to read request body", nil)
+		s.writeErrorResponse(w, nil, MCPErrorParseError, "Failed to read request body", nil)
 		return
 	}
 	defer func() {
@@ -280,21 +278,21 @@ func (s *MCPServer) handleMCPRequest(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Parse JSON-RPC request
-	var request types.LegacyMCPToolRequest
+	var request LegacyMCPToolRequest
 	if err := json.Unmarshal(body, &request); err != nil {
 		s.logger.Printf("Failed to parse JSON-RPC request: %v", err)
-		s.writeErrorResponse(w, nil, types.MCPErrorParseError, "Invalid JSON", nil)
+		s.writeErrorResponse(w, nil, MCPErrorParseError, "Invalid JSON", nil)
 		return
 	}
 
 	// Validate JSON-RPC format
 	if request.JSONRPC != "2.0" {
-		s.writeErrorResponse(w, request.ID, types.MCPErrorInvalidRequest, "Invalid JSON-RPC version", nil)
+		s.writeErrorResponse(w, request.ID, MCPErrorInvalidRequest, "Invalid JSON-RPC version", nil)
 		return
 	}
 
 	if request.Method == "" {
-		s.writeErrorResponse(w, request.ID, types.MCPErrorInvalidRequest, "Method field is required", nil)
+		s.writeErrorResponse(w, request.ID, MCPErrorInvalidRequest, "Method field is required", nil)
 		return
 	}
 
@@ -303,49 +301,49 @@ func (s *MCPServer) handleMCPRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 // routeRequest routes the request to the appropriate handler
-func (s *MCPServer) routeRequest(w http.ResponseWriter, ctx context.Context, request *types.LegacyMCPToolRequest) {
+func (s *MCPServer) routeRequest(w http.ResponseWriter, ctx context.Context, request *LegacyMCPToolRequest) {
 	switch request.Method {
 	case "tools/list":
 		s.handleToolsList(w, ctx, request)
 	case "tools/call":
 		s.handleToolCall(w, ctx, request)
 	default:
-		s.writeErrorResponse(w, request.ID, types.MCPErrorMethodNotFound, fmt.Sprintf("Method '%s' not found", request.Method), nil)
+		s.writeErrorResponse(w, request.ID, MCPErrorMethodNotFound, fmt.Sprintf("Method '%s' not found", request.Method), nil)
 	}
 }
 
 // handleToolsList handles the tools/list method
-func (s *MCPServer) handleToolsList(w http.ResponseWriter, ctx context.Context, request *types.LegacyMCPToolRequest) {
+func (s *MCPServer) handleToolsList(w http.ResponseWriter, ctx context.Context, request *LegacyMCPToolRequest) {
 	tools := s.toolRegistry.ListTools()
 
-	result := types.MCPToolListResult{
+	result := MCPToolListResult{
 		Tools: tools,
 	}
 
-	response := types.NewMCPToolResponse(request.ID, result)
+	response := NewMCPToolResponse(request.ID, result)
 	s.writeJSONResponse(w, response)
 
 	s.logger.Printf("Listed %d tools for request ID: %v", len(tools), request.ID)
 }
 
 // handleToolCall handles the tools/call method
-func (s *MCPServer) handleToolCall(w http.ResponseWriter, ctx context.Context, request *types.LegacyMCPToolRequest) {
+func (s *MCPServer) handleToolCall(w http.ResponseWriter, ctx context.Context, request *LegacyMCPToolRequest) {
 	// Parse tool call parameters
-	var params types.MCPToolCallParams
+	var params MCPToolCallParams
 	if request.Params != nil {
 		paramBytes, err := json.Marshal(request.Params)
 		if err != nil {
-			s.writeErrorResponse(w, request.ID, types.MCPErrorInvalidParams, "Failed to marshal parameters", err.Error())
+			s.writeErrorResponse(w, request.ID, MCPErrorInvalidParams, "Failed to marshal parameters", err.Error())
 			return
 		}
 		if err := json.Unmarshal(paramBytes, &params); err != nil {
-			s.writeErrorResponse(w, request.ID, types.MCPErrorInvalidParams, "Invalid parameters format", err.Error())
+			s.writeErrorResponse(w, request.ID, MCPErrorInvalidParams, "Invalid parameters format", err.Error())
 			return
 		}
 	}
 
 	if params.Name == "" {
-		s.writeErrorResponse(w, request.ID, types.MCPErrorInvalidParams, "Tool name is required", nil)
+		s.writeErrorResponse(w, request.ID, MCPErrorInvalidParams, "Tool name is required", nil)
 		return
 	}
 
@@ -362,6 +360,13 @@ func (s *MCPServer) handleToolCall(w http.ResponseWriter, ctx context.Context, r
 		})
 	}
 
+	// Check if the tool exists before executing.
+	if !s.toolRegistry.HasTool(params.Name) {
+		s.logger.Printf("Tool not found: '%s'", params.Name)
+		s.writeErrorResponse(w, request.ID, MCPErrorMethodNotFound, fmt.Sprintf("Tool '%s' not found", params.Name), nil)
+		return
+	}
+
 	// Execute the tool
 	result, err := s.toolRegistry.ExecuteTool(ctx, params.Name, params.Arguments)
 
@@ -372,11 +377,11 @@ func (s *MCPServer) handleToolCall(w http.ResponseWriter, ctx context.Context, r
 
 	if err != nil {
 		s.logger.Printf("Tool execution failed for '%s': %v", params.Name, err)
-		s.writeErrorResponse(w, request.ID, types.MCPErrorInternalError, fmt.Sprintf("Tool execution failed: %v", err), nil)
+		s.writeErrorResponse(w, request.ID, MCPErrorInternalError, fmt.Sprintf("Tool execution failed: %v", err), nil)
 		return
 	}
 
-	response := types.NewMCPToolResponse(request.ID, result)
+	response := NewMCPToolResponse(request.ID, result)
 	s.writeJSONResponse(w, response)
 
 	s.logger.Printf("Executed tool '%s' for request ID: %v", params.Name, request.ID)
@@ -400,7 +405,7 @@ func (s *MCPServer) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeJSONResponse writes a JSON response
-func (s *MCPServer) writeJSONResponse(w http.ResponseWriter, response *types.MCPToolResponse) {
+func (s *MCPServer) writeJSONResponse(w http.ResponseWriter, response *MCPToolResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -416,7 +421,7 @@ func (s *MCPServer) writeJSONResponse(w http.ResponseWriter, response *types.MCP
 
 // writeErrorResponse writes an error response
 func (s *MCPServer) writeErrorResponse(w http.ResponseWriter, id interface{}, code int, message string, data interface{}) {
-	response := types.NewMCPErrorResponse(id, code, message, data)
+	response := NewMCPErrorResponse(id, code, message, data)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK) // JSON-RPC errors are sent with HTTP 200

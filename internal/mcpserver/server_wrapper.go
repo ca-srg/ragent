@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/types"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -26,7 +26,7 @@ type ServerWrapper struct {
 	// Configuration management
 	configAdapter *ConfigAdapter
 	sdkConfig     *SDKServerConfig
-	ragentConfig  *types.Config
+	ragentConfig  *appconfig.Config
 
 	// RAGent-specific components (maintain existing integrations)
 	toolRegistry          *ToolRegistry
@@ -47,7 +47,7 @@ type ServerWrapper struct {
 }
 
 // NewServerWrapper creates a new SDK-based server wrapper with RAGent extensions
-func NewServerWrapper(config *types.Config) (*ServerWrapper, error) {
+func NewServerWrapper(config *appconfig.Config) (*ServerWrapper, error) {
 	if config == nil {
 		return nil, fmt.Errorf("configuration cannot be nil")
 	}
@@ -90,7 +90,7 @@ func NewServerWrapper(config *types.Config) (*ServerWrapper, error) {
 	return wrapper, nil
 }
 
-func applyServerWrapperDefaults(cfg *types.Config) {
+func applyServerWrapperDefaults(cfg *appconfig.Config) {
 	if cfg == nil {
 		return
 	}
@@ -447,7 +447,7 @@ func (sw *ServerWrapper) GetConfig() *SDKServerConfig {
 }
 
 // GetRAGentConfig returns the original RAGent configuration
-func (sw *ServerWrapper) GetRAGentConfig() *types.Config {
+func (sw *ServerWrapper) GetRAGentConfig() *appconfig.Config {
 	return sw.ragentConfig
 }
 

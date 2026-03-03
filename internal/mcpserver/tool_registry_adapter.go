@@ -7,7 +7,6 @@ import (
 	"log"
 	"sync"
 
-	"github.com/ca-srg/ragent/internal/types"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -35,12 +34,12 @@ func NewToolRegistryAdapter(server *mcp.Server) *ToolRegistryAdapter {
 }
 
 // RegisterTool maintains existing API while registering with SDK server
-func (tra *ToolRegistryAdapter) RegisterTool(name string, definition types.MCPToolDefinition, handler ToolHandler) error {
+func (tra *ToolRegistryAdapter) RegisterTool(name string, definition MCPToolDefinition, handler ToolHandler) error {
 	return tra.RegisterToolWithConfig(name, name, definition, handler)
 }
 
 // RegisterToolWithConfig registers tool with name mapping, maintaining existing API
-func (tra *ToolRegistryAdapter) RegisterToolWithConfig(internalName, configuredName string, definition types.MCPToolDefinition, handler ToolHandler) error {
+func (tra *ToolRegistryAdapter) RegisterToolWithConfig(internalName, configuredName string, definition MCPToolDefinition, handler ToolHandler) error {
 	tra.mutex.Lock()
 	defer tra.mutex.Unlock()
 
@@ -98,7 +97,7 @@ func (tra *ToolRegistryAdapter) UnregisterTool(name string) error {
 }
 
 // ExecuteTool executes tool using existing API signature
-func (tra *ToolRegistryAdapter) ExecuteTool(ctx context.Context, toolName string, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+func (tra *ToolRegistryAdapter) ExecuteTool(ctx context.Context, toolName string, params map[string]interface{}) (*MCPToolCallResult, error) {
 	tra.mutex.RLock()
 	toolInfo, exists := tra.tools[toolName]
 	tra.mutex.RUnlock()
@@ -112,11 +111,11 @@ func (tra *ToolRegistryAdapter) ExecuteTool(ctx context.Context, toolName string
 }
 
 // ListTools returns tool definitions in existing format
-func (tra *ToolRegistryAdapter) ListTools() []types.MCPToolDefinition {
+func (tra *ToolRegistryAdapter) ListTools() []MCPToolDefinition {
 	tra.mutex.RLock()
 	defer tra.mutex.RUnlock()
 
-	tools := make([]types.MCPToolDefinition, 0, len(tra.tools))
+	tools := make([]MCPToolDefinition, 0, len(tra.tools))
 	for _, toolInfo := range tra.tools {
 		tools = append(tools, toolInfo.Definition)
 	}
@@ -208,7 +207,7 @@ func (tra *ToolRegistryAdapter) createSDKHandler(ragentHandler ToolHandler) func
 }
 
 // convertToSDKTool converts RAGent tool definition to SDK tool
-func convertToSDKTool(name string, definition types.MCPToolDefinition) *mcp.Tool {
+func convertToSDKTool(name string, definition MCPToolDefinition) *mcp.Tool {
 	// Convert RAGent's InputSchema (map[string]interface{}) to jsonschema.Schema
 	var inputSchema *jsonschema.Schema
 	if definition.InputSchema != nil {
@@ -228,7 +227,7 @@ func convertToSDKTool(name string, definition types.MCPToolDefinition) *mcp.Tool
 }
 
 // convertToSDKResult converts RAGent tool result to SDK result
-func convertToSDKResult(ragentResult *types.MCPToolCallResult) *mcp.CallToolResult {
+func convertToSDKResult(ragentResult *MCPToolCallResult) *mcp.CallToolResult {
 	if ragentResult == nil {
 		return &mcp.CallToolResult{}
 	}

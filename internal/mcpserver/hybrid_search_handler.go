@@ -8,11 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/metrics"
-	"github.com/ca-srg/ragent/internal/opensearch"
-	"github.com/ca-srg/ragent/internal/slacksearch"
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/metrics"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/attribute"
@@ -184,7 +183,7 @@ func (hsh *HybridSearchHandler) GetDefaultConfig() *HybridSearchConfig {
 }
 
 // convertRAGentResultToSDK converts RAGent tool result to SDK format
-func convertRAGentResultToSDK(ragentResult *types.MCPToolCallResult) *mcp.CallToolResult {
+func convertRAGentResultToSDK(ragentResult *MCPToolCallResult) *mcp.CallToolResult {
 	if ragentResult == nil {
 		return &mcp.CallToolResult{}
 	}
@@ -214,7 +213,7 @@ func convertRAGentResultToSDK(ragentResult *types.MCPToolCallResult) *mcp.CallTo
 }
 
 // convertRAGentToolToSDK converts RAGent tool definition to SDK format
-func convertRAGentToolToSDK(ragentDef types.MCPToolDefinition) *mcp.Tool {
+func convertRAGentToolToSDK(ragentDef MCPToolDefinition) *mcp.Tool {
 	// Convert RAGent's InputSchema (map[string]interface{}) to jsonschema.Schema
 	var inputSchema *jsonschema.Schema
 	if ragentDef.InputSchema != nil {
@@ -288,7 +287,7 @@ func annotateSpanWithRequest(span trace.Span, params map[string]interface{}) {
 	}
 }
 
-func annotateSpanWithResult(span trace.Span, result *types.MCPToolCallResult) *types.HybridSearchResponse {
+func annotateSpanWithResult(span trace.Span, result *MCPToolCallResult) *HybridSearchResponse {
 	if span == nil || result == nil {
 		return nil
 	}
@@ -298,7 +297,7 @@ func annotateSpanWithResult(span trace.Span, result *types.MCPToolCallResult) *t
 		return nil
 	}
 
-	var response types.HybridSearchResponse
+	var response HybridSearchResponse
 	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
 		return nil
 	}

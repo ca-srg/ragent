@@ -30,12 +30,12 @@ func (r *SlackConversationResult) ForPrompt() string {
 		if user == "" {
 			user = "unknown"
 		}
-		sb.WriteString(fmt.Sprintf("- #%s at %s by %s: %s\n",
+		fmt.Fprintf(&sb, "- #%s at %s by %s: %s\n",
 			msg.Channel,
 			msg.Timestamp,
 			user,
 			strings.TrimSpace(msg.Text),
-		))
+		)
 		for _, reply := range msg.Thread {
 			replyUser := reply.Username
 			if replyUser == "" {
@@ -44,16 +44,18 @@ func (r *SlackConversationResult) ForPrompt() string {
 			if replyUser == "" {
 				replyUser = "unknown"
 			}
-			sb.WriteString(fmt.Sprintf("    • Reply at %s by %s: %s\n",
+			fmt.Fprintf(&sb, "    • Reply at %s by %s: %s\n",
 				reply.Timestamp,
 				replyUser,
 				strings.TrimSpace(reply.Text),
-			))
+			)
 		}
 	}
 	return sb.String()
 }
 
+// SlackConversationSearcher is the interface for searching Slack conversations.
+// Implemented in the cmd layer by botSlackSearcher, which delegates to SlackSearchService.
 type SlackConversationSearcher interface {
 	SearchConversations(ctx context.Context, query string, opts SearchOptions) (*SlackConversationResult, error)
 }

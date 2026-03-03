@@ -2,17 +2,17 @@ name: Lint
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths-ignore:
-      - '**/*.md'
-      - 'doc/**'
-      - 'markdown/**'
+      - "**/*.md"
+      - "doc/**"
+      - "markdown/**"
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths-ignore:
-      - '**/*.md'
-      - 'doc/**'
-      - 'markdown/**'
+      - "**/*.md"
+      - "doc/**"
+      - "markdown/**"
 
 permissions:
   contents: read
@@ -27,10 +27,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -42,7 +42,7 @@ jobs:
         run: make fmtvet
 
       - name: Run golangci-lint (Action)
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
         with:
-          version: latest
+          version: v2.10.1
           args: --timeout=5m

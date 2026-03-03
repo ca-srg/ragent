@@ -9,8 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/slacksearch"
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -45,7 +44,7 @@ func NewSlackSearchToolAdapter(slackService *slacksearch.SlackSearchService, con
 }
 
 // GetToolDefinition returns the MCP tool definition for slack search
-func (sta *SlackSearchToolAdapter) GetToolDefinition() types.MCPToolDefinition {
+func (sta *SlackSearchToolAdapter) GetToolDefinition() MCPToolDefinition {
 	schemaMap := map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
@@ -79,7 +78,7 @@ func (sta *SlackSearchToolAdapter) GetToolDefinition() types.MCPToolDefinition {
 		_ = json.Unmarshal(schemaBytes, inputSchema)
 	}
 
-	return types.MCPToolDefinition{
+	return MCPToolDefinition{
 		Name:        "slack_search",
 		Description: "Search Slack workspace conversations. Returns messages and threads relevant to the query. Use this tool to find information from team discussions, announcements, and collaborative conversations.",
 		InputSchema: inputSchema,
@@ -90,12 +89,12 @@ func (sta *SlackSearchToolAdapter) GetToolDefinition() types.MCPToolDefinition {
 type SlackSearchProgressCallback func(progress, total float64, message string)
 
 // HandleToolCall executes the slack search tool
-func (sta *SlackSearchToolAdapter) HandleToolCall(ctx context.Context, params map[string]interface{}) (*types.MCPToolCallResult, error) {
+func (sta *SlackSearchToolAdapter) HandleToolCall(ctx context.Context, params map[string]interface{}) (*MCPToolCallResult, error) {
 	return sta.HandleToolCallWithProgress(ctx, params, nil)
 }
 
 // HandleToolCallWithProgress executes the slack search tool with optional progress notifications.
-func (sta *SlackSearchToolAdapter) HandleToolCallWithProgress(ctx context.Context, params map[string]interface{}, progressFn SlackSearchProgressCallback) (*types.MCPToolCallResult, error) {
+func (sta *SlackSearchToolAdapter) HandleToolCallWithProgress(ctx context.Context, params map[string]interface{}, progressFn SlackSearchProgressCallback) (*MCPToolCallResult, error) {
 	sta.logger.Printf("Executing slack search tool with params: %+v", params)
 
 	sendProgress := func(progress, total float64, message string) {
@@ -165,8 +164,8 @@ func (sta *SlackSearchToolAdapter) HandleToolCallWithProgress(ctx context.Contex
 }
 
 // parseParams extracts and validates parameters from MCP tool call
-func (sta *SlackSearchToolAdapter) parseParams(params map[string]interface{}) (*types.SlackSearchRequest, error) {
-	request := &types.SlackSearchRequest{
+func (sta *SlackSearchToolAdapter) parseParams(params map[string]interface{}) (*SlackSearchRequest, error) {
+	request := &SlackSearchRequest{
 		MaxResults: sta.defaultConfig.DefaultMaxResults,
 	}
 
@@ -208,11 +207,11 @@ func (sta *SlackSearchToolAdapter) parseParams(params map[string]interface{}) (*
 }
 
 // convertToMCPResponse converts SlackSearchResult to MCP response format
-func (sta *SlackSearchToolAdapter) convertToMCPResponse(request *types.SlackSearchRequest, result *slacksearch.SlackSearchResult, execTime time.Duration) *types.SlackSearchResponse {
-	response := &types.SlackSearchResponse{
+func (sta *SlackSearchToolAdapter) convertToMCPResponse(request *SlackSearchRequest, result *slacksearch.SlackSearchResult, execTime time.Duration) *SlackSearchResponse {
+	response := &SlackSearchResponse{
 		Query:   request.Query,
 		Total:   0,
-		Results: make([]types.SlackSearchResultItem, 0),
+		Results: make([]SlackSearchResultItem, 0),
 	}
 
 	if result == nil {
@@ -223,7 +222,7 @@ func (sta *SlackSearchToolAdapter) convertToMCPResponse(request *types.SlackSear
 
 	// Convert enriched messages to result items
 	for _, msg := range result.EnrichedMessages {
-		item := types.SlackSearchResultItem{
+		item := SlackSearchResultItem{
 			Channel:   msg.OriginalMessage.Channel,
 			Timestamp: msg.OriginalMessage.Timestamp,
 			User:      selectUser(msg.OriginalMessage.User, msg.OriginalMessage.Username),
@@ -233,9 +232,9 @@ func (sta *SlackSearchToolAdapter) convertToMCPResponse(request *types.SlackSear
 
 		// Add thread replies
 		if len(msg.ThreadMessages) > 0 {
-			item.ThreadReplies = make([]types.SlackThreadReplyItem, 0, len(msg.ThreadMessages))
+			item.ThreadReplies = make([]SlackThreadReplyItem, 0, len(msg.ThreadMessages))
 			for _, reply := range msg.ThreadMessages {
-				item.ThreadReplies = append(item.ThreadReplies, types.SlackThreadReplyItem{
+				item.ThreadReplies = append(item.ThreadReplies, SlackThreadReplyItem{
 					Timestamp: reply.Timestamp,
 					User:      selectUser(reply.User, reply.Username),
 					Text:      strings.TrimSpace(reply.Text),
@@ -247,7 +246,7 @@ func (sta *SlackSearchToolAdapter) convertToMCPResponse(request *types.SlackSear
 	}
 
 	// Add metadata
-	response.Metadata = &types.SlackSearchMetadata{
+	response.Metadata = &SlackSearchMetadata{
 		ExecutionTimeMs: execTime.Milliseconds(),
 		IterationCount:  result.IterationCount,
 		QueriesUsed:     result.Queries,

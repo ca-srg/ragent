@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/metrics"
-	"github.com/ca-srg/ragent/internal/slacksearch"
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/pkg/metrics"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/attribute"
@@ -168,7 +167,7 @@ func (ssh *SlackSearchHandler) GetDefaultConfig() *SlackSearchConfig {
 }
 
 // annotateSlackSearchSpanWithResult adds result attributes to span
-func annotateSlackSearchSpanWithResult(span interface{ SetAttributes(...attribute.KeyValue) }, result *types.MCPToolCallResult) {
+func annotateSlackSearchSpanWithResult(span interface{ SetAttributes(...attribute.KeyValue) }, result *MCPToolCallResult) {
 	if span == nil || result == nil {
 		return
 	}
@@ -179,7 +178,7 @@ func annotateSlackSearchSpanWithResult(span interface{ SetAttributes(...attribut
 		return
 	}
 
-	var response types.SlackSearchResponse
+	var response SlackSearchResponse
 	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
 		return
 	}

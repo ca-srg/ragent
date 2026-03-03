@@ -12,11 +12,10 @@ import (
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/ca-srg/ragent/internal/config"
-	"github.com/ca-srg/ragent/internal/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/mcpserver"
-	"github.com/ca-srg/ragent/internal/opensearch"
-	"github.com/ca-srg/ragent/internal/types"
+	"github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 )
 
 // BenchmarkConfig holds configuration for benchmark tests
@@ -158,7 +157,7 @@ func BenchmarkServerStartup_SDK(b *testing.B) {
 		startTime := time.Now()
 
 		// Create SDK server configuration
-		mcpConfig := &types.Config{
+		mcpConfig := &config.Config{
 			MCPServerHost: "127.0.0.1",
 			MCPServerPort: 9100 + i, // Use different ports to avoid conflicts
 			MCPSSEEnabled: false,    // Disable SSE for simpler startup
@@ -295,7 +294,7 @@ func BenchmarkToolCall_SDK(b *testing.B) {
 	benchConfig := setupBenchmarkEnvironment(b)
 
 	// Setup SDK server
-	mcpConfig := &types.Config{
+	mcpConfig := &config.Config{
 		MCPServerHost: "127.0.0.1",
 		MCPServerPort: 9201,
 		MCPSSEEnabled: false,
@@ -466,7 +465,7 @@ func BenchmarkConcurrentToolCalls_SDK(b *testing.B) {
 	benchConfig := setupBenchmarkEnvironment(b)
 
 	// Setup SDK server
-	mcpConfig := &types.Config{
+	mcpConfig := &config.Config{
 		MCPServerHost: "127.0.0.1",
 		MCPServerPort: 9301,
 		MCPSSEEnabled: false,
@@ -641,7 +640,7 @@ func BenchmarkMemoryUsage_SDK(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// Create and start SDK server
-		mcpConfig := &types.Config{
+		mcpConfig := &config.Config{
 			MCPServerHost: "127.0.0.1",
 			MCPServerPort: 9500 + i,
 			MCPSSEEnabled: false,
@@ -762,7 +761,7 @@ func TestPerformanceRequirements(t *testing.T) {
 
 		// Test SDK server startup
 		start = time.Now()
-		mcpConfig := &types.Config{MCPServerHost: "127.0.0.1", MCPServerPort: 9601, MCPSSEEnabled: false}
+		mcpConfig := &config.Config{MCPServerHost: "127.0.0.1", MCPServerPort: 9601, MCPSSEEnabled: false}
 		serverWrapper, _ := mcpserver.NewServerWrapper(mcpConfig)
 		hybridHandler := mcpserver.NewHybridSearchHandler(benchConfig.osClient, benchConfig.embeddingClient, benchConfig.hybridConfig, nil)
 		if err := serverWrapper.RegisterTool("hybrid_search", hybridHandler.HandleSDKToolCall); err != nil {
