@@ -173,7 +173,47 @@ func TestE2E_VectorizeCommand_DryRun(t *testing.T) {
 	t.Logf("✅ Vectorize E2E: all dependencies verified — Bedrock (%d dims), OpenSearch (index=%s), source (%d files), hybrid search pipeline OK",
 		len(embedding), cfg.OpenSearchIndex, mdCount)
 
-	_ = osClient // suppress unused (used above in createE2EOpenSearchClient health check)
+	// Index test documents into OpenSearch so subsequent search tests find results.
+	testDocs := []struct {
+		id       string
+		title    string
+		content  string
+		category string
+	}{
+		{"e2e-test-1", "Machine Learning Algorithm Overview",
+			"Machine learning algorithms include supervised learning unsupervised learning and reinforcement learning. API documentation included.",
+			"technology"},
+		{"e2e-test-2", "API Documentation Guide",
+			"This is the API documentation for the system. It covers REST endpoints and query methods.",
+			"documentation"},
+		{"e2e-test-3", "Database Optimization Methods",
+			"Database optimization includes index design query tuning and caching strategies.",
+			"technology"},
+	}
+
+	for _, doc := range testDocs {
+		emb, embErr := embeddingClient.GenerateEmbedding(ctx, doc.content)
+		require.NoError(t, embErr, "failed to generate embedding for test doc %s", doc.id)
+
+		osDoc := map[string]interface{}{
+			"title":     doc.title,
+			"content":   doc.content,
+			"category":  doc.category,
+			"embedding": emb,
+			"source":    "e2e-test",
+		}
+		indexErr := osClient.IndexDocument(ctx, cfg.OpenSearchIndex, doc.id, osDoc)
+		require.NoError(t, indexErr, "failed to index test doc %s", doc.id)
+	}
+
+	// Force index refresh so documents are immediately searchable.
+	refreshURL := fmt.Sprintf("%s/%s/_refresh", os.Getenv("OPENSEARCH_ENDPOINT"), cfg.OpenSearchIndex)
+	refreshResp, refreshErr := http.Post(refreshURL, "application/json", nil)
+	require.NoError(t, refreshErr, "failed to refresh OpenSearch index")
+	defer func() { _ = refreshResp.Body.Close() }()
+	require.Equal(t, 200, refreshResp.StatusCode, "index refresh returned non-200 status")
+
+	t.Logf("Indexed %d test documents into %s", len(testDocs), cfg.OpenSearchIndex)
 }
 
 // ---------------------------------------------------------------------------

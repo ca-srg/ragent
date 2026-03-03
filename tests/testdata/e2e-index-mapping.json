@@ -1,0 +1,45 @@
+{
+  "settings": {
+    "index": {
+      "knn": true,
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "max_result_window": 10000,
+      "max_rescore_window": 10000
+    },
+    "analysis": {
+      "analyzer": {
+        "kuromoji": {
+          "type": "custom",
+          "tokenizer": "kuromoji_tokenizer",
+          "filter": ["lowercase", "kuromoji_baseform", "kuromoji_part_of_speech", "kuromoji_stemmer", "cjk_width", "stop"]
+        },
+        "kuromoji_search": {
+          "type": "custom",
+          "tokenizer": "kuromoji_tokenizer",
+          "filter": ["lowercase", "kuromoji_baseform", "kuromoji_stemmer", "cjk_width"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "title": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search", "fields": { "raw": { "type": "keyword", "ignore_above": 256 } } },
+      "content": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search" },
+      "content_ja": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search" },
+      "body": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search" },
+      "category": { "type": "keyword", "fields": { "text": { "type": "text", "analyzer": "kuromoji" } } },
+      "tags": { "type": "keyword", "fields": { "text": { "type": "text", "analyzer": "kuromoji" } } },
+      "author": { "type": "keyword", "fields": { "text": { "type": "text", "analyzer": "kuromoji" } } },
+      "reference": { "type": "keyword", "fields": { "text": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search" } } },
+      "source": { "type": "keyword" },
+      "file_path": { "type": "keyword" },
+      "word_count": { "type": "integer" },
+      "created_at": { "type": "date" },
+      "updated_at": { "type": "date" },
+      "indexed_at": { "type": "date" },
+      "embedding": { "type": "knn_vector", "dimension": 1024, "method": { "engine": "lucene", "space_type": "cosinesimil", "name": "hnsw", "parameters": { "ef_construction": 256, "m": 16 } } },
+      "custom_fields": { "type": "object", "enabled": true }
+    }
+  }
+}

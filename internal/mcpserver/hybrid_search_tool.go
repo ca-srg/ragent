@@ -314,28 +314,19 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 		return nil, fmt.Errorf("query parameter is required")
 	}
 
-	// Optional parameters
+	// Optional parameters: top_k or max_results (alias)
 	if topKInterface, ok := params["top_k"]; ok {
-		switch v := topKInterface.(type) {
-		case float64:
-			request.TopK = int(v)
-		case float32:
-			request.TopK = int(v)
-		case int:
-			request.TopK = v
-		case int32:
-			request.TopK = int(v)
-		case int64:
-			request.TopK = int(v)
-		case json.Number:
-			if n, err := v.Int64(); err == nil {
-				request.TopK = int(n)
-			}
-		case string:
-			if topK, err := strconv.Atoi(v); err == nil {
-				request.TopK = topK
-			}
+		parsed, parseErr := parseIntParamStrict(topKInterface)
+		if parseErr != nil {
+			return nil, fmt.Errorf("top_k must be an integer: %w", parseErr)
 		}
+		request.TopK = parsed
+	} else if maxResultsInterface, ok := params["max_results"]; ok {
+		parsed, parseErr := parseIntParamStrict(maxResultsInterface)
+		if parseErr != nil {
+			return nil, fmt.Errorf("max_results must be an integer: %w", parseErr)
+		}
+		request.TopK = parsed
 	}
 
 	if searchModeInterface, ok := params["search_mode"]; ok {
@@ -416,6 +407,36 @@ func parseFloatParam(value interface{}, fallback float64) float64 {
 		}
 	}
 	return fallback
+}
+
+// parseIntParamStrict parses an integer parameter and returns an error for invalid types.
+func parseIntParamStrict(value interface{}) (int, error) {
+	switch v := value.(type) {
+	case float64:
+		return int(v), nil
+	case float32:
+		return int(v), nil
+	case int:
+		return v, nil
+	case int32:
+		return int(v), nil
+	case int64:
+		return int(v), nil
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("invalid number: %w", err)
+		}
+		return int(n), nil
+	case string:
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("cannot convert %q to integer", v)
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("unsupported type %T", value)
+	}
 }
 
 // executeHybridSearch performs hybrid search

@@ -360,6 +360,13 @@ func (s *MCPServer) handleToolCall(w http.ResponseWriter, ctx context.Context, r
 		})
 	}
 
+	// Check if the tool exists before executing.
+	if !s.toolRegistry.HasTool(params.Name) {
+		s.logger.Printf("Tool not found: '%s'", params.Name)
+		s.writeErrorResponse(w, request.ID, MCPErrorMethodNotFound, fmt.Sprintf("Tool '%s' not found", params.Name), nil)
+		return
+	}
+
 	// Execute the tool
 	result, err := s.toolRegistry.ExecuteTool(ctx, params.Name, params.Arguments)
 

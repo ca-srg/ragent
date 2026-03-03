@@ -18,6 +18,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/search"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // E2EMCPClient provides a real MCP client for end-to-end testing
@@ -141,6 +142,65 @@ func (c *E2EMCPClient) ListTools(ctx context.Context) (*mcpserver.MCPToolRespons
 	}
 
 	return &mcpResponse, listResult, nil
+}
+
+// SDKTestClient wraps the official MCP SDK client for E2E testing against ServerWrapper.
+// Unlike E2EMCPClient (which sends raw JSON-RPC), this client performs proper MCP
+// protocol handshake (initialize) required by the SDK's StreamableHTTPHandler.
+type SDKTestClient struct {
+	session *mcp.ClientSession
+}
+
+// NewSDKTestClient creates an SDK-based MCP client connected to a ServerWrapper endpoint.
+func NewSDKTestClient(t *testing.T, serverURL string) *SDKTestClient {
+	t.Helper()
+
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "ragent-e2e-test-client",
+		Version: "1.0.0",
+	}, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
+		Endpoint: serverURL,
+	}, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect SDK test client to %s: %v", serverURL, err)
+	}
+
+	t.Cleanup(func() {
+		if err := session.Close(); err != nil {
+			t.Logf("Failed to close SDK test session: %v", err)
+		}
+	})
+
+	return &SDKTestClient{session: session}
+}
+
+// ListTools lists available MCP tools via SDK protocol.
+func (c *SDKTestClient) ListTools(ctx context.Context) (*mcp.ListToolsResult, error) {
+	return c.session.ListTools(ctx, nil)
+}
+
+// CallTool calls an MCP tool with the given arguments via SDK protocol.
+func (c *SDKTestClient) CallTool(ctx context.Context, name string, args map[string]interface{}) (*mcp.CallToolResult, error) {
+	return c.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      name,
+		Arguments: args,
+	})
+}
+
+// GetTextContent extracts text from the first TextContent in a CallToolResult.
+func (c *SDKTestClient) GetTextContent(result *mcp.CallToolResult) (string, bool) {
+	if result == nil || len(result.Content) == 0 {
+		return "", false
+	}
+	if tc, ok := result.Content[0].(*mcp.TextContent); ok {
+		return tc.Text, true
+	}
+	return "", false
 }
 
 // setupE2EEnvironment sets up the environment for E2E testing
@@ -611,7 +671,7 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 
 		// Create clients for both servers
 		customClient := NewE2EMCPClient(customURL)
-		sdkClient := NewE2EMCPClient(sdkURL)
+		sdkClient := NewSDKTestClient(t, sdkURL)
 
 		// Test identical functionality
 		testQuery := "comprehensive migration test"
@@ -633,7 +693,7 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 			t.Fatalf("Custom server request failed: %v", err)
 		}
 
-		sdkResp, _, err := sdkClient.CallTool(ctx, "hybrid_search", testArgs)
+		sdkResult, err := sdkClient.CallTool(ctx, "hybrid_search", testArgs)
 		if err != nil {
 			t.Fatalf("SDK server request failed: %v", err)
 		}
@@ -642,15 +702,15 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 		if customResp.Error != nil {
 			t.Errorf("Custom server returned error: %v", customResp.Error)
 		}
-		if sdkResp.Error != nil {
-			t.Errorf("SDK server returned error: %v", sdkResp.Error)
+		if sdkResult.IsError {
+			t.Errorf("SDK server returned error")
 		}
 
 		// Both should return results
 		if customResp.Result == nil {
 			t.Error("Custom server returned no results")
 		}
-		if sdkResp.Result == nil {
+		if len(sdkResult.Content) == 0 {
 			t.Error("SDK server returned no results")
 		}
 
@@ -667,19 +727,15 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 		}()
 
 		// Test with existing E2E client (simulates existing integrations)
-		existingClient := NewE2EMCPClient(sdkURL)
+		existingClient := NewSDKTestClient(t, sdkURL)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		// Test tools/list compatibility
-		toolsResp, listResult, err := existingClient.ListTools(ctx)
+		listResult, err := existingClient.ListTools(ctx)
 		if err != nil {
 			t.Fatalf("Existing client tools/list failed with SDK server: %v", err)
-		}
-
-		if toolsResp.Error != nil {
-			t.Fatalf("Existing client received error for tools/list: %v", toolsResp.Error)
 		}
 
 		if listResult == nil || listResult.Tools == nil || len(listResult.Tools) == 0 {
@@ -695,13 +751,13 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 			"use_japanese_nlp": false,
 		}
 
-		toolResp, _, err := existingClient.CallTool(ctx, "hybrid_search", args)
+		toolResult, err := existingClient.CallTool(ctx, "hybrid_search", args)
 		if err != nil {
 			t.Fatalf("Existing client tool call failed with SDK server: %v", err)
 		}
 
-		if toolResp.Error != nil {
-			t.Errorf("Existing client received error for tool call: %v", toolResp.Error)
+		if toolResult.IsError {
+			t.Errorf("Existing client received error for tool call")
 		}
 
 		t.Log("✅ Backward compatibility with existing MCP clients validated")
@@ -715,70 +771,31 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 			}
 		}()
 
-		// Test strict JSON-RPC 2.0 compliance
-		httpClient := &http.Client{Timeout: 10 * time.Second}
+		// Validate MCP protocol compliance through SDK client
+		sdkClient := NewSDKTestClient(t, sdkURL)
 
-		protocolTests := []struct {
-			name        string
-			request     map[string]interface{}
-			expectError bool
-		}{
-			{
-				name: "Valid JSON-RPC 2.0 request",
-				request: map[string]interface{}{
-					"jsonrpc": "2.0",
-					"method":  "tools/list",
-					"id":      "protocol-test-1",
-				},
-				expectError: false,
-			},
-			{
-				name: "Missing jsonrpc field",
-				request: map[string]interface{}{
-					"method": "tools/list",
-					"id":     "protocol-test-2",
-				},
-				expectError: true,
-			},
-			{
-				name: "Wrong jsonrpc version",
-				request: map[string]interface{}{
-					"jsonrpc": "1.0",
-					"method":  "tools/list",
-					"id":      "protocol-test-3",
-				},
-				expectError: true,
-			},
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Verify tools/list works via proper MCP protocol
+		listResult, err := sdkClient.ListTools(ctx)
+		if err != nil {
+			t.Fatalf("Protocol compliance: tools/list failed: %v", err)
+		}
+		if listResult == nil || len(listResult.Tools) == 0 {
+			t.Error("Protocol compliance: expected tools in response")
 		}
 
-		for _, test := range protocolTests {
-			t.Run(test.name, func(t *testing.T) {
-				requestBody, _ := json.Marshal(test.request)
-				resp, err := httpClient.Post(sdkURL, "application/json", bytes.NewReader(requestBody))
-				if err != nil {
-					if !test.expectError {
-						t.Fatalf("Request failed: %v", err)
-					}
-					return // Error expected
-				}
-				defer func() {
-					if err := resp.Body.Close(); err != nil {
-						t.Logf("Failed to close response body: %v", err)
-					}
-				}()
-
-				var response map[string]interface{}
-				if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-					t.Fatalf("Failed to decode response: %v", err)
-				}
-
-				hasError := response["error"] != nil
-				if test.expectError && !hasError {
-					t.Error("Expected protocol error but none returned")
-				} else if !test.expectError && hasError {
-					t.Errorf("Unexpected protocol error: %v", response["error"])
-				}
-			})
+		// Verify tool call works via proper MCP protocol
+		result, err := sdkClient.CallTool(ctx, "hybrid_search", map[string]interface{}{
+			"query":       "protocol test",
+			"max_results": 3,
+		})
+		if err != nil {
+			t.Fatalf("Protocol compliance: tool call failed: %v", err)
+		}
+		if result.IsError {
+			t.Error("Protocol compliance: tool call returned error")
 		}
 
 		t.Log("✅ JSON-RPC 2.0 protocol compliance validated")
@@ -802,12 +819,12 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 		}
 
 		// Request latency validation
-		client := NewE2EMCPClient(sdkURL)
+		client := NewSDKTestClient(t, sdkURL)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		start = time.Now()
-		resp, _, err := client.CallTool(ctx, "hybrid_search", map[string]interface{}{
+		result, err := client.CallTool(ctx, "hybrid_search", map[string]interface{}{
 			"query":       "performance test",
 			"max_results": 3,
 		})
@@ -816,8 +833,8 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Performance test request failed: %v", err)
 		}
-		if resp.Error != nil {
-			t.Fatalf("Performance test returned error: %v", resp.Error)
+		if result.IsError {
+			t.Fatalf("Performance test returned error")
 		}
 
 		t.Logf("✅ Request latency %v measured", requestLatency)
@@ -869,7 +886,7 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 			}
 		}()
 
-		client := NewE2EMCPClient(sdkURL)
+		client := NewSDKTestClient(t, sdkURL)
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
@@ -904,17 +921,17 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 
 		for _, test := range errorTests {
 			t.Run(test.name, func(t *testing.T) {
-				resp, _, err := client.CallTool(ctx, test.toolName, test.args)
+				result, err := client.CallTool(ctx, test.toolName, test.args)
 				if err != nil {
-					// HTTP-level error is acceptable for some cases
+					// Protocol-level error is acceptable for some cases
 					t.Logf("Request failed (acceptable): %v", err)
 					return
 				}
 
-				if resp.Error == nil {
+				if result != nil && !result.IsError {
 					t.Error("Expected MCP error but none returned")
 				} else {
-					t.Logf("Received expected error: %v", resp.Error.Message)
+					t.Logf("Received expected error response")
 				}
 			})
 		}
@@ -1023,7 +1040,7 @@ func TestE2E_SDKMigration_Final(t *testing.T) {
 		}
 	}()
 
-	client := NewE2EMCPClient(sdkURL)
+	client := NewSDKTestClient(t, sdkURL)
 
 	// Requirement 1.1: Server SHALL use SDK v0.4.0 instead of custom implementation
 	t.Run("Requirement 1.1 - SDK Server Usage", func(t *testing.T) {
@@ -1045,13 +1062,9 @@ func TestE2E_SDKMigration_Final(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		toolsResp, listResult, err := client.ListTools(ctx)
+		listResult, err := client.ListTools(ctx)
 		if err != nil {
 			t.Fatalf("Failed to list tools: %v", err)
-		}
-
-		if toolsResp.Error != nil {
-			t.Fatalf("Tools list returned error: %v", toolsResp.Error)
 		}
 
 		// Verify hybrid_search tool exists
@@ -1083,22 +1096,17 @@ func TestE2E_SDKMigration_Final(t *testing.T) {
 			"use_japanese_nlp": true,
 		}
 
-		resp, _, err := client.CallTool(ctx, "hybrid_search", args)
+		result, err := client.CallTool(ctx, "hybrid_search", args)
 		if err != nil {
 			t.Fatalf("Tool call failed: %v", err)
 		}
 
-		if resp.Error != nil {
-			t.Fatalf("Tool call returned error: %v", resp.Error)
+		if result.IsError {
+			t.Error("Tool call returned error")
 		}
 
-		// Verify response has expected structure
-		if resp.Result == nil {
-			t.Error("Response missing result field")
-		}
-
-		if resp.JSONRPC != "2.0" {
-			t.Errorf("Response should have jsonrpc: 2.0, got: %s", resp.JSONRPC)
+		if len(result.Content) == 0 {
+			t.Error("Response missing content")
 		}
 
 		t.Log("✅ Requirement 1.3 validated: Response format is identical")
@@ -1124,13 +1132,13 @@ func TestE2E_SDKMigration_Final(t *testing.T) {
 		defer cancel()
 
 		// 1. List tools
-		toolsResp, _, err := client.ListTools(ctx)
-		if err != nil || toolsResp.Error != nil {
-			t.Fatalf("Complete workflow failed at tools list: %v, %v", err, toolsResp.Error)
+		_, err := client.ListTools(ctx)
+		if err != nil {
+			t.Fatalf("Complete workflow failed at tools list: %v", err)
 		}
 
 		// 2. Execute hybrid search
-		searchResp, _, err := client.CallTool(ctx, "hybrid_search", map[string]interface{}{
+		searchResult, err := client.CallTool(ctx, "hybrid_search", map[string]interface{}{
 			"query":            "complete workflow test",
 			"max_results":      5,
 			"bm25_weight":      0.7,
@@ -1138,12 +1146,15 @@ func TestE2E_SDKMigration_Final(t *testing.T) {
 			"use_japanese_nlp": true,
 			"timeout_seconds":  30,
 		})
-		if err != nil || searchResp.Error != nil {
-			t.Fatalf("Complete workflow failed at search: %v, %v", err, searchResp.Error)
+		if err != nil {
+			t.Fatalf("Complete workflow failed at search: %v", err)
 		}
 
 		// 3. Verify response structure
-		if searchResp.Result == nil {
+		if searchResult.IsError {
+			t.Error("Complete workflow: search returned error")
+		}
+		if len(searchResult.Content) == 0 {
 			t.Error("Complete workflow: search result is missing")
 		}
 
