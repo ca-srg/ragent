@@ -12,14 +12,14 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 
+	"github.com/ca-srg/ragent/internal/ingestion"
+	"github.com/ca-srg/ragent/internal/ingestion/metadata"
+	"github.com/ca-srg/ragent/internal/ingestion/scanner"
+	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
-	"github.com/ca-srg/ragent/internal/ingestion/metadata"
 	"github.com/ca-srg/ragent/internal/pkg/s3vector"
-	"github.com/ca-srg/ragent/internal/ingestion/scanner"
-	"github.com/ca-srg/ragent/internal/ingestion"
-	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 )
 
 // ServerConfig holds the web UI server configuration

@@ -58,11 +58,11 @@ type RunInfo struct {
 
 // ErrorInfo represents error information
 type ErrorInfo struct {
-	Timestamp time.Time       `json:"timestamp"`
-	FilePath  string          `json:"file_path"`
+	Timestamp time.Time           `json:"timestamp"`
+	FilePath  string              `json:"file_path"`
 	ErrorType appconfig.ErrorType `json:"error_type"`
-	Message   string          `json:"message"`
-	Retryable bool            `json:"retryable"`
+	Message   string              `json:"message"`
+	Retryable bool                `json:"retryable"`
 }
 
 // SchedulerState represents the state of the follow mode scheduler

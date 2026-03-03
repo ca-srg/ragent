@@ -11,13 +11,13 @@ import (
 
 type SearchError struct {
 	Type       appconfig.ErrorType `json:"type"`
-	Message    string          `json:"message"`
-	StatusCode int             `json:"status_code,omitempty"`
-	Retryable  bool            `json:"retryable"`
-	RetryAfter time.Duration   `json:"retry_after,omitempty"`
-	Query      string          `json:"query,omitempty"`
-	Suggestion string          `json:"suggestion,omitempty"`
-	Timestamp  time.Time       `json:"timestamp"`
+	Message    string              `json:"message"`
+	StatusCode int                 `json:"status_code,omitempty"`
+	Retryable  bool                `json:"retryable"`
+	RetryAfter time.Duration       `json:"retry_after,omitempty"`
+	Query      string              `json:"query,omitempty"`
+	Suggestion string              `json:"suggestion,omitempty"`
+	Timestamp  time.Time           `json:"timestamp"`
 }
 
 func (e *SearchError) Error() string {

@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/mcpserver"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 )
 

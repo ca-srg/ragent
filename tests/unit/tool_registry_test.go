@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/mcpserver"
-	
+
 	"github.com/google/jsonschema-go/jsonschema"
 )
 

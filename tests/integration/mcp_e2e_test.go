@@ -13,12 +13,11 @@ import (
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/search"
-	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 // E2EMCPClient provides a real MCP client for end-to-end testing
@@ -147,6 +146,9 @@ func (c *E2EMCPClient) ListTools(ctx context.Context) (*mcpserver.MCPToolRespons
 // setupE2EEnvironment sets up the environment for E2E testing
 func setupE2EEnvironment(t *testing.T) (*config.Config, *bedrock.BedrockClient, *opensearch.Client) {
 	t.Helper()
+
+	t.Setenv("S3_VECTOR_REGION", "ap-northeast-1")
+	t.Setenv("AWS_REGION", "ap-northeast-1")
 
 	// Load configuration from environment
 	cfg, err := config.Load()
@@ -832,7 +834,7 @@ func TestE2E_SDKMigration_Comprehensive(t *testing.T) {
 		}
 
 		// Verify SDK server can be created with existing config
-		mcpConfig := &appconfig.Config{
+		mcpConfig := &config.Config{
 			S3VectorRegion:     originalConfig.S3VectorRegion,
 			OpenSearchEndpoint: originalConfig.OpenSearchEndpoint,
 			OpenSearchRegion:   originalConfig.OpenSearchRegion,
@@ -928,7 +930,7 @@ func createSDKE2EServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 	t.Helper()
 
 	// Create MCP server configuration for SDK server
-	mcpConfig := &appconfig.Config{
+	mcpConfig := &config.Config{
 		S3VectorRegion:     cfg.S3VectorRegion,
 		OpenSearchEndpoint: cfg.OpenSearchEndpoint,
 		OpenSearchRegion:   cfg.OpenSearchRegion,

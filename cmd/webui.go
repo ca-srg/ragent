@@ -29,7 +29,9 @@ Example:
   ragent webui --port 8080              # Use custom port
   ragent webui --directory ./docs       # Specify source directory
 `,
-	RunE: func(cmd *cobra.Command, args []string) error { return webui.RunWebUI(cmd.Context(), webui.WebUIOptions{Host: webuiHost, Port: webuiPort, Directory: webuiDirectory}) },
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return webui.RunWebUI(cmd.Context(), webui.WebUIOptions{Host: webuiHost, Port: webuiPort, Directory: webuiDirectory})
+	},
 }
 
 func init() {
@@ -40,4 +42,3 @@ func init() {
 	webuiCmd.Flags().StringVarP(&webuiDirectory, "directory", "d", "./source",
 		"Directory containing source files to process")
 }
-

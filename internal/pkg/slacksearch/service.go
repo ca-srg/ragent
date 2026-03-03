@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/slackbot"
-	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

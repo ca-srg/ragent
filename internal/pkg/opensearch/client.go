@@ -49,8 +49,12 @@ func NewClient(cfg *Config) (*Client, error) {
 		return nil, fmt.Errorf("endpoint is required")
 	}
 
-	if cfg.Region == "" {
-		return nil, fmt.Errorf("region is required")
+	// Region is required only for AWS-managed OpenSearch (HTTPS endpoints).
+	// Local/Docker endpoints (HTTP) do not need AWS SigV4 signing.
+	needsAWSSigning := !strings.HasPrefix(cfg.Endpoint, "http://")
+
+	if needsAWSSigning && cfg.Region == "" {
+		return nil, fmt.Errorf("region is required for AWS-managed OpenSearch (HTTPS endpoints)")
 	}
 
 	if cfg.RateLimit <= 0 {
@@ -81,17 +85,6 @@ func NewClient(cfg *Config) (*Client, error) {
 		cfg.IdleConnTimeout = 90 * time.Second
 	}
 
-	awsConfig, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(cfg.Region))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	signer, err := requestsigner.NewSignerWithService(awsConfig, "es")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AWS signer: %w", err)
-	}
-
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: cfg.InsecureSkipTLS,
@@ -109,12 +102,30 @@ func NewClient(cfg *Config) (*Client, error) {
 		Timeout:   cfg.ConnectionTimeout,
 	}
 
+	osConfig := opensearch.Config{
+		Addresses: []string{cfg.Endpoint},
+		Transport: httpClient.Transport,
+	}
+
+	if needsAWSSigning {
+		awsConfig, err := config.LoadDefaultConfig(context.Background(),
+			config.WithRegion(cfg.Region))
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		}
+
+		signer, err := requestsigner.NewSignerWithService(awsConfig, "es")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create AWS signer: %w", err)
+		}
+
+		osConfig.Signer = signer
+	} else {
+		log.Printf("OpenSearch client: AWS signing disabled for HTTP endpoint %s", cfg.Endpoint)
+	}
+
 	osClient, err := opensearchapi.NewClient(opensearchapi.Config{
-		Client: opensearch.Config{
-			Addresses: []string{cfg.Endpoint},
-			Signer:    signer,
-			Transport: httpClient.Transport,
-		},
+		Client: osConfig,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OpenSearch client: %w", err)

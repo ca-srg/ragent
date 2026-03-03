@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
+	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

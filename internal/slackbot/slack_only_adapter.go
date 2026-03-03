@@ -9,8 +9,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 )
 
 // SlackOnlySearchAdapter uses only Slack search without OpenSearch

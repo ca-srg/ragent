@@ -6,7 +6,6 @@ import (
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	
 )
 
 // IndexerFactory creates OpenSearch indexers based on configuration

@@ -7,7 +7,7 @@ import (
 	"log"
 	"sync"
 
-		"github.com/google/jsonschema-go/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

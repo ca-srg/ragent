@@ -12,8 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	)
+)
 
 // MCPServer represents the MCP server implementation
 type MCPServer struct {

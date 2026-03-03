@@ -7,8 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
-
-	)
+)
 
 // ToolHandler represents a function that handles tool execution
 type ToolHandler func(ctx context.Context, params map[string]interface{}) (*MCPToolCallResult, error)

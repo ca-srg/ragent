@@ -41,6 +41,9 @@ func requireEnv(t *testing.T, key string) string {
 func loadE2EConfig(t *testing.T) *appconfig.Config {
 	t.Helper()
 
+	t.Setenv("S3_VECTOR_REGION", "ap-northeast-1")
+	t.Setenv("AWS_REGION", "ap-northeast-1")
+
 	cfg, err := appconfig.Load()
 	require.NoError(t, err, "failed to load configuration from environment")
 
@@ -257,7 +260,7 @@ func TestE2E_MCPServer_StartsAndFunctions(t *testing.T) {
 
 		resp, err := httpClient.Post(serverAddr, "application/json", bytes.NewReader(body))
 		require.NoError(t, err, "tools/list request failed")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		var mcpResp mcpserver.MCPToolResponse
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&mcpResp), "failed to decode tools/list response")
@@ -305,7 +308,7 @@ func TestE2E_MCPServer_StartsAndFunctions(t *testing.T) {
 
 		resp, err := httpClient.Post(serverAddr, "application/json", bytes.NewReader(body))
 		require.NoError(t, err, "tools/call request failed")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		var mcpResp mcpserver.MCPToolResponse
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&mcpResp), "failed to decode tools/call response")
@@ -341,7 +344,7 @@ func TestE2E_MCPServer_StartsAndFunctions(t *testing.T) {
 		})
 		resp, err := httpClient.Post(serverAddr, "application/json", bytes.NewReader(validRequest))
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		var validResp map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&validResp))

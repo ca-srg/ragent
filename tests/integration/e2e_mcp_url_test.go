@@ -10,7 +10,7 @@ import (
 
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

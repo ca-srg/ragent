@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
-		"github.com/google/jsonschema-go/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // SlackSearchToolAdapter adapts Slack search functionality to MCP tool interface

@@ -12,11 +12,10 @@ import (
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -231,7 +230,7 @@ func createSDKMCPServer(t *testing.T, cfg *config.Config, osClient *opensearch.C
 	t.Helper()
 
 	// Create MCP server configuration from existing config
-	mcpConfig := &appconfig.Config{
+	mcpConfig := &config.Config{
 		S3VectorRegion:     cfg.S3VectorRegion,
 		OpenSearchEndpoint: cfg.OpenSearchEndpoint,
 		OpenSearchRegion:   cfg.OpenSearchRegion,

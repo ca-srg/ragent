@@ -12,7 +12,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
-		"github.com/google/jsonschema-go/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
