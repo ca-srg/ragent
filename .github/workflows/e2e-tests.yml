@@ -1,0 +1,133 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    environment: e2e-test
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Start OpenSearch
+        run: docker compose up -d opensearch
+
+      - name: Wait for OpenSearch to be healthy
+        run: |
+          echo "Waiting for OpenSearch to be healthy..."
+          for i in $(seq 1 36); do
+            if curl -sf http://localhost:9200/_cluster/health | grep -qE '"status":"(green|yellow)"'; then
+              echo "OpenSearch is ready!"
+              curl -s http://localhost:9200/_cluster/health | python3 -m json.tool
+              exit 0
+            fi
+            echo "  Waiting... ($i/36)"
+            sleep 5
+          done
+          echo "::error::OpenSearch failed to become healthy within 3 minutes"
+          docker compose logs opensearch
+          exit 1
+
+      - name: Create E2E test index
+        run: |
+          curl -sf -X PUT "http://localhost:9200/ragent-e2e-test" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "settings": {
+                "index": {
+                  "knn": true,
+                  "number_of_shards": 1,
+                  "number_of_replicas": 0,
+                  "max_result_window": 10000,
+                  "max_rescore_window": 10000
+                },
+                "analysis": {
+                  "analyzer": {
+                    "kuromoji": {
+                      "type": "custom",
+                      "tokenizer": "kuromoji_tokenizer",
+                      "filter": ["lowercase", "kuromoji_baseform", "kuromoji_part_of_speech", "kuromoji_stemmer", "cjk_width", "stop"]
+                    },
+                    "kuromoji_search": {
+                      "type": "custom",
+                      "tokenizer": "kuromoji_tokenizer",
+                      "filter": ["lowercase", "kuromoji_baseform", "kuromoji_stemmer", "cjk_width"]
+                    }
+                  }
+                }
+              },
+              "mappings": {
+                "properties": {
+                  "title": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search", "fields": { "raw": { "type": "keyword", "ignore_above": 256 } } },
+                  "content": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search" },
+                  "content_ja": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search" },
+                  "body": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search" },
+                  "category": { "type": "keyword", "fields": { "text": { "type": "text", "analyzer": "kuromoji" } } },
+                  "tags": { "type": "keyword", "fields": { "text": { "type": "text", "analyzer": "kuromoji" } } },
+                  "author": { "type": "keyword", "fields": { "text": { "type": "text", "analyzer": "kuromoji" } } },
+                  "reference": { "type": "keyword", "fields": { "text": { "type": "text", "analyzer": "kuromoji", "search_analyzer": "kuromoji_search" } } },
+                  "source": { "type": "keyword" },
+                  "file_path": { "type": "keyword" },
+                  "word_count": { "type": "integer" },
+                  "created_at": { "type": "date" },
+                  "updated_at": { "type": "date" },
+                  "indexed_at": { "type": "date" },
+                  "embedding": { "type": "knn_vector", "dimension": 1024, "method": { "engine": "lucene", "space_type": "cosinesimil", "name": "hnsw", "parameters": { "ef_construction": 256, "m": 16 } } },
+                  "custom_fields": { "type": "object", "enabled": true }
+                }
+              }
+            }'
+          echo ""
+          echo "Index ragent-e2e-test created successfully"
+
+      - name: Create sample source files
+        run: |
+          mkdir -p source
+          cat > source/e2e-test-sample.md << 'MARKDOWN'
+          ---
+          title: E2E Test Sample Document
+          category: test
+          ---
+
+          # E2E Test Sample
+
+          This is a sample document for E2E testing.
+          MARKDOWN
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run E2E tests
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          OPENSEARCH_ENDPOINT: http://localhost:9200
+          OPENSEARCH_INDEX: ragent-e2e-test
+          AWS_S3_VECTOR_BUCKET: ${{ secrets.AWS_S3_VECTOR_BUCKET }}
+          AWS_S3_VECTOR_INDEX: ${{ secrets.AWS_S3_VECTOR_INDEX }}
+          S3_VECTOR_REGION: ${{ secrets.S3_VECTOR_REGION }}
+        run: go test -v -run "TestE2E_" ./tests/integration/... -timeout 120s

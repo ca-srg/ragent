@@ -11,3 +11,8 @@ doc/debug.md
 dist/
 source/*.md
 .opencode/plans/*.md
+terraform/test/.terraform
+terraform/test/.terraform.lock.hcl
+terraform/test/terraform.tfstate
+terraform/test/terraform.tfstate.backup
+terraform/test/terraform.tfvars
