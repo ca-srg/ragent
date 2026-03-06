@@ -154,3 +154,26 @@ func TestParsePageResults_EmptyArray(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, results)
 }
+
+func TestParsePageResults_TrailingTextWithBrackets(t *testing.T) {
+	// Regression: LLM appends notes containing brackets after the JSON array.
+	// The old strings.LastIndex("]") approach picked up the wrong ] and
+	// caused "invalid character '-' after top-level value".
+	input := `[{"page_index": 1, "text": "content", "title": "T", "category": "C", "tags": [], "summary": "S"}]
+
+- Note: See [details] for more information`
+	results, err := parsePageResults(input)
+	assert.NoError(t, err)
+	assert.Len(t, results, 1)
+	assert.Equal(t, "content", results[0].Text)
+}
+
+func TestParsePageResults_MarkdownCodeBlock(t *testing.T) {
+	input := "```json\n" +
+		`[{"page_index": 1, "text": "content"}]` +
+		"\n```"
+	results, err := parsePageResults(input)
+	assert.NoError(t, err)
+	assert.Len(t, results, 1)
+	assert.Equal(t, "content", results[0].Text)
+}

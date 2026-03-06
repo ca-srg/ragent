@@ -15,7 +15,6 @@ func newTestReaderConfig() PDFReaderConfig {
 	return PDFReaderConfig{
 		Provider: "bedrock",
 		Model:    "test-model",
-		MaxPages: 100,
 		Timeout:  30 * time.Second,
 	}
 }

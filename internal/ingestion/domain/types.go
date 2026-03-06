@@ -27,20 +27,20 @@ type DocumentMetadata struct {
 
 // FileInfo represents information about a file to be processed (markdown, CSV, or PDF)
 type FileInfo struct {
-	Path        string           `json:"path"`
-	Name        string           `json:"name"`
-	Size        int64            `json:"size"`
-	ModTime     time.Time        `json:"mod_time"`
-	IsMarkdown  bool             `json:"is_markdown"`
-	IsCSV       bool             `json:"is_csv"`
-	CSVRowIndex int              `json:"csv_row_index,omitempty"` // Row index for CSV files (1-based, excluding header)
+	Path         string           `json:"path"`
+	Name         string           `json:"name"`
+	Size         int64            `json:"size"`
+	ModTime      time.Time        `json:"mod_time"`
+	IsMarkdown   bool             `json:"is_markdown"`
+	IsCSV        bool             `json:"is_csv"`
+	CSVRowIndex  int              `json:"csv_row_index,omitempty"` // Row index for CSV files (1-based, excluding header)
 	IsPDF        bool             `json:"is_pdf"`
 	PDFPageIndex int              `json:"pdf_page_index,omitempty"` // Page index for PDF files (1-based)
-	Content     string           `json:"content"`
-	Metadata    DocumentMetadata `json:"metadata"`
-	ContentHash string           `json:"content_hash,omitempty"` // MD5 hash of content (hex format)
-	SourceType  string           `json:"source_type,omitempty"`  // "local" or "s3"
-	RawBytes    []byte           `json:"-"`           // Raw bytes for binary files (PDFs from S3/GitHub)
+	Content      string           `json:"content"`
+	Metadata     DocumentMetadata `json:"metadata"`
+	ContentHash  string           `json:"content_hash,omitempty"` // MD5 hash of content (hex format)
+	SourceType   string           `json:"source_type,omitempty"`  // "local" or "s3"
+	RawBytes     []byte           `json:"-"`                      // Raw bytes for binary files (PDFs from S3/GitHub)
 }
 
 // VectorData represents the embedding vector data for a document

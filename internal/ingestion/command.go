@@ -18,8 +18,8 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
 	"github.com/ca-srg/ragent/internal/ingestion/hashstore"
 	"github.com/ca-srg/ragent/internal/ingestion/metadata"
-	"github.com/ca-srg/ragent/internal/ingestion/scanner"
 	"github.com/ca-srg/ragent/internal/ingestion/pdf"
+	"github.com/ca-srg/ragent/internal/ingestion/scanner"
 	"github.com/ca-srg/ragent/internal/ingestion/spreadsheet"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
@@ -809,15 +809,28 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 	// Create PDF reader if OCR provider is configured
 	var pdfReader *pdf.Reader
 	if cfg.OCRProvider == "bedrock" {
-		ocrClient, err := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxPages)
+		ocrClient, err := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
 		if err != nil {
 			log.Printf("Warning: failed to create Bedrock OCR client: %v, PDF files will be skipped", err)
 		} else {
 			pdfReader = pdf.NewReader(ocrClient, pdf.PDFReaderConfig{
-				Provider: cfg.OCRProvider,
-				Model:    cfg.OCRModel,
-				MaxPages: cfg.OCRMaxPages,
-				Timeout:  cfg.OCRTimeout,
+				Provider:    cfg.OCRProvider,
+				Model:       cfg.OCRModel,
+				Timeout:     cfg.OCRTimeout,
+				Concurrency: cfg.OCRConcurrency,
+			})
+			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
+		}
+	} else if cfg.OCRProvider == "gemini" {
+		ocrClient, err := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
+		if err != nil {
+			log.Printf("Warning: failed to create Gemini OCR client: %v, PDF files will be skipped", err)
+		} else {
+			pdfReader = pdf.NewReader(ocrClient, pdf.PDFReaderConfig{
+				Provider:    cfg.OCRProvider,
+				Model:       cfg.OCRModel,
+				Timeout:     cfg.OCRTimeout,
+				Concurrency: cfg.OCRConcurrency,
 			})
 			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
 		}

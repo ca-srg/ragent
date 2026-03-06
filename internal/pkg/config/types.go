@@ -97,10 +97,14 @@ type Config struct {
 	GitHubToken string `json:"github_token" env:"GITHUB_TOKEN"`
 
 	// OCR configuration
-	OCRProvider string        `json:"ocr_provider" env:"OCR_PROVIDER"`
-	OCRModel    string        `json:"ocr_model" env:"OCR_MODEL,default=anthropic.claude-3-5-sonnet-20241022-v2:0"`
-	OCRTimeout  time.Duration `json:"ocr_timeout" env:"OCR_TIMEOUT,default=120s"`
-	OCRMaxPages int           `json:"ocr_max_pages" env:"OCR_MAX_PAGES,default=100"`
+	OCRProvider  string        `json:"ocr_provider" env:"OCR_PROVIDER"`
+	OCRModel     string        `json:"ocr_model" env:"OCR_MODEL,default=global.anthropic.claude-sonnet-4-6"`
+	OCRTimeout   time.Duration `json:"ocr_timeout" env:"OCR_TIMEOUT,default=600s"`
+	OCRMaxTokens int           `json:"ocr_max_tokens" env:"OCR_MAX_TOKENS,default=200000"`
+	OCRConcurrency int           `json:"ocr_concurrency" env:"OCR_CONCURRENCY,default=5"`
+
+	// Gemini API configuration (for OCR_PROVIDER=gemini)
+	GeminiAPIKey string `json:"gemini_api_key" env:"GEMINI_API_KEY"`
 }
 
 // ErrorType represents the type of error that occurred

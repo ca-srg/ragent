@@ -23,12 +23,13 @@ type PageResult struct {
 	Category  string   `json:"category"`
 	Tags      []string `json:"tags"`
 	Summary   string   `json:"summary"`
+	Author    string   `json:"author"`
 }
 
 // PDFReaderConfig holds configuration for the PDF Reader.
 type PDFReaderConfig struct {
-	Provider string // OCR provider name (e.g., "bedrock")
-	Model    string // Model ID for OCR
-	MaxPages int
-	Timeout  time.Duration
+	Provider    string        // OCR provider name (e.g., "bedrock")
+	Model       string        // Model ID for OCR
+	Timeout     time.Duration
+	Concurrency int           // Number of concurrent OCR requests (for page-level parallelism)
 }

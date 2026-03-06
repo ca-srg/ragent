@@ -169,4 +169,4 @@ internal/
 ./RAGent mcp-server                         # Start MCP Server
 ```
 
-_Required read doc/_.md files for more information
+_Required read docs/_.md files for more information

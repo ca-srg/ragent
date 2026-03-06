@@ -29,16 +29,25 @@ func NewReader(client OCRClient, config PDFReaderConfig) *Reader {
 
 // ReadFile reads a local PDF file and returns one FileInfo per page.
 func (r *Reader) ReadFile(filePath string) ([]*domain.FileInfo, error) {
+	stat, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat PDF file %s: %w", filePath, err)
+	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read PDF file %s: %w", filePath, err)
 	}
-	return r.ReadFileFromBytes(data, filePath)
+	return r.readFileFromBytesWithModTime(data, filePath, stat.ModTime())
 }
 
 // ReadFileFromBytes reads a PDF from bytes and returns one FileInfo per page.
 // Used for S3 and GitHub sources where content is already in memory.
 func (r *Reader) ReadFileFromBytes(pdfData []byte, filePath string) ([]*domain.FileInfo, error) {
+	return r.readFileFromBytesWithModTime(pdfData, filePath, time.Time{})
+}
+
+// readFileFromBytesWithModTime is the internal implementation that accepts an optional file modification time.
+func (r *Reader) readFileFromBytesWithModTime(pdfData []byte, filePath string, modTime time.Time) ([]*domain.FileInfo, error) {
 	if len(pdfData) == 0 {
 		log.Printf("Warning: empty PDF data for %s", filePath)
 		return []*domain.FileInfo{}, nil
@@ -66,9 +75,21 @@ func (r *Reader) ReadFileFromBytes(pdfData []byte, filePath string) ([]*domain.F
 		return []*domain.FileInfo{}, nil
 	}
 
+	// Resolve the file timestamp: use actual file modTime, fallback to now.
+	fileTime := modTime
+	if fileTime.IsZero() {
+		fileTime = time.Now()
+	}
+
+	// Propagate author from cover page (first page) to all pages if not individually set.
+	coverAuthor := ""
+	if len(pages) > 0 && pages[0].Author != "" {
+		coverAuthor = pages[0].Author
+	}
+
 	var files []*domain.FileInfo
 	for _, page := range pages {
-		fileInfo := r.pageToFileInfo(page, filePath)
+		fileInfo := r.pageToFileInfo(page, filePath, fileTime, coverAuthor)
 		if fileInfo != nil {
 			files = append(files, fileInfo)
 		}
@@ -79,7 +100,7 @@ func (r *Reader) ReadFileFromBytes(pdfData []byte, filePath string) ([]*domain.F
 }
 
 // pageToFileInfo converts a PageResult to a domain.FileInfo.
-func (r *Reader) pageToFileInfo(page *PageResult, filePath string) *domain.FileInfo {
+func (r *Reader) pageToFileInfo(page *PageResult, filePath string, fileTime time.Time, coverAuthor string) *domain.FileInfo {
 	if page == nil || strings.TrimSpace(page.Text) == "" {
 		return nil
 	}
@@ -100,11 +121,17 @@ func (r *Reader) pageToFileInfo(page *PageResult, filePath string) *domain.FileI
 		category = filepath.Base(dirName)
 	}
 
+	// Author: use page-level OCR result, fallback to cover page author
+	author := page.Author
+	if author == "" {
+		author = coverAuthor
+	}
+
 	return &domain.FileInfo{
 		Path:         path,
 		Name:         fmt.Sprintf("%s page %d", filename, page.PageIndex),
 		Size:         int64(len(page.Text)),
-		ModTime:      time.Now(),
+		ModTime:      fileTime,
 		IsPDF:        true,
 		PDFPageIndex: page.PageIndex,
 		Content:      page.Text,
@@ -112,6 +139,9 @@ func (r *Reader) pageToFileInfo(page *PageResult, filePath string) *domain.FileI
 			Title:     title,
 			Category:  category,
 			Tags:      page.Tags,
+			CreatedAt: fileTime,
+			UpdatedAt: fileTime,
+			Author:    author,
 			Source:    filename,
 			FilePath:  filePath,
 			Reference: filePath,

@@ -240,29 +240,66 @@ func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, err
 		return result, nil
 	}
 
-	var result []*FileInfo
+	// Separate PDF and non-PDF files.
+	var pdfFiles []*FileInfo
+	var nonPDFFiles []*FileInfo
 	for _, file := range files {
 		if file.IsPDF {
-			log.Printf("Expanding PDF file: %s", file.Path)
-			var pdfFiles []*FileInfo
-			var err error
-			if file.RawBytes != nil {
-				// S3 or GitHub source: use in-memory bytes
-				pdfFiles, err = vs.pdfReader.ReadFileFromBytes(file.RawBytes, file.Path)
-			} else {
-				// Local file: read from disk
-				pdfFiles, err = vs.pdfReader.ReadFile(file.Path)
-			}
-			if err != nil {
-				log.Printf("Warning: failed to expand PDF file %s: %v, skipping", file.Path, err)
-				continue // Graceful skip on error
-			}
-			log.Printf("  Expanded to %d pages", len(pdfFiles))
-			result = append(result, pdfFiles...)
+			pdfFiles = append(pdfFiles, file)
 		} else {
-			result = append(result, file)
+			nonPDFFiles = append(nonPDFFiles, file)
 		}
 	}
+
+	if len(pdfFiles) == 0 {
+		return nonPDFFiles, nil
+	}
+
+	// Process PDF files concurrently.
+	concurrency := vs.config.Concurrency
+	if concurrency <= 0 {
+		concurrency = 5
+	}
+	log.Printf("Expanding %d PDF files concurrently (concurrency: %d)", len(pdfFiles), concurrency)
+
+	semaphore := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var expandedPDFs []*FileInfo
+
+	for _, file := range pdfFiles {
+		wg.Add(1)
+		go func(f *FileInfo) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			log.Printf("Expanding PDF file: %s", f.Path)
+			var pages []*FileInfo
+			var err error
+			if f.RawBytes != nil {
+				pages, err = vs.pdfReader.ReadFileFromBytes(f.RawBytes, f.Path)
+			} else {
+				pages, err = vs.pdfReader.ReadFile(f.Path)
+			}
+			if err != nil {
+				log.Printf("Warning: failed to expand PDF file %s: %v, skipping", f.Path, err)
+				return
+			}
+			log.Printf("  Expanded to %d pages", len(pages))
+
+			mu.Lock()
+			expandedPDFs = append(expandedPDFs, pages...)
+			mu.Unlock()
+		}(file)
+	}
+
+	wg.Wait()
+
+	// Combine non-PDF files with expanded PDF pages.
+	result := make([]*FileInfo, 0, len(nonPDFFiles)+len(expandedPDFs))
+	result = append(result, nonPDFFiles...)
+	result = append(result, expandedPDFs...)
 	return result, nil
 }
 
@@ -285,8 +322,8 @@ func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*FileIn
 	}
 	if len(expandedFiles) != len(files) {
 		log.Printf("After PDF expansion: %d total documents to process", len(expandedFiles))
-		files = expandedFiles
 	}
+	files = expandedFiles
 
 	// Determine processing mode
 	if vs.enableOpenSearch && vs.parallelController != nil {
@@ -315,17 +352,20 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 		fileInfo.Content = content
 	}
 
-	// Extract metadata
-	metadata, err := vs.metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
-	if err != nil {
-		return WrapError(err, ErrorTypeMetadata, fileInfo.Path)
+	// Extract metadata: skip for PDF files since pdf.Reader already sets correct metadata.
+	// Re-extracting with the page path (pdf://...pdf/page/N) would produce wrong values
+	// because filepath.Base() returns the page number instead of the original filename.
+	if !fileInfo.IsPDF {
+		metadata, err := vs.metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
+		if err != nil {
+			return WrapError(err, ErrorTypeMetadata, fileInfo.Path)
+		}
+		fileInfo.Metadata = *metadata
 	}
-
-	fileInfo.Metadata = *metadata
 
 	if dryRun {
 		log.Printf("DRY RUN: Would process file %s (title: %s, word count: %d)",
-			fileInfo.Name, metadata.Title, metadata.WordCount)
+			fileInfo.Name, fileInfo.Metadata.Title, fileInfo.Metadata.WordCount)
 		return nil
 	}
 
@@ -347,9 +387,9 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 
 	// Create vector data
 	vectorData := &VectorData{
-		ID:        vs.metadataExtractor.GenerateKey(metadata),
+		ID:        vs.metadataExtractor.GenerateKey(&fileInfo.Metadata),
 		Embedding: embedding,
-		Metadata:  *metadata,
+		Metadata:  fileInfo.Metadata,
 		Content:   fileInfo.Content,
 		CreatedAt: time.Now(),
 	}

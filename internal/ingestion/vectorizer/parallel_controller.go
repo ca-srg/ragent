@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -203,19 +204,23 @@ func (pc *ParallelController) processFile(
 		fileInfo.Content = string(content)
 	}
 
-	// Extract metadata
-	metadata, err := metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
-	if err != nil {
-		log.Printf("Failed to extract metadata for %s: %v", fileInfo.Name, err)
-		result.Decision = ProcessingCompleteFailure
-		result.ProcessingTime = time.Since(startTime)
-		return result
+	// Extract metadata: skip for PDF files since pdf.Reader already sets correct metadata.
+	// Re-extracting with the page path (pdf://...pdf/page/N) would produce wrong values
+	// because filepath.Base() returns the page number instead of the original filename.
+	if !fileInfo.IsPDF {
+		metadata, err := metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
+		if err != nil {
+			log.Printf("Failed to extract metadata for %s: %v", fileInfo.Name, err)
+			result.Decision = ProcessingCompleteFailure
+			result.ProcessingTime = time.Since(startTime)
+			return result
+		}
+		fileInfo.Metadata = *metadata
 	}
-	fileInfo.Metadata = *metadata
 
 	// Check if document needs splitting
 	splitter := NewDocumentSplitter()
-	documentID := metadataExtractor.GenerateKey(metadata)
+	documentID := metadataExtractor.GenerateKey(&fileInfo.Metadata)
 
 	chunks, err := splitter.SplitDocument(fileInfo.Content, documentID)
 	if err != nil {
@@ -269,16 +274,14 @@ func (pc *ParallelController) processFile(
 		}
 
 		// Create metadata for this chunk
-		chunkMetadata := *metadata
+		chunkMetadata := fileInfo.Metadata
 		// Add chunk-specific metadata
 		if chunk.TotalChunks > 1 {
-			chunkMetadata.Title = fmt.Sprintf("%s (Part %d/%d)", metadata.Title, chunk.ChunkIndex+1, chunk.TotalChunks)
-			// Store chunk info in metadata
-			if chunkMetadata.Category == "" {
-				chunkMetadata.Category = fmt.Sprintf("chunk_%d_of_%d", chunk.ChunkIndex+1, chunk.TotalChunks)
-			} else {
-				chunkMetadata.Category = fmt.Sprintf("%s,chunk_%d_of_%d", chunkMetadata.Category, chunk.ChunkIndex+1, chunk.TotalChunks)
-			}
+			chunkMetadata.Title = fmt.Sprintf("%s (Part %d/%d)", fileInfo.Metadata.Title, chunk.ChunkIndex+1, chunk.TotalChunks)
+			// NOTE: Do NOT modify category with chunk info.
+			// Chunk information is tracked via ChunkIndex/TotalChunks fields in OpenSearch.
+			// Appending "chunk_N_of_M" to category pollutes the original document category.
+			chunkMetadata.WordCount = len(strings.Fields(chunk.Content))
 		}
 
 		// Generate unique ID for this chunk
