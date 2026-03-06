@@ -63,7 +63,10 @@ type FileScanner interface {
 	// IsCSVFile checks if a file is a CSV file
 	IsCSVFile(filePath string) bool
 
-	// IsSupportedFile checks if a file is a supported file type (markdown or CSV)
+	// IsPDFFile checks if a file is a PDF file
+	IsPDFFile(filePath string) bool
+
+	// IsSupportedFile checks if a file is a supported file type (markdown, CSV, or PDF)
 	IsSupportedFile(filePath string) bool
 }
 
