@@ -801,6 +801,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 		enableOpenSearch,
 		indexName,
 		csvCfg,
+		nil, // PDF reader injected separately
 	)
 }
 
