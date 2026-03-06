@@ -185,12 +185,7 @@ func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directo
 		return nil, fmt.Errorf("failed to expand CSV files: %w", err)
 	}
 
-	// Expand PDF files into individual pages
-	expandedFiles, err = vs.expandPDFFiles(expandedFiles)
-	if err != nil {
-		return nil, fmt.Errorf("failed to expand PDF files: %w", err)
-	}
-
+	// Expand PDF files into individual pages (handled in VectorizeFiles)
 	if len(expandedFiles) != len(files) {
 		log.Printf("After CSV expansion: %d total documents to process", len(expandedFiles))
 	}
@@ -282,6 +277,16 @@ func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*FileIn
 	}
 
 	log.Printf("Processing %d files", len(files))
+
+	// Expand PDF files into individual pages (for S3/GitHub sources with RawBytes, and local files)
+	expandedFiles, err := vs.expandPDFFiles(files)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand PDF files: %w", err)
+	}
+	if len(expandedFiles) != len(files) {
+		log.Printf("After PDF expansion: %d total documents to process", len(expandedFiles))
+		files = expandedFiles
+	}
 
 	// Determine processing mode
 	if vs.enableOpenSearch && vs.parallelController != nil {
