@@ -19,6 +19,7 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/hashstore"
 	"github.com/ca-srg/ragent/internal/ingestion/metadata"
 	"github.com/ca-srg/ragent/internal/ingestion/scanner"
+	"github.com/ca-srg/ragent/internal/ingestion/pdf"
 	"github.com/ca-srg/ragent/internal/ingestion/spreadsheet"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
@@ -375,6 +376,12 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 
 		metadataExtractor := metadata.NewMetadataExtractor()
 		for _, f := range githubFiles {
+			if f.IsPDF {
+				// PDF files: move binary Content to RawBytes to avoid corruption
+				f.RawBytes = []byte(f.Content)
+				f.Content = ""
+				continue
+			}
 			parts := parseGitHubPath(f.Path)
 			if parts != nil {
 				meta, err := metadataExtractor.ExtractGitHubMetadata(parts.owner, parts.repo, parts.relativePath, f.Content)
@@ -502,9 +509,16 @@ func scanLocalDirectoryWithHash(dirPath string) ([]*FileInfo, error) {
 
 	// Load content and compute hash for each file
 	for _, f := range files {
-		if err := fileScanner.LoadFileWithContentAndHash(f); err != nil {
-			log.Printf("Warning: Failed to load file %s: %v", f.Path, err)
-			continue
+		if f.IsPDF {
+			// PDF files: compute hash without loading binary content into Content field
+			if err := fileScanner.LoadPDFFileWithHash(f); err != nil {
+				log.Printf("Warning: Failed to load PDF hash for %s: %v", f.Path, err)
+			}
+		} else {
+			if err := fileScanner.LoadFileWithContentAndHash(f); err != nil {
+				log.Printf("Warning: Failed to load file %s: %v", f.Path, err)
+				continue
+			}
 		}
 	}
 
@@ -792,6 +806,25 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 		return nil, fmt.Errorf("OpenSearch index name is not set")
 	}
 
+	// Create PDF reader if OCR provider is configured
+	var pdfReader *pdf.Reader
+	if cfg.OCRProvider == "bedrock" {
+		ocrClient, err := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxPages)
+		if err != nil {
+			log.Printf("Warning: failed to create Bedrock OCR client: %v, PDF files will be skipped", err)
+		} else {
+			pdfReader = pdf.NewReader(ocrClient, pdf.PDFReaderConfig{
+				Provider: cfg.OCRProvider,
+				Model:    cfg.OCRModel,
+				MaxPages: cfg.OCRMaxPages,
+				Timeout:  cfg.OCRTimeout,
+			})
+			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
+		}
+	} else if cfg.OCRProvider != "" {
+		log.Printf("Warning: unsupported OCR_PROVIDER=%q, PDF files will be skipped", cfg.OCRProvider)
+	}
+
 	// Create vectorizer service with all dependencies including CSV config
 	return serviceFactory.CreateVectorizerServiceWithCSVConfig(
 		embeddingClient,
@@ -801,7 +834,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 		enableOpenSearch,
 		indexName,
 		csvCfg,
-		nil, // PDF reader injected separately
+		pdfReader,
 	)
 }
 

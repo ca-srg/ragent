@@ -249,7 +249,15 @@ func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, err
 	for _, file := range files {
 		if file.IsPDF {
 			log.Printf("Expanding PDF file: %s", file.Path)
-			pdfFiles, err := vs.pdfReader.ReadFile(file.Path)
+			var pdfFiles []*FileInfo
+			var err error
+			if file.RawBytes != nil {
+				// S3 or GitHub source: use in-memory bytes
+				pdfFiles, err = vs.pdfReader.ReadFileFromBytes(file.RawBytes, file.Path)
+			} else {
+				// Local file: read from disk
+				pdfFiles, err = vs.pdfReader.ReadFile(file.Path)
+			}
 			if err != nil {
 				log.Printf("Warning: failed to expand PDF file %s: %v, skipping", file.Path, err)
 				continue // Graceful skip on error

@@ -40,6 +40,7 @@ type FileInfo struct {
 	Metadata    DocumentMetadata `json:"metadata"`
 	ContentHash string           `json:"content_hash,omitempty"` // MD5 hash of content (hex format)
 	SourceType  string           `json:"source_type,omitempty"`  // "local" or "s3"
+	RawBytes    []byte           `json:"-"`           // Raw bytes for binary files (PDFs from S3/GitHub)
 }
 
 // VectorData represents the embedding vector data for a document
