@@ -25,7 +25,7 @@ type DocumentMetadata struct {
 	CustomFields map[string]interface{} `json:"custom_fields"`
 }
 
-// FileInfo represents information about a file to be processed (markdown or CSV)
+// FileInfo represents information about a file to be processed (markdown, CSV, or PDF)
 type FileInfo struct {
 	Path        string           `json:"path"`
 	Name        string           `json:"name"`
@@ -34,6 +34,8 @@ type FileInfo struct {
 	IsMarkdown  bool             `json:"is_markdown"`
 	IsCSV       bool             `json:"is_csv"`
 	CSVRowIndex int              `json:"csv_row_index,omitempty"` // Row index for CSV files (1-based, excluding header)
+	IsPDF        bool             `json:"is_pdf"`
+	PDFPageIndex int              `json:"pdf_page_index,omitempty"` // Page index for PDF files (1-based)
 	Content     string           `json:"content"`
 	Metadata    DocumentMetadata `json:"metadata"`
 	ContentHash string           `json:"content_hash,omitempty"` // MD5 hash of content (hex format)

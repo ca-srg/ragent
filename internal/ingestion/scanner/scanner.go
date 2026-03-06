@@ -61,6 +61,7 @@ func (s *FileScanner) ScanDirectory(dirPath string) ([]*FileInfo, error) {
 			ModTime:    info.ModTime(),
 			IsMarkdown: s.IsMarkdownFile(path),
 			IsCSV:      s.IsCSVFile(path),
+			IsPDF:      s.IsPDFFile(path),
 		}
 
 		files = append(files, fileInfo)
@@ -122,9 +123,15 @@ func (s *FileScanner) IsCSVFile(filePath string) bool {
 	return ext == ".csv"
 }
 
-// IsSupportedFile checks if a file is a supported file type (markdown or CSV)
+// IsPDFFile checks if a file is a PDF file
+func (s *FileScanner) IsPDFFile(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	return ext == ".pdf"
+}
+
+// IsSupportedFile checks if a file is a supported file type (markdown, CSV, or PDF)
 func (s *FileScanner) IsSupportedFile(filePath string) bool {
-	return s.IsMarkdownFile(filePath) || s.IsCSVFile(filePath)
+	return s.IsMarkdownFile(filePath) || s.IsCSVFile(filePath) || s.IsPDFFile(filePath)
 }
 
 // LoadFileWithContent loads file info and reads its content
@@ -147,6 +154,18 @@ func (s *FileScanner) LoadFileWithContentAndHash(fileInfo *FileInfo) error {
 
 	fileInfo.Content = content
 	fileInfo.ContentHash = ComputeMD5Hash(content)
+	fileInfo.SourceType = "local"
+	return nil
+}
+
+// LoadPDFFileWithHash loads PDF file info and computes MD5 hash without reading content
+// (PDF is binary, so Content is NOT set to avoid binary corruption)
+func (s *FileScanner) LoadPDFFileWithHash(fileInfo *FileInfo) error {
+	data, err := os.ReadFile(fileInfo.Path)
+	if err != nil {
+		return fmt.Errorf("failed to read PDF file %s: %w", fileInfo.Path, err)
+	}
+	fileInfo.ContentHash = ComputeMD5Hash(string(data))
 	fileInfo.SourceType = "local"
 	return nil
 }

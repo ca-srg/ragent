@@ -95,6 +95,12 @@ type Config struct {
 
 	// GitHub configuration
 	GitHubToken string `json:"github_token" env:"GITHUB_TOKEN"`
+
+	// OCR configuration
+	OCRProvider string        `json:"ocr_provider" env:"OCR_PROVIDER"`
+	OCRModel    string        `json:"ocr_model" env:"OCR_MODEL,default=anthropic.claude-3-5-sonnet-20241022-v2:0"`
+	OCRTimeout  time.Duration `json:"ocr_timeout" env:"OCR_TIMEOUT,default=120s"`
+	OCRMaxPages int           `json:"ocr_max_pages" env:"OCR_MAX_PAGES,default=100"`
 }
 
 // ErrorType represents the type of error that occurred
@@ -111,6 +117,7 @@ const (
 	ErrorTypeValidation     ErrorType = "validation"
 	ErrorTypeAuthentication ErrorType = "authentication"
 	ErrorTypeUnknown        ErrorType = "unknown"
+	ErrorTypeOCR            ErrorType = "ocr"
 	// OpenSearch specific error types
 	ErrorTypeOpenSearchConnection ErrorType = "opensearch_connection"
 	ErrorTypeOpenSearchMapping    ErrorType = "opensearch_mapping"
