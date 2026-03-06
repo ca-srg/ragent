@@ -34,7 +34,7 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 
 ## Features
 
-- **Vectorization**: Convert source files (markdown and CSV) from local directories, S3, or GitHub repositories to embeddings using Amazon Bedrock
+- **Vectorization**: Convert source files (markdown, CSV, and PDF) from local directories, S3, or GitHub repositories to embeddings using Amazon Bedrock
 - **GitHub Data Source**: Clone GitHub repositories and vectorize their markdown/CSV files with auto-generated metadata
 - **S3 Vector Integration**: Store generated vectors in Amazon S3 Vectors
 - **Hybrid Search**: Combined BM25 + vector search using OpenSearch
@@ -355,6 +355,7 @@ Before using RAGent, you need to prepare source documents in a `source/` directo
 **Supported file types:**
 - **Markdown (.md, .markdown)**: Each file becomes one document
 - **CSV (.csv)**: Each row becomes one document (header row required)
+- **PDF (.pdf)**: Each page becomes one document (requires `OCR_PROVIDER=bedrock`)
 
 ```bash
 # Create source directory
@@ -472,6 +473,12 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_RESOURCE_ATTRIBUTES=service.namespace=ragent,environment=dev
 OTEL_TRACES_SAMPLER=always_on
 OTEL_TRACES_SAMPLER_ARG=1.0
+
+# OCR Configuration (for PDF vectorization)
+OCR_PROVIDER=bedrock                                    # OCR provider ("bedrock" only; omit to skip PDFs)
+OCR_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0    # Bedrock model for OCR (default)
+OCR_TIMEOUT=120s                                        # OCR request timeout (default: 120s)
+OCR_MAX_PAGES=100                                       # Maximum pages per PDF (default: 100)
 ```
 
 Slack search requires `SLACK_SEARCH_ENABLED=true`, a valid `SLACK_BOT_TOKEN`, **and** a user token `SLACK_USER_TOKEN` that includes scopes such as `search:read`, `channels:history`, `groups:history`, and other conversation history scopes relevant to the channels you query. The search-specific knobs let you tune throughput and cost per workspace without touching the core document pipeline.
@@ -750,6 +757,7 @@ For detailed documentation on the GitHub data source feature, see [doc/github.md
 - Embedding generation using Amazon Titan Text Embedding v2
 - Safe storage to S3 Vectors
 - High-speed processing through concurrency
+- PDF page extraction via OCR (each page becomes a document, requires `OCR_PROVIDER=bedrock`)
 
 ### 2. query - Semantic Search
 
