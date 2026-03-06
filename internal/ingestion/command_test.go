@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +13,10 @@ import (
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/ca-srg/ragent/internal/ingestion/scanner"
 )
 
 // newTestVectorizeCmd creates a minimal cobra.Command with the --interval flag
@@ -268,4 +274,52 @@ func TestRunFollowCycle_SkipWhenProcessing(t *testing.T) {
 	if !strings.Contains(buf.String(), "Skipping this cycle") {
 		t.Fatalf("expected skip log, got %q", buf.String())
 	}
+}
+
+func TestScannerDetectsPDFFiles(t *testing.T) {
+	s := scanner.NewFileScanner()
+
+	assert.True(t, s.IsPDFFile("document.pdf"))
+	assert.True(t, s.IsPDFFile("path/to/file.PDF"))
+	assert.True(t, s.IsPDFFile("/absolute/path/report.pdf"))
+	assert.False(t, s.IsPDFFile("document.md"))
+	assert.False(t, s.IsPDFFile("data.csv"))
+	assert.False(t, s.IsPDFFile("file.txt"))
+}
+
+func TestScannerSupportsPDFFiles(t *testing.T) {
+	s := scanner.NewFileScanner()
+
+	assert.True(t, s.IsSupportedFile("document.pdf"))
+	assert.True(t, s.IsSupportedFile("document.md"))
+	assert.True(t, s.IsSupportedFile("data.csv"))
+	assert.False(t, s.IsSupportedFile("image.png"))
+	assert.False(t, s.IsSupportedFile("archive.zip"))
+}
+
+func TestScanDirectoryDetectsPDFFiles(t *testing.T) {
+	s := scanner.NewFileScanner()
+
+	// Create a temp PDF file
+	tmpDir := t.TempDir()
+	pdfPath := filepath.Join(tmpDir, "test.pdf")
+	err := os.WriteFile(pdfPath, []byte("fake pdf content"), 0644)
+	require.NoError(t, err)
+
+	// Scan the directory
+	files, err := s.ScanDirectory(tmpDir)
+	require.NoError(t, err)
+
+	// Find the PDF file
+	var pdfFile *scanner.FileInfo
+	for _, f := range files {
+		if f.IsPDF {
+			pdfFile = f
+			break
+		}
+	}
+
+	require.NotNil(t, pdfFile, "PDF file should be detected")
+	assert.True(t, pdfFile.IsPDF)
+	assert.Equal(t, pdfPath, pdfFile.Path)
 }
