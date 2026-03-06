@@ -9,7 +9,7 @@ opencode.json
 doc/debug.md
 # Added by goreleaser init:
 dist/
-source/*.md
+source/*
 .opencode/plans/*.md
 terraform/test/.terraform
 terraform/test/.terraform.lock.hcl

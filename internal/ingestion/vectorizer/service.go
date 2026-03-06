@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
+	"github.com/ca-srg/ragent/internal/ingestion/pdf"
 )
 
 // ProgressCallback is called when processing progress is updated
@@ -29,6 +30,7 @@ type VectorizerService struct {
 	enableOpenSearch    bool
 	opensearchIndexName string
 	csvReader           *csv.Reader
+	pdfReader           *pdf.Reader
 	progressCallback    ProgressCallback
 	progressMu          sync.RWMutex
 }
@@ -58,6 +60,7 @@ type ServiceConfig struct {
 	EnableOpenSearch    bool
 	OpenSearchIndexName string
 	CSVConfig           *csv.Config
+	PDFReader           *pdf.Reader
 }
 
 // NewVectorizerService creates a new vectorizer service with the given configuration
@@ -96,6 +99,8 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 		csvReader = csv.NewReader(nil) // Use default config with auto-detection
 	}
 
+	// pdfReader は nil 可（OCR_PROVIDER 未設定時はスキップ）
+
 	service := &VectorizerService{
 		embeddingClient:     serviceConfig.EmbeddingClient,
 		s3Client:            serviceConfig.S3Client,
@@ -108,6 +113,7 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 		enableOpenSearch:    serviceConfig.EnableOpenSearch,
 		opensearchIndexName: serviceConfig.OpenSearchIndexName,
 		csvReader:           csvReader,
+		pdfReader:           serviceConfig.PDFReader,
 		stats: &ProcessingStats{
 			StartTime: time.Now(),
 			Errors:    make([]ProcessingError, 0),
@@ -179,6 +185,7 @@ func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directo
 		return nil, fmt.Errorf("failed to expand CSV files: %w", err)
 	}
 
+	// Expand PDF files into individual pages (handled in VectorizeFiles)
 	if len(expandedFiles) != len(files) {
 		log.Printf("After CSV expansion: %d total documents to process", len(expandedFiles))
 	}
@@ -209,6 +216,93 @@ func (vs *VectorizerService) expandCSVFiles(files []*FileInfo) ([]*FileInfo, err
 	return result, nil
 }
 
+// expandPDFFiles expands PDF files into individual FileInfo entries (one per page)
+func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, error) {
+	if vs.pdfReader == nil {
+		// OCR_PROVIDER not configured - skip PDF files with warning
+		hasPDF := false
+		for _, f := range files {
+			if f.IsPDF {
+				hasPDF = true
+				break
+			}
+		}
+		if hasPDF {
+			log.Println("Warning: PDF files found but OCR_PROVIDER is not set, PDF files will be skipped")
+		}
+		// Return non-PDF files only
+		var result []*FileInfo
+		for _, f := range files {
+			if !f.IsPDF {
+				result = append(result, f)
+			}
+		}
+		return result, nil
+	}
+
+	// Separate PDF and non-PDF files.
+	var pdfFiles []*FileInfo
+	var nonPDFFiles []*FileInfo
+	for _, file := range files {
+		if file.IsPDF {
+			pdfFiles = append(pdfFiles, file)
+		} else {
+			nonPDFFiles = append(nonPDFFiles, file)
+		}
+	}
+
+	if len(pdfFiles) == 0 {
+		return nonPDFFiles, nil
+	}
+
+	// Process PDF files concurrently.
+	concurrency := vs.config.Concurrency
+	if concurrency <= 0 {
+		concurrency = 5
+	}
+	log.Printf("Expanding %d PDF files concurrently (concurrency: %d)", len(pdfFiles), concurrency)
+
+	semaphore := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var expandedPDFs []*FileInfo
+
+	for _, file := range pdfFiles {
+		wg.Add(1)
+		go func(f *FileInfo) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			log.Printf("Expanding PDF file: %s", f.Path)
+			var pages []*FileInfo
+			var err error
+			if f.RawBytes != nil {
+				pages, err = vs.pdfReader.ReadFileFromBytes(f.RawBytes, f.Path)
+			} else {
+				pages, err = vs.pdfReader.ReadFile(f.Path)
+			}
+			if err != nil {
+				log.Printf("Warning: failed to expand PDF file %s: %v, skipping", f.Path, err)
+				return
+			}
+			log.Printf("  Expanded to %d pages", len(pages))
+
+			mu.Lock()
+			expandedPDFs = append(expandedPDFs, pages...)
+			mu.Unlock()
+		}(file)
+	}
+
+	wg.Wait()
+
+	// Combine non-PDF files with expanded PDF pages.
+	result := make([]*FileInfo, 0, len(nonPDFFiles)+len(expandedPDFs))
+	result = append(result, nonPDFFiles...)
+	result = append(result, expandedPDFs...)
+	return result, nil
+}
+
 // VectorizeFiles processes a slice of FileInfo objects
 // This can be used for both markdown files and spreadsheet rows
 func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*FileInfo, dryRun bool) (*ProcessingResult, error) {
@@ -220,6 +314,16 @@ func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*FileIn
 	}
 
 	log.Printf("Processing %d files", len(files))
+
+	// Expand PDF files into individual pages (for S3/GitHub sources with RawBytes, and local files)
+	expandedFiles, err := vs.expandPDFFiles(files)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand PDF files: %w", err)
+	}
+	if len(expandedFiles) != len(files) {
+		log.Printf("After PDF expansion: %d total documents to process", len(expandedFiles))
+	}
+	files = expandedFiles
 
 	// Determine processing mode
 	if vs.enableOpenSearch && vs.parallelController != nil {
@@ -248,17 +352,20 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 		fileInfo.Content = content
 	}
 
-	// Extract metadata
-	metadata, err := vs.metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
-	if err != nil {
-		return WrapError(err, ErrorTypeMetadata, fileInfo.Path)
+	// Extract metadata: skip for PDF files since pdf.Reader already sets correct metadata.
+	// Re-extracting with the page path (pdf://...pdf/page/N) would produce wrong values
+	// because filepath.Base() returns the page number instead of the original filename.
+	if !fileInfo.IsPDF {
+		metadata, err := vs.metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
+		if err != nil {
+			return WrapError(err, ErrorTypeMetadata, fileInfo.Path)
+		}
+		fileInfo.Metadata = *metadata
 	}
-
-	fileInfo.Metadata = *metadata
 
 	if dryRun {
 		log.Printf("DRY RUN: Would process file %s (title: %s, word count: %d)",
-			fileInfo.Name, metadata.Title, metadata.WordCount)
+			fileInfo.Name, fileInfo.Metadata.Title, fileInfo.Metadata.WordCount)
 		return nil
 	}
 
@@ -280,9 +387,9 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 
 	// Create vector data
 	vectorData := &VectorData{
-		ID:        vs.metadataExtractor.GenerateKey(metadata),
+		ID:        vs.metadataExtractor.GenerateKey(&fileInfo.Metadata),
 		Embedding: embedding,
-		Metadata:  *metadata,
+		Metadata:  fileInfo.Metadata,
 		Content:   fileInfo.Content,
 		CreatedAt: time.Now(),
 	}
@@ -393,6 +500,12 @@ func (vs *VectorizerService) dryRunProcessing(files []*FileInfo) (*ProcessingRes
 	}
 
 	for i, file := range files {
+		// Skip PDF files in dry run (already expanded or skipped)
+		if file.IsPDF && vs.pdfReader == nil {
+			log.Printf("DRY RUN [%d/%d]: [PDF SKIPPED - OCR_PROVIDER not set] %s", i+1, len(files), file.Name)
+			continue
+		}
+
 		log.Printf("DRY RUN [%d/%d]: %s", i+1, len(files), file.Name)
 
 		// Load content for metadata extraction

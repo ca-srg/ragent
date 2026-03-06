@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
+	"github.com/ca-srg/ragent/internal/ingestion/pdf"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 )
 
@@ -233,6 +234,7 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithDefaults(
 		enableOpenSearch,
 		opensearchIndexName,
 		nil, // No CSV config
+		nil, // No PDF reader
 	)
 }
 
@@ -245,6 +247,7 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithCSVConfig(
 	enableOpenSearch bool,
 	opensearchIndexName string,
 	csvConfig *csv.Config,
+	pdfReader *pdf.Reader,
 ) (*VectorizerService, error) {
 
 	serviceConfig, err := sf.CreateServiceConfig(
@@ -261,6 +264,7 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithCSVConfig(
 
 	// Add CSV configuration
 	serviceConfig.CSVConfig = csvConfig
+	serviceConfig.PDFReader = pdfReader
 
 	service, err := NewVectorizerService(serviceConfig)
 	if err != nil {
