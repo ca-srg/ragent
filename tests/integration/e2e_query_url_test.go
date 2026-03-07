@@ -148,7 +148,7 @@ func TestQueryCommandURLAwareSearch(t *testing.T) {
 					OpenSearchIndex:    "docs-index",
 					S3VectorRegion:     "us-west-2",
 				}, nil),
-				LoadAWSConfig: cmd.DefaultAWSConfigOverride(aws.Config{Region: "us-west-2"}, nil),
+				LoadBedrockAWSConfig: cmd.DefaultBedrockAWSConfigOverride(aws.Config{Region: "us-west-2"}, nil),
 				NewEmbeddingClient: func(cfg aws.Config, modelID string) opensearch.EmbeddingClient {
 					return stubEmbedding
 				},
