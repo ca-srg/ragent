@@ -28,8 +28,8 @@ type PageResult struct {
 
 // PDFReaderConfig holds configuration for the PDF Reader.
 type PDFReaderConfig struct {
-	Provider    string        // OCR provider name (e.g., "bedrock")
-	Model       string        // Model ID for OCR
+	Provider    string // OCR provider name (e.g., "bedrock")
+	Model       string // Model ID for OCR
 	Timeout     time.Duration
-	Concurrency int           // Number of concurrent OCR requests (for page-level parallelism)
+	Concurrency int // Number of concurrent OCR requests (for page-level parallelism)
 }

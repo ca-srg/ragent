@@ -193,6 +193,8 @@ func (c *GeminiOCRClient) extractPagesFromLargePDF(ctx context.Context, pdfData 
 					select {
 					case <-time.After(delay):
 					case <-ctx.Done():
+					}
+					if ctx.Err() != nil {
 						lastErr = ctx.Err()
 						break
 					}
@@ -260,7 +262,7 @@ func (c *GeminiOCRClient) callGemini(ctx context.Context, pdfData []byte, filena
 	log.Printf("Calling Gemini API for PDF: %s (model: %s)", filename, c.model)
 	result, err := c.genaiClient.Models.GenerateContent(callCtx, c.model, contents, config)
 	if err != nil {
-		return nil, fmt.Errorf("Gemini API call failed for %s: %w", filename, err)
+		return nil, fmt.Errorf("gemini API call failed for %s: %w", filename, err)
 	}
 
 	responseText := extractTextFromGeminiResponse(result)
@@ -276,7 +278,6 @@ func (c *GeminiOCRClient) callGemini(ctx context.Context, pdfData []byte, filena
 			{PageIndex: 1, Text: responseText},
 		}, nil
 	}
-
 
 	log.Printf("Successfully extracted %d pages from PDF: %s", len(results), filename)
 	return results, nil
@@ -314,7 +315,7 @@ func (c *GeminiOCRClient) ValidateConnection(ctx context.Context) error {
 
 	_, err := c.genaiClient.Models.GenerateContent(callCtx, c.model, genai.Text("test"), config)
 	if err != nil {
-		return fmt.Errorf("Gemini connection validation failed: %w", err)
+		return fmt.Errorf("gemini connection validation failed: %w", err)
 	}
 	return nil
 }
