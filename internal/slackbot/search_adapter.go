@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
@@ -73,7 +72,7 @@ func (h *HybridSearchAdapter) awsConfig(ctx context.Context) (aws.Config, error)
 	}
 	h.awsCfgMu.RUnlock()
 
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+	cfg, err := bedrock.BuildBedrockAWSConfig(ctx, h.cfg.BedrockRegion, h.cfg.BedrockBearerToken)
 	if err != nil {
 		return aws.Config{}, err
 	}
