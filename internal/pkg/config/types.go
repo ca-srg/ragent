@@ -13,6 +13,8 @@ type Config struct {
 	VectorDBBackend      string        `json:"vector_db_backend" env:"VECTOR_DB_BACKEND,default=s3"`
 	SqliteVecDBPath      string        `json:"sqlite_vec_db_path" env:"SQLITE_VEC_DB_PATH,default=~/.ragent/vectors.db"`
 	S3SourceRegion       string        `json:"s3_source_region" env:"S3_SOURCE_REGION,default=us-east-1"`
+	BedrockRegion        string        `json:"bedrock_region" env:"BEDROCK_REGION,default=us-east-1"`
+	BedrockBearerToken   string        `json:"bedrock_bearer_token" env:"AWS_BEARER_TOKEN_BEDROCK"`
 	ChatModel            string        `json:"chat_model" env:"CHAT_MODEL,default=global.anthropic.claude-sonnet-4-6"`
 	Concurrency          int           `json:"concurrency" env:"VECTORIZER_CONCURRENCY,default=10"`
 	RetryAttempts        int           `json:"retry_attempts" env:"VECTORIZER_RETRY_ATTEMPTS,default=10"`

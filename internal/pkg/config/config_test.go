@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,4 +57,87 @@ func TestLoadInvalidBackendReturnsError(t *testing.T) {
 	_, err := config.Load()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "VECTOR_DB_BACKEND")
+}
+
+func TestBedrockRegionDefault(t *testing.T) {
+	loadDotEnvForTest(t)
+	setRequiredEnvVars(t)
+	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
+	t.Setenv("AWS_S3_VECTOR_BUCKET", "")
+	t.Setenv("AWS_S3_VECTOR_INDEX", "")
+
+	previousValue, wasSet := os.LookupEnv("BEDROCK_REGION")
+	require.NoError(t, os.Unsetenv("BEDROCK_REGION"))
+	t.Cleanup(func() {
+		if wasSet {
+			require.NoError(t, os.Setenv("BEDROCK_REGION", previousValue))
+			return
+		}
+		require.NoError(t, os.Unsetenv("BEDROCK_REGION"))
+	})
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "us-east-1", cfg.BedrockRegion)
+}
+
+func TestBedrockRegionCustom(t *testing.T) {
+	loadDotEnvForTest(t)
+	setRequiredEnvVars(t)
+	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
+	t.Setenv("AWS_S3_VECTOR_BUCKET", "")
+	t.Setenv("AWS_S3_VECTOR_INDEX", "")
+	t.Setenv("BEDROCK_REGION", "ap-northeast-1")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "ap-northeast-1", cfg.BedrockRegion)
+}
+
+func TestBedrockRegionEmpty(t *testing.T) {
+	loadDotEnvForTest(t)
+	setRequiredEnvVars(t)
+	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
+	t.Setenv("AWS_S3_VECTOR_BUCKET", "")
+	t.Setenv("AWS_S3_VECTOR_INDEX", "")
+	t.Setenv("BEDROCK_REGION", "")
+
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "BEDROCK_REGION")
+}
+
+func TestBedrockBearerTokenLoaded(t *testing.T) {
+	loadDotEnvForTest(t)
+	setRequiredEnvVars(t)
+	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
+	t.Setenv("AWS_S3_VECTOR_BUCKET", "")
+	t.Setenv("AWS_S3_VECTOR_INDEX", "")
+	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "test-bedrock-token")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "test-bedrock-token", cfg.BedrockBearerToken)
+}
+
+func TestBedrockBearerTokenEmpty(t *testing.T) {
+	loadDotEnvForTest(t)
+	setRequiredEnvVars(t)
+	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
+	t.Setenv("AWS_S3_VECTOR_BUCKET", "")
+	t.Setenv("AWS_S3_VECTOR_INDEX", "")
+
+	previousValue, wasSet := os.LookupEnv("AWS_BEARER_TOKEN_BEDROCK")
+	require.NoError(t, os.Unsetenv("AWS_BEARER_TOKEN_BEDROCK"))
+	t.Cleanup(func() {
+		if wasSet {
+			require.NoError(t, os.Setenv("AWS_BEARER_TOKEN_BEDROCK", previousValue))
+			return
+		}
+		require.NoError(t, os.Unsetenv("AWS_BEARER_TOKEN_BEDROCK"))
+	})
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.BedrockBearerToken)
 }
