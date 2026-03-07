@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/slack-go/slack"
@@ -310,9 +309,9 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 	bgCtx := context.Background()
 
 	// Load AWS configuration
-	awsConfig, err := config.LoadDefaultConfig(bgCtx, config.WithRegion(cfg.S3VectorRegion))
+	awsConfig, err := bedrock.BuildBedrockAWSConfig(bgCtx, cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
-		return fmt.Errorf("failed to load AWS configuration: %w", err)
+		return fmt.Errorf("failed to load Bedrock AWS configuration: %w", err)
 	}
 
 	// Initialize Bedrock client for Slack search (needed for LLM in Slack search)
