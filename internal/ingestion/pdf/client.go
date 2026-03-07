@@ -159,7 +159,6 @@ func (c *BedrockOCRClient) extractPagesFromLargePDF(ctx context.Context, pdfData
 				pageIndices[0], pageIndices[len(pageIndices)-1], filename, err)
 			// Fallback: process pages in this batch individually.
 			for _, p := range batch {
-				pagePDFs = [][]byte{p.data}
 				batches = append(batches, batchInfo{
 					startPage: p.index,
 					endPage:   p.index,
@@ -207,6 +206,8 @@ func (c *BedrockOCRClient) extractPagesFromLargePDF(ctx context.Context, pdfData
 					select {
 					case <-time.After(delay):
 					case <-ctx.Done():
+					}
+					if ctx.Err() != nil {
 						lastErr = ctx.Err()
 						break
 					}
@@ -291,7 +292,7 @@ func (c *BedrockOCRClient) callBedrock(ctx context.Context, pdfData []byte, file
 	log.Printf("Calling Bedrock Converse API for PDF: %s (model: %s)", filename, c.model)
 	output, err := c.bedrockClient.Converse(callCtx, input)
 	if err != nil {
-		return nil, fmt.Errorf("Bedrock Converse API call failed for %s: %w", filename, err)
+		return nil, fmt.Errorf("bedrock Converse API call failed for %s: %w", filename, err)
 	}
 
 	responseText, err := extractTextFromConverseOutput(output)
@@ -307,7 +308,6 @@ func (c *BedrockOCRClient) callBedrock(ctx context.Context, pdfData []byte, file
 			{PageIndex: 1, Text: responseText},
 		}, nil
 	}
-
 
 	log.Printf("Successfully extracted %d pages from PDF: %s", len(results), filename)
 	return results, nil
@@ -337,7 +337,7 @@ func (c *BedrockOCRClient) ValidateConnection(ctx context.Context) error {
 
 	_, err := c.bedrockClient.Converse(callCtx, input)
 	if err != nil {
-		return fmt.Errorf("Bedrock connection validation failed: %w", err)
+		return fmt.Errorf("bedrock connection validation failed: %w", err)
 	}
 	return nil
 }
@@ -524,8 +524,8 @@ func mergePagePDFs(pagePDFs [][]byte) ([]byte, error) {
 
 // batchPageData groups extracted page data into batches of the given size.
 type batchInfo struct {
-	startPage int      // 1-based page index of first page in batch
-	endPage   int      // 1-based page index of last page in batch
-	data      []byte   // merged PDF bytes for this batch
-	pages     []int    // original page indices in this batch
+	startPage int    // 1-based page index of first page in batch
+	endPage   int    // 1-based page index of last page in batch
+	data      []byte // merged PDF bytes for this batch
+	pages     []int  // original page indices in this batch
 }

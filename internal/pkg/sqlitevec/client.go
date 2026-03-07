@@ -83,7 +83,7 @@ func NewSqliteVecStore(dbPath string) (*SqliteVecStore, error) {
 
 	// Verify the connection is usable before returning.
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to ping sqlite database: %w", err)
 	}
 
@@ -91,7 +91,7 @@ func NewSqliteVecStore(dbPath string) (*SqliteVecStore, error) {
 
 	ctx := context.Background()
 	if err := store.initSchema(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
@@ -202,7 +202,7 @@ func (s *SqliteVecStore) ListVectors(ctx context.Context, prefix string) ([]stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to list vectors: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Initialise to a non-nil empty slice so callers can use len() == 0 safely.
 	keys := []string{}

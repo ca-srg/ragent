@@ -2,7 +2,6 @@ package sqlitevec
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +20,7 @@ func newTestStore(t *testing.T) *SqliteVecStore {
 	dbPath := filepath.Join(dir, "test.db")
 	store, err := NewSqliteVecStore(dbPath)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	return store
 }
 
@@ -30,7 +29,7 @@ func TestNewSqliteVecStore(t *testing.T) {
 	dbPath := filepath.Join(dir, "test.db")
 	store, err := NewSqliteVecStore(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Verify DB file was created
 	_, statErr := os.Stat(dbPath)
@@ -43,7 +42,7 @@ func TestValidateAccess_AutoCreate(t *testing.T) {
 	dbPath := filepath.Join(dir, "subdir", "nested", "test.db")
 	store, err := NewSqliteVecStore(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	err = store.ValidateAccess(context.Background())
 	assert.NoError(t, err)
@@ -133,17 +132,6 @@ func TestStoreVector_NilData(t *testing.T) {
 	store := newTestStore(t)
 	err := store.StoreVector(context.Background(), nil)
 	assert.Error(t, err)
-}
-
-// openRawDB opens the sqlite DB at path for direct inspection in tests.
-// openRawDB opens the sqlite DB at path for direct inspection in tests.
-// It uses the same "sqlite" driver registered by the sqlitevec package.
-func openRawDB(t *testing.T, path string) *sql.DB {
-	t.Helper()
-	db, err := sql.Open("sqlite", path)
-	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
-	return db
 }
 
 // ─── CRUD tests (T5) ───────────────────────────────────────────────────────
