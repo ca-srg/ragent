@@ -77,6 +77,11 @@ func NewSqliteVecStore(dbPath string) (*SqliteVecStore, error) {
 		return nil, fmt.Errorf("failed to open sqlite database at %s: %w", dbPath, err)
 	}
 
+	// Enforce single-writer policy: SQLite WAL mode allows multiple concurrent readers
+	// but only one writer at a time. Limiting the pool to 1 connection prevents
+	// concurrent write conflicts without requiring an external mutex.
+	db.SetMaxOpenConns(1)
+
 	// Verify the connection is usable before returning.
 	if err := db.Ping(); err != nil {
 		db.Close()
