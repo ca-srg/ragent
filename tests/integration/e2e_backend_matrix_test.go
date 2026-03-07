@@ -166,7 +166,9 @@ func TestE2E_BackendMatrix(t *testing.T) {
 			t.Cleanup(func() {
 				deleteMatrixTestIndex(t, cfg.OpenSearchEndpoint, indexName)
 				if tc.vectorDBBackend == "s3" {
-					_ = vectorStore.DeleteVector(context.Background(), testVectorID)
+					if err := vectorStore.DeleteVector(context.Background(), testVectorID); err != nil {
+						t.Logf("cleanup: failed to delete test vector %s: %v", testVectorID, err)
+					}
 				}
 			})
 
@@ -232,11 +234,13 @@ func deleteMatrixTestIndex(t *testing.T, endpoint, indexName string) {
 
 	req, err := http.NewRequest(http.MethodDelete, endpoint+"/"+indexName, nil)
 	if err != nil {
+		t.Logf("deleteMatrixTestIndex: failed to create request: %v", err)
 		return
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		t.Logf("deleteMatrixTestIndex: failed to delete index %s: %v", indexName, err)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
