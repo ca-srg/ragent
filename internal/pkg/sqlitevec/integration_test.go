@@ -31,7 +31,7 @@ func TestIntegration_SqliteVecFullLifecycle(t *testing.T) {
 	// ── Step 1: Create store ──────────────────────────────────────────────────
 	store, err := sqlitevec.NewSqliteVecStore(dbPath)
 	require.NoError(t, err, "NewSqliteVecStore should succeed")
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	ctx := context.Background()
 
