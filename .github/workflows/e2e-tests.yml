@@ -223,11 +223,19 @@ jobs:
 
       - name: Create E2E matrix test index
         run: |
-          curl -sf -X PUT "http://localhost:9200/ragent-e2e-matrix-${{ matrix.name }}" \
-            -H "Content-Type: application/json" \
-            -d @tests/testdata/e2e-index-mapping.json
-          echo ""
-          echo "Index ragent-e2e-matrix-${{ matrix.name }} created successfully"
+          for attempt in 1 2 3 4 5; do
+            if curl -sf -X PUT "http://localhost:9200/ragent-e2e-matrix-${{ matrix.name }}" \
+              -H "Content-Type: application/json" \
+              -d @tests/testdata/e2e-index-mapping.json; then
+              echo ""
+              echo "Index ragent-e2e-matrix-${{ matrix.name }} created successfully"
+              exit 0
+            fi
+            echo "Attempt $attempt failed, retrying in 3s..."
+            sleep 3
+          done
+          echo "::error::Failed to create index after 5 attempts"
+          exit 1
 
       - name: Run go vet
         run: go vet ./...
