@@ -19,7 +19,7 @@ type ProgressCallback func(processed, total int)
 // VectorizerService orchestrates the vectorization process
 type VectorizerService struct {
 	embeddingClient     EmbeddingClient
-	s3Client            VectorStore
+	vectorStore         VectorStore
 	opensearchIndexer   OpenSearchIndexer
 	metadataExtractor   MetadataExtractor
 	fileScanner         FileScanner
@@ -51,7 +51,7 @@ type ProcessingStats struct {
 type ServiceConfig struct {
 	Config              *Config
 	EmbeddingClient     EmbeddingClient
-	S3Client            VectorStore
+	VectorStoreClient   VectorStore
 	OpenSearchIndexer   OpenSearchIndexer
 	MetadataExtractor   MetadataExtractor
 	FileScanner         FileScanner
@@ -76,7 +76,7 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 	} else if serviceConfig.EnableOpenSearch && serviceConfig.OpenSearchIndexer != nil {
 		// Create parallel controller for dual backend processing
 		parallelController = NewParallelController(
-			serviceConfig.S3Client,
+			serviceConfig.VectorStoreClient,
 			serviceConfig.OpenSearchIndexer,
 			serviceConfig.Config.Concurrency,
 		)
@@ -103,7 +103,7 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 
 	service := &VectorizerService{
 		embeddingClient:     serviceConfig.EmbeddingClient,
-		s3Client:            serviceConfig.S3Client,
+		vectorStore:         serviceConfig.VectorStoreClient,
 		opensearchIndexer:   serviceConfig.OpenSearchIndexer,
 		metadataExtractor:   serviceConfig.MetadataExtractor,
 		fileScanner:         serviceConfig.FileScanner,
@@ -134,11 +134,11 @@ func (vs *VectorizerService) ValidateConfiguration(ctx context.Context) error {
 	}
 	log.Println("✓ Embedding service connection validated successfully")
 
-	log.Println("Validating S3 bucket access...")
-	if err := vs.s3Client.ValidateAccess(ctx); err != nil {
-		return fmt.Errorf("S3 bucket validation failed: %w\nGuidance: Please check your S3 bucket name and AWS credentials", err)
+	log.Println("Validating vector store access...")
+	if err := vs.vectorStore.ValidateAccess(ctx); err != nil {
+		return fmt.Errorf("vector store validation failed: %w", err)
 	}
-	log.Println("✓ S3 bucket access validated successfully")
+	log.Println("✓ Vector store access validated successfully")
 
 	// Validate OpenSearch connection if enabled
 	if vs.enableOpenSearch {
@@ -394,8 +394,7 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 		CreatedAt: time.Now(),
 	}
 
-	// Store in S3
-	if err := vs.s3Client.StoreVector(ctx, vectorData); err != nil {
+	if err := vs.vectorStore.StoreVector(ctx, vectorData); err != nil {
 		return WrapError(err, ErrorTypeS3Upload, fileInfo.Path)
 	}
 
@@ -823,9 +822,8 @@ func (vs *VectorizerService) GetServiceInfo(ctx context.Context) (map[string]int
 		info["embedding_dimensions"] = dimensions
 	}
 
-	// Get S3 bucket info
-	if bucketInfo, err := vs.s3Client.GetBackendInfo(ctx); err == nil {
-		info["s3_info"] = bucketInfo
+	if bucketInfo, err := vs.vectorStore.GetBackendInfo(ctx); err == nil {
+		info["vector_store_info"] = bucketInfo
 	}
 
 	// Add OpenSearch info if enabled

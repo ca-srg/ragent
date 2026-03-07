@@ -54,7 +54,7 @@ func TestVectorizerService_IntegrationWithMocks(t *testing.T) {
 	serviceConfig := &ServiceConfig{
 		Config:              cfg,
 		EmbeddingClient:     mockEmbedding,
-		S3Client:            mockS3,
+		VectorStoreClient:   mockS3,
 		MetadataExtractor:   mockMetadata,
 		FileScanner:         mockScanner,
 		EnableOpenSearch:    true,
@@ -84,7 +84,7 @@ func TestVectorizerService_IntegrationWithMocks(t *testing.T) {
 
 func TestDualBackendProcessing_WithMocks(t *testing.T) {
 	// Setup mocks
-	mockS3Client := NewMockVectorStore()
+	mockVectorStoreClient := NewMockVectorStore()
 	mockOSIndexer := NewMockOpenSearchIndexerIntegration()
 
 	// Create test documents
@@ -155,14 +155,14 @@ func TestDualBackendProcessing_WithMocks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset mocks
-			mockS3Client.SetFailure(tt.s3ShouldFail)
+			mockVectorStoreClient.SetFailure(tt.s3ShouldFail)
 			mockOSIndexer.SetFailure(tt.osShouldFail)
 
 			// Test individual backend operations to verify decision logic
 			var s3Success, osSuccess bool
 
 			// Test S3 operation
-			s3Err := mockS3Client.StoreVector(ctx, &VectorData{
+			s3Err := mockVectorStoreClient.StoreVector(ctx, &VectorData{
 				ID:        "test-doc",
 				Embedding: []float64{0.1, 0.2, 0.3},
 				Metadata:  testFiles[0].Metadata,
@@ -296,7 +296,7 @@ func TestServiceConfiguration_ValidationWithMocks(t *testing.T) {
 			config: &ServiceConfig{
 				Config:              &Config{Concurrency: 3, RetryAttempts: 2},
 				EmbeddingClient:     NewMockEmbeddingClient(),
-				S3Client:            NewMockVectorStore(),
+				VectorStoreClient:   NewMockVectorStore(),
 				OpenSearchIndexer:   NewMockOpenSearchIndexerIntegration(),
 				MetadataExtractor:   NewMockMetadataExtractor(),
 				FileScanner:         NewMockFileScanner(),
@@ -316,7 +316,7 @@ func TestServiceConfiguration_ValidationWithMocks(t *testing.T) {
 			config: &ServiceConfig{
 				Config:              &Config{Concurrency: 3},
 				EmbeddingClient:     nil,
-				S3Client:            NewMockVectorStore(),
+				VectorStoreClient:   NewMockVectorStore(),
 				OpenSearchIndexer:   NewMockOpenSearchIndexerIntegration(),
 				MetadataExtractor:   NewMockMetadataExtractor(),
 				FileScanner:         NewMockFileScanner(),

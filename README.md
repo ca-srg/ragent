@@ -10,6 +10,7 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 - [Features](#features)
 - [Slack Search Integration](#slack-search-integration)
 - [Embedding-Agnostic RAG](#embedding-agnostic-rag)
+- [Environment Variable Setup Guide](#environment-variable-setup-guide)
 - [Architecture Overview](#architecture-overview)
 - [Prerequisites](#prerequisites)
 - [Required Environment Variables](#required-environment-variables)
@@ -89,6 +90,358 @@ Slack search is intentionally embedding-agnostic: the system fetches live messag
 - **Seamless fallbacks**: when Slack returns no hits the document-only hybrid search continues without interruption.
 
 Slack-only output is still fused with document references, giving operators a single consolidated view while staying within compliance rules.
+
+## Environment Variable Setup Guide
+
+RAGent integrates many services, and the required environment variables differ depending on your choices. This section provides visual flowcharts for the two main workflows: **vectorization (data ingestion)** and **output (search & usage)**.
+
+### Vectorization Flow (`vectorize` command)
+
+Follow this flowchart to determine which environment variables are needed for vectorization.
+
+```mermaid
+flowchart TD
+    Start([Run vectorize]) --> AuthMethod
+
+    %% ── Authentication method ──
+    AuthMethod{{"AWS authentication method?"}}
+
+    AuthMethod -->|"IAM Credentials"| IAMAuth["IAM Credentials
+    ━━━━━━━━━━━━━━━━━━━
+    AWS_REGION
+    AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY
+    BEDROCK_REGION (default: us-east-1)"]
+
+    AuthMethod -->|"Bearer Token"| BearerAuth["Bearer Token Auth
+    ━━━━━━━━━━━━━━━━━━━
+    BEDROCK_REGION
+    * AWS_BEARER_TOKEN_BEDROCK
+    ━━━━━━━━━━━━━━━━━━━
+    AWS_REGION etc. not required"]
+
+    IAMAuth --> OpenSearch
+    BearerAuth --> OpenSearch
+
+    %% ── OpenSearch (always required) ──
+    OpenSearch["OpenSearch Config - BM25 Index
+    ━━━━━━━━━━━━━━━━━━━
+    * OPENSEARCH_ENDPOINT
+    * OPENSEARCH_INDEX
+    OPENSEARCH_REGION (default: us-east-1)"]
+
+    OpenSearch --> VectorDB
+
+    %% ── Vector DB backend selection ──
+    VectorDB{{"Vector storage backend?
+    VECTOR_DB_BACKEND"}}
+
+    VectorDB -->|"s3 (default)"| S3Config["S3 Vectors Config
+    ━━━━━━━━━━━━━━━━━━━
+    * AWS_S3_VECTOR_BUCKET
+    * AWS_S3_VECTOR_INDEX
+    S3_VECTOR_REGION (default: us-east-1)"]
+
+    VectorDB -->|sqlite| SQLiteConfig["SQLite-vec Config
+    ━━━━━━━━━━━━━━━━━━━
+    SQLITE_VEC_DB_PATH
+    (default: ~/.ragent/vectors.db)"]
+
+    S3Config --> DataSource
+    SQLiteConfig --> DataSource
+
+    %% ── Data source selection ──
+    DataSource{{"Data source?"}}
+
+    DataSource -->|"Local (default)"| LocalSource["Local Directory
+    ━━━━━━━━━━━━━━━━━━━
+    --directory ./source
+    No additional env vars"]
+
+    DataSource -->|S3 Bucket| S3Source["S3 Source Config
+    ━━━━━━━━━━━━━━━━━━━
+    --enable-s3 flag
+    --s3-bucket bucket-name
+    S3_SOURCE_REGION (default: us-east-1)"]
+
+    DataSource -->|GitHub Repository| GitHubSource["GitHub Config
+    ━━━━━━━━━━━━━━━━━━━
+    --github-repos owner/repo
+    GITHUB_TOKEN
+    (required for private repos)"]
+
+    DataSource -->|Multiple| MultiSource["Multiple Sources
+    ━━━━━━━━━━━━━━━━━━━
+    Local + S3 + GitHub can be combined"]
+
+    LocalSource --> OCR
+    S3Source --> OCR
+    GitHubSource --> OCR
+    MultiSource --> OCR
+
+    %% ── OCR (PDF support) ──
+    OCR{{"Process PDFs?
+    OCR_PROVIDER"}}
+
+    OCR -->|"No (default)"| NoOCR["PDFs are skipped"]
+    OCR -->|bedrock| OCRBedrock["Bedrock OCR Config
+    ━━━━━━━━━━━━━━━━━━━
+    OCR_PROVIDER=bedrock
+    OCR_MODEL (optional)
+    OCR_TIMEOUT (default: 600s)
+    OCR_CONCURRENCY (default: 5)"]
+    OCR -->|gemini| OCRGemini["Gemini OCR Config
+    ━━━━━━━━━━━━━━━━━━━
+    OCR_PROVIDER=gemini
+    * GEMINI_API_KEY
+    OCR_MODEL (optional)"]
+
+    NoOCR --> Optional
+    OCRBedrock --> Optional
+    OCRGemini --> Optional
+
+    %% ── Optional settings ──
+    Optional["Optional Settings
+    ━━━━━━━━━━━━━━━━━━━
+    VECTORIZER_CONCURRENCY (default: 10)
+    VECTORIZER_RETRY_ATTEMPTS (default: 10)
+    EXCLUDE_CATEGORIES"]
+
+    Optional --> Ready([Ready to run vectorize])
+
+    %% ── Styles ──
+    style Start fill:#4CAF50,color:#fff
+    style Ready fill:#4CAF50,color:#fff
+    style AuthMethod fill:#FF9800,color:#fff
+    style VectorDB fill:#FF9800,color:#fff
+    style DataSource fill:#FF9800,color:#fff
+    style OCR fill:#FF9800,color:#fff
+    style IAMAuth fill:#e3f2fd
+    style BearerAuth fill:#e3f2fd
+    style OpenSearch fill:#e3f2fd
+    style S3Config fill:#fff3e0
+    style SQLiteConfig fill:#fff3e0
+    style LocalSource fill:#e8f5e9
+    style S3Source fill:#e8f5e9
+    style GitHubSource fill:#e8f5e9
+    style MultiSource fill:#e8f5e9
+    style OCRBedrock fill:#fce4ec
+    style OCRGemini fill:#fce4ec
+    style NoOCR fill:#f5f5f5
+    style Optional fill:#f3e5f5
+```
+
+> **Legend**: `*` = required (error if unset), `default: xxx` = has a default value. IAM credentials and Bearer Token (`AWS_BEARER_TOKEN_BEDROCK`) are mutually exclusive.
+
+### Output Flow (Search & Usage Commands)
+
+The required environment variables depend on **which command** you use and **which search mode** you choose.
+
+```mermaid
+flowchart TD
+    Start([Use vectorized data]) --> Command
+
+    %% ── Command selection ──
+    Command{{"Which command?"}}
+
+    Command -->|query| QueryCmd["query
+    ━━━━━━━━━━━━━━━━
+    Semantic search
+    Terminal output"]
+
+    Command -->|chat| ChatCmd["chat
+    ━━━━━━━━━━━━━━━━
+    Interactive RAG chat
+    Claude-powered answers"]
+
+    Command -->|slack-bot| SlackBotCmd["slack-bot
+    ━━━━━━━━━━━━━━━━
+    Slack Bot
+    Auto-respond to mentions"]
+
+    Command -->|mcp-server| MCPCmd["mcp-server
+    ━━━━━━━━━━━━━━━━
+    MCP Protocol Server
+    Claude Desktop integration"]
+
+    QueryCmd --> SearchMode
+    ChatCmd --> SearchMode
+    SlackBotCmd --> SlackBotConfig
+    MCPCmd --> MCPAuth
+
+    %% ── Search mode (query / chat) ──
+    SearchMode{{"Search mode?"}}
+
+    SearchMode -->|"Hybrid search (default)"| HybridBase
+    SearchMode -->|"--only-slack"| SlackOnly
+
+    %% ── Hybrid search common config ──
+    HybridBase["Common Config (required)
+    ━━━━━━━━━━━━━━━━━━━
+    AWS Auth (IAM or Bearer Token)
+    BEDROCK_REGION
+    * OPENSEARCH_ENDPOINT
+    * OPENSEARCH_INDEX
+    CHAT_MODEL (for chat command)"]
+
+    HybridBase --> SlackSearch
+
+    %% ── Slack search addition ──
+    SlackSearch{{"Also use Slack search?
+    SLACK_SEARCH_ENABLED"}}
+
+    SlackSearch -->|"false (default)"| HybridOnly["Hybrid search only
+    ━━━━━━━━━━━━━━━━━━━
+    No additional env vars"]
+
+    SlackSearch -->|true| HybridPlusSlack["Add Slack Search Config
+    ━━━━━━━━━━━━━━━━━━━
+    SLACK_SEARCH_ENABLED=true
+    * SLACK_USER_TOKEN
+    ━━━━━ Optional ━━━━━
+    SLACK_SEARCH_MAX_RESULTS (default: 20)
+    SLACK_SEARCH_MAX_ITERATIONS (default: 3)
+    SLACK_SEARCH_TIMEOUT_SECONDS (default: 60)"]
+
+    %% ── Slack-Only mode ──
+    SlackOnly["Slack-Only Config
+    ━━━━━━━━━━━━━━━━━━━
+    OpenSearch not required
+    ━━━━━━━━━━━━━━━━━━━
+    AWS Auth (IAM or Bearer Token)
+    BEDROCK_REGION
+    * SLACK_USER_TOKEN
+    SLACK_SEARCH_ENABLED=true"]
+
+    %% ── Slack Bot specific config ──
+    SlackBotConfig["Slack Bot Config
+    ━━━━━━━━━━━━━━━━━━━
+    * SLACK_BOT_TOKEN
+    SLACK_APP_TOKEN (for Socket Mode)
+    SLACK_RESPONSE_TIMEOUT (default: 5s)
+    SLACK_ENABLE_THREADING (default: true)"]
+
+    SlackBotConfig --> SlackBotSearch
+
+    SlackBotSearch{{"Search mode?"}}
+
+    SlackBotSearch -->|"Hybrid (default)"| SlackBotHybrid["Common Config (required)
+    ━━━━━━━━━━━━━━━━━━━
+    AWS Auth (IAM or Bearer Token)
+    BEDROCK_REGION
+    * OPENSEARCH_ENDPOINT
+    * OPENSEARCH_INDEX"]
+
+    SlackBotSearch -->|"--only-slack"| SlackBotOnly["Slack-Only Config
+    ━━━━━━━━━━━━━━━━━━━
+    OpenSearch not required
+    ━━━━━━━━━━━━━━━━━━━
+    AWS Auth (IAM or Bearer Token)
+    BEDROCK_REGION
+    * SLACK_USER_TOKEN
+    SLACK_SEARCH_ENABLED=true"]
+
+    SlackBotHybrid --> SlackBotSlackOpt
+    SlackBotSlackOpt{{"Also use Slack search?"}}
+    SlackBotSlackOpt -->|false| SlackBotReady([Ready to run slack-bot])
+    SlackBotSlackOpt -->|true| SlackBotSlack["SLACK_SEARCH_ENABLED=true
+    * SLACK_USER_TOKEN"]
+    SlackBotSlack --> SlackBotReady
+    SlackBotOnly --> SlackBotReady
+
+    %% ── MCP Server auth config ──
+    MCPAuth{{"Auth method?
+    --auth-method"}}
+
+    MCPAuth -->|"ip (default)"| MCPIP["IP Auth
+    ━━━━━━━━━━━━━━━━━━━
+    MCP_ALLOWED_IPS (default: 127.0.0.1,::1)"]
+
+    MCPAuth -->|oidc| MCPOIDC["OIDC Auth
+    ━━━━━━━━━━━━━━━━━━━
+    * OIDC_ISSUER
+    * OIDC_CLIENT_ID
+    * OIDC_CLIENT_SECRET"]
+
+    MCPAuth -->|both| MCPBoth["IP + OIDC both required
+    ━━━━━━━━━━━━━━━━━━━
+    IP auth config +
+    OIDC auth config"]
+
+    MCPAuth -->|either| MCPEither["IP or OIDC either one
+    ━━━━━━━━━━━━━━━━━━━
+    IP auth config or
+    OIDC auth config"]
+
+    MCPIP --> MCPServer
+    MCPOIDC --> MCPServer
+    MCPBoth --> MCPServer
+    MCPEither --> MCPServer
+
+    MCPServer["MCP Server Config
+    ━━━━━━━━━━━━━━━━━━━
+    MCP_SERVER_HOST (default: localhost)
+    MCP_SERVER_PORT (default: 8080)"]
+
+    MCPServer --> MCPSearch
+
+    MCPSearch{{"Search mode?"}}
+
+    MCPSearch -->|"Hybrid (default)"| MCPHybrid["Common Config (required)
+    ━━━━━━━━━━━━━━━━━━━
+    AWS Auth (IAM or Bearer Token)
+    BEDROCK_REGION
+    * OPENSEARCH_ENDPOINT
+    * OPENSEARCH_INDEX"]
+
+    MCPSearch -->|"--only-slack"| MCPSlackOnly["Slack-Only Config
+    ━━━━━━━━━━━━━━━━━━━
+    OpenSearch not required
+    ━━━━━━━━━━━━━━━━━━━
+    AWS Auth (IAM or Bearer Token)
+    BEDROCK_REGION
+    * SLACK_USER_TOKEN
+    SLACK_SEARCH_ENABLED=true"]
+
+    MCPHybrid --> MCPReady([Ready to run mcp-server])
+    MCPSlackOnly --> MCPReady
+
+    HybridOnly --> Ready([Ready])
+    HybridPlusSlack --> Ready
+    SlackOnly --> Ready
+
+    %% ── Styles ──
+    style Start fill:#4CAF50,color:#fff
+    style Ready fill:#4CAF50,color:#fff
+    style SlackBotReady fill:#4CAF50,color:#fff
+    style MCPReady fill:#4CAF50,color:#fff
+
+    style Command fill:#2196F3,color:#fff
+    style SearchMode fill:#FF9800,color:#fff
+    style SlackSearch fill:#FF9800,color:#fff
+    style SlackBotSearch fill:#FF9800,color:#fff
+    style SlackBotSlackOpt fill:#FF9800,color:#fff
+    style MCPAuth fill:#FF9800,color:#fff
+    style MCPSearch fill:#FF9800,color:#fff
+
+    style QueryCmd fill:#e3f2fd
+    style ChatCmd fill:#fce4ec
+    style SlackBotCmd fill:#e8f5e9
+    style MCPCmd fill:#f3e5f5
+
+    style HybridBase fill:#e3f2fd
+    style SlackBotConfig fill:#e8f5e9
+    style MCPServer fill:#f3e5f5
+
+    style HybridOnly fill:#e8f5e9
+    style HybridPlusSlack fill:#fff3e0
+    style SlackOnly fill:#fff3e0
+
+    style MCPIP fill:#f3e5f5
+    style MCPOIDC fill:#f3e5f5
+    style MCPBoth fill:#f3e5f5
+    style MCPEither fill:#f3e5f5
+```
 
 ## Architecture Overview
 

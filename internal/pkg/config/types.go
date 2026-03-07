@@ -102,7 +102,7 @@ type Config struct {
 
 	// OCR configuration
 	OCRProvider    string        `json:"ocr_provider" env:"OCR_PROVIDER"`
-	OCRModel       string        `json:"ocr_model" env:"OCR_MODEL,default=global.anthropic.claude-sonnet-4-6"`
+	OCRModel       string        `json:"ocr_model" env:"OCR_MODEL"`
 	OCRTimeout     time.Duration `json:"ocr_timeout" env:"OCR_TIMEOUT,default=600s"`
 	OCRMaxTokens   int           `json:"ocr_max_tokens" env:"OCR_MAX_TOKENS,default=200000"`
 	OCRConcurrency int           `json:"ocr_concurrency" env:"OCR_CONCURRENCY,default=5"`

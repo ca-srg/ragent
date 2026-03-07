@@ -283,7 +283,7 @@ func (s *Server) initializeVectorizer(ctx context.Context) error {
 	serviceConfig := &vectorizer.ServiceConfig{
 		Config:              s.appConfig,
 		EmbeddingClient:     embeddingClient,
-		S3Client:            vectorStoreClient,
+		VectorStoreClient:   vectorStoreClient,
 		OpenSearchIndexer:   osIndexer,
 		MetadataExtractor:   metadataExtractor,
 		FileScanner:         s.fileScanner,
