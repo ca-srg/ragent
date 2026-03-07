@@ -3,7 +3,6 @@ module github.com/ca-srg/ragent
 go 1.26
 
 require (
-	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.31.4
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.8
@@ -18,7 +17,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/johannesboyne/gofakes3 v0.0.0-20250916175020-ebf3e50324d3
 	github.com/modelcontextprotocol/go-sdk v0.4.0
-	github.com/ncruces/go-sqlite3 v0.30.5
 	github.com/netflix/go-env v0.0.0-20220526054621-78278af1949d
 	github.com/opensearch-project/opensearch-go/v4 v4.5.0
 	github.com/pdfcpu/pdfcpu v0.11.1
@@ -94,6 +92,7 @@ require (
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/ncruces/go-sqlite3 v0.14.0 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect

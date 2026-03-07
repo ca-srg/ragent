@@ -6,6 +6,5 @@
 package main
 
 import (
-	_ "github.com/asg017/sqlite-vec-go-bindings/ncruces"
-	_ "github.com/ncruces/go-sqlite3"
+	_ "github.com/asg017/sqlite-vec-go-bindings/ncruces" // keep for go.mod dep tracking
 )
