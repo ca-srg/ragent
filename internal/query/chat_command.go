@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
@@ -68,15 +67,13 @@ func RunChat(cmd *cobra.Command, opts ChatOptions) error {
 		log.Println("Running in Slack-only mode (OpenSearch disabled)")
 	}
 
-	// FIXED to us-east-1 for Bedrock chat functionality
-	// Note: This is intentionally hardcoded and does not use cfg.S3VectorRegion
-	awsConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
+	bedrockConfig, err := bedrock.BuildBedrockAWSConfig(context.TODO(), cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
-	chatClient := bedrock.NewBedrockClient(awsConfig, cfg.ChatModel)
-	embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
+	chatClient := bedrock.NewBedrockClient(bedrockConfig, cfg.ChatModel)
+	embeddingClient := bedrock.NewBedrockClient(bedrockConfig, "amazon.titan-embed-text-v2:0")
 
 	log.Println("Validating service connections...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -107,7 +104,7 @@ func RunChat(cmd *cobra.Command, opts ChatOptions) error {
 	fmt.Println("=============================")
 	fmt.Println()
 
-	return startChatLoop(chatClient, embeddingClient, cfg, awsConfig, opts)
+	return startChatLoop(chatClient, embeddingClient, cfg, bedrockConfig, opts)
 }
 
 func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockClient, cfg *appconfig.Config, awsCfg aws.Config, opts ChatOptions) error {

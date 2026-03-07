@@ -87,6 +87,10 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("vector backend configuration validation failed: %w", err)
 	}
 
+	if strings.TrimSpace(config.BedrockRegion) == "" {
+		return fmt.Errorf("BEDROCK_REGION cannot be empty")
+	}
+
 	// Validate OpenSearch configuration if endpoint is provided
 	if config.OpenSearchEndpoint != "" {
 		if err := validateOpenSearchConfig(config); err != nil {

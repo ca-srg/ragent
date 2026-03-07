@@ -31,6 +31,7 @@ type QuerySearchClient interface {
 // Dependency injection types.
 type AppConfigLoader func() (*appconfig.Config, error)
 type AWSConfigLoader func(ctx context.Context, optFns ...func(*awssdkconfig.LoadOptions) error) (aws.Config, error)
+type BedrockAWSConfigBuilder func(ctx context.Context, region, bearerToken string) (aws.Config, error)
 type BedrockClientFactory func(aws.Config, string) opensearch.EmbeddingClient
 type OpenSearchClientFactory func(*opensearch.Config) (QuerySearchClient, error)
 type HybridEngineFactory func(opensearch.SearchClient, opensearch.EmbeddingClient) *opensearch.HybridSearchEngine
@@ -65,9 +66,10 @@ type FetchSlackURLContextFn func(
 
 // Injectable variables — swappable for tests.
 var (
-	LoadAppConfig      AppConfigLoader      = appconfig.Load
-	LoadAWSConfig      AWSConfigLoader      = awssdkconfig.LoadDefaultConfig
-	NewEmbeddingClient BedrockClientFactory = func(cfg aws.Config, modelID string) opensearch.EmbeddingClient {
+	LoadAppConfig        AppConfigLoader         = appconfig.Load
+	LoadAWSConfig        AWSConfigLoader         = awssdkconfig.LoadDefaultConfig
+	LoadBedrockAWSConfig BedrockAWSConfigBuilder = bedrock.BuildBedrockAWSConfig
+	NewEmbeddingClient   BedrockClientFactory    = func(cfg aws.Config, modelID string) opensearch.EmbeddingClient {
 		return bedrock.NewBedrockClient(cfg, modelID)
 	}
 	NewOpenSearchClient OpenSearchClientFactory = func(cfg *opensearch.Config) (QuerySearchClient, error) {
@@ -117,16 +119,16 @@ func RunQuery(cmd *cobra.Command, opts QueryOptions) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(opts.Timeout)*time.Second)
 	defer cancel()
 
-	awsConfig, err := LoadAWSConfig(ctx, awssdkconfig.WithRegion(cfg.S3VectorRegion))
+	bedrockConfig, err := LoadBedrockAWSConfig(ctx, cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
-	embeddingClient := NewEmbeddingClient(awsConfig, "amazon.titan-embed-text-v2:0")
+	embeddingClient := NewEmbeddingClient(bedrockConfig, "amazon.titan-embed-text-v2:0")
 
 	switch opts.SearchMode {
 	case "hybrid":
-		return runHybridSearch(ctx, cfg, awsConfig, embeddingClient, opts)
+		return runHybridSearch(ctx, cfg, bedrockConfig, embeddingClient, opts)
 	case "opensearch":
 		return runOpenSearchOnly(ctx, cfg, embeddingClient, opts)
 	default:
@@ -143,12 +145,12 @@ func runSlackOnlySearch(opts QueryOptions) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(opts.Timeout)*time.Second)
 	defer cancel()
 
-	awsConfig, err := LoadAWSConfig(ctx, awssdkconfig.WithRegion(cfg.S3VectorRegion))
+	bedrockConfig, err := LoadBedrockAWSConfig(ctx, cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
-	result, err := PerformSlackOnlySearch(ctx, cfg, awsConfig, opts.QueryText, opts.SlackChannels, nil)
+	result, err := PerformSlackOnlySearch(ctx, cfg, bedrockConfig, opts.QueryText, opts.SlackChannels, nil)
 	if err != nil {
 		return fmt.Errorf("slack search failed: %w", err)
 	}

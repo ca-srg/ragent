@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	awssdk "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/slack-go/slack"
 
 	appcfg "github.com/ca-srg/ragent/internal/pkg/config"
@@ -86,9 +85,9 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 		scfg.MaxResults = opts.ContextSize
 	}
 
-	awsCfg, err := awssdk.LoadDefaultConfig(context.Background(), awssdk.WithRegion(cfg.S3VectorRegion))
+	awsCfg, err := bedrock.BuildBedrockAWSConfig(ctx, cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
-		return fmt.Errorf("failed to load AWS config for Slack search: %w", err)
+		return fmt.Errorf("failed to load Bedrock AWS config for Slack search: %w", err)
 	}
 
 	originalSlackEnabled := cfg.SlackSearchEnabled

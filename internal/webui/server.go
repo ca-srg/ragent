@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/config"
-
 	"github.com/ca-srg/ragent/internal/ingestion"
 	"github.com/ca-srg/ragent/internal/ingestion/metadata"
 	"github.com/ca-srg/ragent/internal/ingestion/scanner"
@@ -254,9 +252,9 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 // initializeVectorizer initializes the vectorizer service
 func (s *Server) initializeVectorizer(ctx context.Context) error {
 	// Load AWS config
-	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(s.appConfig.S3VectorRegion))
+	awsCfg, err := bedrock.BuildBedrockAWSConfig(ctx, s.appConfig.BedrockRegion, s.appConfig.BedrockBearerToken)
 	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
+		return fmt.Errorf("failed to load Bedrock AWS config: %w", err)
 	}
 
 	// Create embedding client

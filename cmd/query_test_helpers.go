@@ -11,16 +11,18 @@ import (
 )
 
 type QueryDependencyOverrides struct {
-	LoadConfig          queryimpl.AppConfigLoader
-	LoadAWSConfig       queryimpl.AWSConfigLoader
-	NewEmbeddingClient  queryimpl.BedrockClientFactory
-	NewOpenSearchClient queryimpl.OpenSearchClientFactory
-	NewHybridEngine     queryimpl.HybridEngineFactory
+	LoadConfig           queryimpl.AppConfigLoader
+	LoadAWSConfig        queryimpl.AWSConfigLoader
+	LoadBedrockAWSConfig queryimpl.BedrockAWSConfigBuilder
+	NewEmbeddingClient   queryimpl.BedrockClientFactory
+	NewOpenSearchClient  queryimpl.OpenSearchClientFactory
+	NewHybridEngine      queryimpl.HybridEngineFactory
 }
 
 func OverrideQueryDependencies(overrides QueryDependencyOverrides) func() {
 	prevLoadConfig := queryimpl.LoadAppConfig
 	prevLoadAWS := queryimpl.LoadAWSConfig
+	prevLoadBedrockAWS := queryimpl.LoadBedrockAWSConfig
 	prevEmbedding := queryimpl.NewEmbeddingClient
 	prevOpenSearch := queryimpl.NewOpenSearchClient
 	prevHybrid := queryimpl.NewHybridEngine
@@ -30,6 +32,9 @@ func OverrideQueryDependencies(overrides QueryDependencyOverrides) func() {
 	}
 	if overrides.LoadAWSConfig != nil {
 		queryimpl.LoadAWSConfig = overrides.LoadAWSConfig
+	}
+	if overrides.LoadBedrockAWSConfig != nil {
+		queryimpl.LoadBedrockAWSConfig = overrides.LoadBedrockAWSConfig
 	}
 	if overrides.NewEmbeddingClient != nil {
 		queryimpl.NewEmbeddingClient = overrides.NewEmbeddingClient
@@ -44,6 +49,7 @@ func OverrideQueryDependencies(overrides QueryDependencyOverrides) func() {
 	return func() {
 		queryimpl.LoadAppConfig = prevLoadConfig
 		queryimpl.LoadAWSConfig = prevLoadAWS
+		queryimpl.LoadBedrockAWSConfig = prevLoadBedrockAWS
 		queryimpl.NewEmbeddingClient = prevEmbedding
 		queryimpl.NewOpenSearchClient = prevOpenSearch
 		queryimpl.NewHybridEngine = prevHybrid
@@ -59,6 +65,12 @@ func DefaultLoadConfigOverride(cfg *appconfig.Config, err error) queryimpl.AppCo
 
 func DefaultAWSConfigOverride(cfg aws.Config, err error) queryimpl.AWSConfigLoader {
 	return func(ctx context.Context, optFns ...func(*awsconfig.LoadOptions) error) (aws.Config, error) {
+		return cfg, err
+	}
+}
+
+func DefaultBedrockAWSConfigOverride(cfg aws.Config, err error) queryimpl.BedrockAWSConfigBuilder {
+	return func(ctx context.Context, region, bearerToken string) (aws.Config, error) {
 		return cfg, err
 	}
 }

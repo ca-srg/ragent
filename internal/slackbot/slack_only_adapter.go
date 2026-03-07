@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 )
@@ -96,7 +95,7 @@ func (s *SlackOnlySearchAdapter) generateResponse(ctx context.Context, query str
 	if s.chatClient == nil {
 		// Try to create chat client if not provided
 		if s.awsCfg == nil {
-			cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+			cfg, err := bedrock.BuildBedrockAWSConfig(ctx, s.cfg.BedrockRegion, s.cfg.BedrockBearerToken)
 			if err != nil {
 				log.Printf("Failed to load AWS config: %v", err)
 				return "回答の生成に失敗しました（AWS設定エラー）"

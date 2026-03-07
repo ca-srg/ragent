@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/slack-go/slack"
 	"github.com/spf13/cobra"
 
@@ -45,7 +44,7 @@ func init() {
 // buildSlackConvSearcher creates a SlackConversationSearcher backed by slacksearch.
 // It lives in cmd/ to avoid the internal/slackbot ↔ internal/pkg/slacksearch circular import.
 func buildSlackConvSearcher(cfg *appcfg.Config, client *slack.Client, logger *log.Logger) slackbot.SlackConversationSearcher {
-	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(cfg.S3VectorRegion))
+	awsCfg, err := bedrock.BuildBedrockAWSConfig(context.Background(), cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
 		logger.Printf("failed to load AWS config for slack search: %v", err)
 		return nil
