@@ -418,6 +418,10 @@ S3_BUCKET_NAME=your_s3_bucket_name
 S3_VECTOR_REGION=us-east-1           # AWS region for S3 Vector bucket
 S3_SOURCE_REGION=ap-northeast-1      # AWS region for source S3 bucket (--enable-s3)
 
+# Vector DB Backend Selection
+VECTOR_DB_BACKEND=s3            # Backend type: "s3" (Amazon S3 Vectors) or "sqlite" (local sqlite-vec) (default: s3)
+SQLITE_VEC_DB_PATH=~/.ragent/vectors.db  # Path to sqlite-vec DB file (used when VECTOR_DB_BACKEND=sqlite)
+
 # OpenSearch Configuration (for Hybrid RAG)
 OPENSEARCH_ENDPOINT=your_opensearch_endpoint
 OPENSEARCH_INDEX=your_opensearch_index
@@ -690,6 +694,50 @@ shasum -a 256 -c checksums_<VERSION>.txt
 ```
 
 All entries should report `OK`. If a mismatch occurs, re-download the artifact.
+
+## Vector DB Backend Selection
+
+RAGent supports two vector storage backends, selectable via the `VECTOR_DB_BACKEND` environment variable.
+
+### Amazon S3 Vectors (default, `VECTOR_DB_BACKEND=s3`)
+
+```env
+VECTOR_DB_BACKEND=s3
+AWS_S3_VECTOR_BUCKET=your-bucket
+AWS_S3_VECTOR_INDEX=your-index
+S3_VECTOR_REGION=us-east-1
+```
+
+Suitable for production deployments and large-scale document sets on AWS infrastructure.
+
+### sqlite-vec (local, `VECTOR_DB_BACKEND=sqlite`)
+
+```env
+VECTOR_DB_BACKEND=sqlite
+SQLITE_VEC_DB_PATH=./vectors.db
+```
+
+Suitable for local development and small-to-medium deployments without AWS dependencies.
+
+**Limitations:**
+- Single writer (WAL mode is enabled automatically)
+- Maximum 8,192 dimensions per embedding
+- Vector similarity search always uses OpenSearch (sqlite-vec stores vectors only)
+
+**Example:**
+```bash
+# Vectorize with sqlite-vec backend
+VECTOR_DB_BACKEND=sqlite SQLITE_VEC_DB_PATH=./vectors.db \
+  OPENSEARCH_ENDPOINT=https://... OPENSEARCH_INDEX=ragent \
+  RAGent vectorize
+
+# List stored vectors
+VECTOR_DB_BACKEND=sqlite SQLITE_VEC_DB_PATH=./vectors.db \
+  OPENSEARCH_ENDPOINT=https://... OPENSEARCH_INDEX=ragent \
+  RAGent list
+```
+
+> **Note**: OpenSearch is required regardless of the vector backend selection.
 
 ## Commands
 
