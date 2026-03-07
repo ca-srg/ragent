@@ -182,7 +182,7 @@ func NewServiceFactory(config *Config) *ServiceFactory {
 // CreateServiceConfig creates a complete ServiceConfig with all dependencies
 func (sf *ServiceFactory) CreateServiceConfig(
 	embeddingClient EmbeddingClient,
-	s3Client VectorStore,
+	vectorStore VectorStore,
 	metadataExtractor MetadataExtractor,
 	fileScanner FileScanner,
 	enableOpenSearch bool,
@@ -192,7 +192,7 @@ func (sf *ServiceFactory) CreateServiceConfig(
 	config := &ServiceConfig{
 		Config:              sf.indexerFactory.config,
 		EmbeddingClient:     embeddingClient,
-		S3Client:            s3Client,
+		VectorStoreClient:   vectorStore,
 		MetadataExtractor:   metadataExtractor,
 		FileScanner:         fileScanner,
 		EnableOpenSearch:    enableOpenSearch,
@@ -226,7 +226,7 @@ func (sf *ServiceFactory) CreateServiceConfig(
 // CreateVectorizerServiceWithDefaults creates a VectorizerService with default settings
 func (sf *ServiceFactory) CreateVectorizerServiceWithDefaults(
 	embeddingClient EmbeddingClient,
-	s3Client VectorStore,
+	vectorStore VectorStore,
 	metadataExtractor MetadataExtractor,
 	fileScanner FileScanner,
 	enableOpenSearch bool,
@@ -234,7 +234,7 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithDefaults(
 ) (*VectorizerService, error) {
 	return sf.CreateVectorizerServiceWithCSVConfig(
 		embeddingClient,
-		s3Client,
+		vectorStore,
 		metadataExtractor,
 		fileScanner,
 		enableOpenSearch,
@@ -247,7 +247,7 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithDefaults(
 // CreateVectorizerServiceWithCSVConfig creates a VectorizerService with CSV configuration
 func (sf *ServiceFactory) CreateVectorizerServiceWithCSVConfig(
 	embeddingClient EmbeddingClient,
-	s3Client VectorStore,
+	vectorStore VectorStore,
 	metadataExtractor MetadataExtractor,
 	fileScanner FileScanner,
 	enableOpenSearch bool,
@@ -258,7 +258,7 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithCSVConfig(
 
 	serviceConfig, err := sf.CreateServiceConfig(
 		embeddingClient,
-		s3Client,
+		vectorStore,
 		metadataExtractor,
 		fileScanner,
 		enableOpenSearch,

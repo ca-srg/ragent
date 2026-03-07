@@ -1,0 +1,8 @@
+To run all E2E tests, need following environment variables:
+
+- AWS_ROLE_ARN
+- AWS_S3_VECTOR_BUCKET
+- AWS_S3_VECTOR_INDEX
+- S3_VECTOR_REGION
+- AWS_BEARER_TOKEN_BEDROCK
+- GEMINI_API_KEY

@@ -217,8 +217,8 @@ func TestNewParallelController(t *testing.T) {
 				t.Errorf("expected concurrency limit %d, got %d", tt.expectedLimit, pc.concurrencyLimit)
 			}
 
-			if pc.s3Client == nil {
-				t.Error("S3 client should not be nil")
+			if pc.vectorStore == nil {
+				t.Error("vector store should not be nil")
 			}
 
 			if pc.opensearchIndexer == nil {

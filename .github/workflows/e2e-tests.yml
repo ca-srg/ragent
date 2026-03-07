@@ -177,7 +177,7 @@ jobs:
       OCR_PROVIDER: ${{ matrix.ocr_provider }}
       AWS_S3_VECTOR_BUCKET: ${{ secrets.AWS_S3_VECTOR_BUCKET }}
       AWS_S3_VECTOR_INDEX: ${{ secrets.AWS_S3_VECTOR_INDEX }}
-      S3_VECTOR_REGION: ${{ secrets.S3_VECTOR_REGION }}
+      S3_VECTOR_REGION: ${{ vars.S3_VECTOR_REGION }}
       AWS_BEARER_TOKEN_BEDROCK: ${{ matrix.needs_bearer && secrets.AWS_BEARER_TOKEN_BEDROCK || '' }}
       GEMINI_API_KEY: ${{ matrix.needs_gemini && secrets.GEMINI_API_KEY || '' }}
 

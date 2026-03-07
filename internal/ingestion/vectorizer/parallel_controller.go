@@ -13,7 +13,7 @@ import (
 
 // ParallelController manages concurrent processing of files for both S3 Vector and OpenSearch
 type ParallelController struct {
-	s3Client          VectorStore
+	vectorStore       VectorStore
 	opensearchIndexer OpenSearchIndexer
 	concurrencyLimit  int
 
@@ -85,13 +85,13 @@ type FileProcessingResult struct {
 }
 
 // NewParallelController creates a new parallel controller
-func NewParallelController(s3Client VectorStore, opensearchIndexer OpenSearchIndexer, concurrencyLimit int) *ParallelController {
+func NewParallelController(vectorStore VectorStore, opensearchIndexer OpenSearchIndexer, concurrencyLimit int) *ParallelController {
 	if concurrencyLimit <= 0 {
 		concurrencyLimit = 3 // Default concurrency
 	}
 
 	return &ParallelController{
-		s3Client:          s3Client,
+		vectorStore:       vectorStore,
 		opensearchIndexer: opensearchIndexer,
 		concurrencyLimit:  concurrencyLimit,
 		stats: &ParallelProcessingStats{
@@ -314,7 +314,7 @@ func (pc *ParallelController) processFile(
 		go func(vData *VectorData, chunkInfo ChunkedDocument) {
 			defer wg.Done()
 			s3Start := time.Now()
-			err := pc.s3Client.StoreVector(ctx, vData)
+			err := pc.vectorStore.StoreVector(ctx, vData)
 			duration := time.Since(s3Start)
 			if err == nil {
 				anyS3Success = true
@@ -621,7 +621,7 @@ func (pc *ParallelController) IsHealthy(ctx context.Context) (bool, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		s3Err = pc.s3Client.ValidateAccess(ctx)
+		s3Err = pc.vectorStore.ValidateAccess(ctx)
 		s3Healthy = (s3Err == nil)
 	}()
 

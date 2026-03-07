@@ -249,7 +249,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 
 	if clearVectors && dryRun {
 		log.Printf("DRY RUN: Would delete and recreate OpenSearch index: %s", openSearchIndexName)
-		log.Println("DRY RUN: Would delete all existing vectors from S3 Vector index")
+		log.Println("DRY RUN: Would delete all existing vectors from vector store")
 		return nil, nil
 	}
 
@@ -768,7 +768,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 	// Create vector store client via factory
 	cfg.S3VectorRegion = resolveS3VectorRegion(cfg)
 	serviceFactory := vectorizer.NewServiceFactory(cfg)
-	s3Client, err := serviceFactory.CreateVectorStore()
+	vectorStore, err := serviceFactory.CreateVectorStore()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vector store client: %w", err)
 	}
@@ -821,7 +821,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 	// Create vectorizer service with all dependencies including CSV config
 	return serviceFactory.CreateVectorizerServiceWithCSVConfig(
 		embeddingClient,
-		s3Client,
+		vectorStore,
 		metadataExtractor,
 		fileScanner,
 		enableOpenSearch,
@@ -956,9 +956,9 @@ func printResults(result *ProcessingResult, dryRun bool) {
 // confirmDeletePrompt asks user for confirmation before deleting vectors and/or OpenSearch index
 func confirmDeletePrompt(indexName string) bool {
 	if indexName != "" {
-		fmt.Printf("⚠️  This will delete ALL existing vectors in the S3 Vector index AND delete/recreate the OpenSearch index '%s' (empty state). Continue? (y/N): ", indexName)
+		fmt.Printf("⚠️  This will delete ALL existing vectors in the vector store AND delete/recreate the OpenSearch index '%s' (empty state). Continue? (y/N): ", indexName)
 	} else {
-		fmt.Print("⚠️  This will delete ALL existing vectors in the S3 Vector index. Continue? (y/N): ")
+		fmt.Print("⚠️  This will delete ALL existing vectors in the vector store. Continue? (y/N): ")
 	}
 
 	reader := bufio.NewReader(os.Stdin)
@@ -1156,26 +1156,21 @@ func createVectorizerServiceForSpreadsheet(cfg *appconfig.Config) (*vectorizer.V
 	// Create vector store client via factory
 	cfg.S3VectorRegion = resolveS3VectorRegion(cfg)
 	serviceFactory := vectorizer.NewServiceFactory(cfg)
-	s3Client, err := serviceFactory.CreateVectorStore()
+	vectorStore, err := serviceFactory.CreateVectorStore()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vector store client: %w", err)
 	}
 	log.Printf("Vector store client initialized (backend: %s)", cfg.VectorDBBackend)
 
-	// Create metadata extractor (reuse from existing)
 	metadataExtractor := metadata.NewMetadataExtractor()
-
-	// Create a no-op file scanner since we're using spreadsheet data
 	fileScanner := scanner.NewFileScanner()
 
-	// OpenSearch is always enabled
 	enableOpenSearch := true
 	indexName := openSearchIndexName
 
-	// Create vectorizer service with all dependencies
 	return serviceFactory.CreateVectorizerServiceWithDefaults(
 		embeddingClient,
-		s3Client,
+		vectorStore,
 		metadataExtractor,
 		fileScanner,
 		enableOpenSearch,
