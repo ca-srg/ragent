@@ -82,6 +82,12 @@ func setupBackendEnv(t *testing.T, tc backendTestCase) {
 	} else {
 		t.Setenv("GEMINI_API_KEY", "")
 	}
+
+	if tc.ocrProvider == "bedrock" {
+		// global.anthropic.claude-sonnet-4-6 has a max output token limit of 128000.
+		// The default OCR_MAX_TOKENS (200000) exceeds this, so override for tests.
+		t.Setenv("OCR_MAX_TOKENS", "128000")
+	}
 }
 
 func createE2EBedrockClient(t *testing.T, cfg *appconfig.Config) *bedrock.BedrockClient {
@@ -288,7 +294,7 @@ func runOCRVerification(
 			awsCfg, cfgErr := bedrock.BuildBedrockAWSConfig(ctx, cfg.BedrockRegion, cfg.BedrockBearerToken)
 			require.NoError(t, cfgErr)
 
-			ocrClient, clientErr := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, 0, 0)
+			ocrClient, clientErr := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
 			require.NoError(t, clientErr)
 
 			pages, err = ocrClient.ExtractPages(ctx, pdfData, "e2e-test-sample.pdf")
@@ -296,13 +302,13 @@ func runOCRVerification(
 			awsCfg, cfgErr := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(cfg.BedrockRegion))
 			require.NoError(t, cfgErr)
 
-			ocrClient, clientErr := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, 0, 0)
+			ocrClient, clientErr := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
 			require.NoError(t, clientErr)
 
 			pages, err = ocrClient.ExtractPages(ctx, pdfData, "e2e-test-sample.pdf")
 		}
 	case "gemini":
-		ocrClient, clientErr := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.OCRModel, cfg.OCRTimeout, 0, 0)
+		ocrClient, clientErr := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
 		require.NoError(t, clientErr)
 
 		pages, err = ocrClient.ExtractPages(ctx, pdfData, "e2e-test-sample.pdf")
