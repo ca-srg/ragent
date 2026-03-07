@@ -7,7 +7,13 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
 	"github.com/ca-srg/ragent/internal/ingestion/pdf"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/s3vector"
+	"github.com/ca-srg/ragent/internal/pkg/sqlitevec"
 )
+
+// Compile-time interface satisfaction checks moved here to avoid import cycles.
+var _ VectorStore = (*s3vector.S3VectorService)(nil)
+var _ VectorStore = (*sqlitevec.SqliteVecStore)(nil)
 
 // IndexerFactory creates OpenSearch indexers based on configuration
 type IndexerFactory struct {
@@ -273,6 +279,40 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithCSVConfig(
 
 	log.Printf("VectorizerService created successfully (OpenSearch enabled: %v)", enableOpenSearch)
 	return service, nil
+}
+
+// CreateVectorStore creates a VectorStore based on the configured backend.
+// It reads VectorDBBackend from config and dispatches to the appropriate implementation.
+func (sf *ServiceFactory) CreateVectorStore() (VectorStore, error) {
+	cfg := sf.indexerFactory.config
+	backend := cfg.VectorDBBackend
+
+	log.Printf("Using vector backend: %s", backend)
+
+	switch backend {
+	case "s3":
+		svc, err := s3vector.NewS3VectorService(&s3vector.S3Config{
+			VectorBucketName: cfg.AWSS3VectorBucket,
+			IndexName:        cfg.AWSS3VectorIndex,
+			Region:           cfg.S3VectorRegion,
+			MaxRetries:       cfg.RetryAttempts,
+			RetryDelay:       cfg.RetryDelay,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create S3 vector service: %w", err)
+		}
+		return svc, nil
+
+	case "sqlite":
+		store, err := sqlitevec.NewSqliteVecStore(cfg.SqliteVecDBPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SQLite vector store: %w", err)
+		}
+		return store, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported VECTOR_DB_BACKEND: %q (must be \"s3\" or \"sqlite\")", backend)
+	}
 }
 
 // GetFactoryInfo returns information about the factory configuration

@@ -25,11 +25,7 @@ import (
 	_ "modernc.org/sqlite" // registers "sqlite" driver – pure Go, CGO-free
 
 	"github.com/ca-srg/ragent/internal/ingestion/domain"
-	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 )
-
-// Ensure SqliteVecStore implements the VectorStore interface at compile time.
-var _ vectorizer.VectorStore = (*SqliteVecStore)(nil)
 
 // createTableSQL defines the schema for vector storage.
 // Embeddings are stored as raw little-endian float32 bytes in a BLOB column.
