@@ -21,7 +21,7 @@ import (
 
 const (
 	// defaultModel is the default OCR model ID.
-	defaultModel = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+	defaultModel = "anthropic.claude-sonnet-4-6"
 	// maxPDFSizeBytes is the maximum PDF size before splitting (4.5MB).
 	maxPDFSizeBytes = 4_500_000
 	// maxPagesForSingleCall is the maximum page count for processing a PDF in a single API call.
