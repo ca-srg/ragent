@@ -7,9 +7,11 @@ import (
 // Config represents the vectorizer configuration
 type Config struct {
 	// AWS S3 Vectors configuration
-	AWSS3VectorBucket    string        `json:"aws_s3_vector_bucket" env:"AWS_S3_VECTOR_BUCKET,required=true"`
-	AWSS3VectorIndex     string        `json:"aws_s3_vector_index" env:"AWS_S3_VECTOR_INDEX,required=true"`
+	AWSS3VectorBucket    string        `json:"aws_s3_vector_bucket" env:"AWS_S3_VECTOR_BUCKET"`
+	AWSS3VectorIndex     string        `json:"aws_s3_vector_index" env:"AWS_S3_VECTOR_INDEX"`
 	S3VectorRegion       string        `json:"s3_vector_region" env:"S3_VECTOR_REGION,default=us-east-1"`
+	VectorDBBackend      string        `json:"vector_db_backend" env:"VECTOR_DB_BACKEND,default=s3"`
+	SqliteVecDBPath      string        `json:"sqlite_vec_db_path" env:"SQLITE_VEC_DB_PATH,default=~/.ragent/vectors.db"`
 	S3SourceRegion       string        `json:"s3_source_region" env:"S3_SOURCE_REGION,default=us-east-1"`
 	ChatModel            string        `json:"chat_model" env:"CHAT_MODEL,default=global.anthropic.claude-sonnet-4-6"`
 	Concurrency          int           `json:"concurrency" env:"VECTORIZER_CONCURRENCY,default=10"`

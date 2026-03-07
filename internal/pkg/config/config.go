@@ -82,6 +82,11 @@ func validateConfig(config *Config) error {
 		config.RetryAttempts = 10
 	}
 
+	// Validate vector database backend configuration
+	if err := validateVectorBackend(config); err != nil {
+		return fmt.Errorf("vector backend configuration validation failed: %w", err)
+	}
+
 	// Validate OpenSearch configuration if endpoint is provided
 	if config.OpenSearchEndpoint != "" {
 		if err := validateOpenSearchConfig(config); err != nil {
@@ -660,4 +665,22 @@ func isValidToolName(name string) bool {
 	}
 
 	return true
+}
+
+// validateVectorBackend validates the vector database backend and its required fields
+func validateVectorBackend(config *Config) error {
+	switch config.VectorDBBackend {
+	case "s3":
+		if config.AWSS3VectorBucket == "" {
+			return fmt.Errorf("AWS_S3_VECTOR_BUCKET is required when VECTOR_DB_BACKEND is s3")
+		}
+		if config.AWSS3VectorIndex == "" {
+			return fmt.Errorf("AWS_S3_VECTOR_INDEX is required when VECTOR_DB_BACKEND is s3")
+		}
+	case "sqlite":
+		// No S3 validation needed for SQLite backend
+	default:
+		return fmt.Errorf("VECTOR_DB_BACKEND must be either \"s3\" or \"sqlite\", got: %q", config.VectorDBBackend)
+	}
+	return nil
 }
