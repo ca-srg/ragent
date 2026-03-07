@@ -19,7 +19,6 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"github.com/ca-srg/ragent/internal/ingestion/domain"
-	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	"github.com/ca-srg/ragent/internal/query"
 )
 
@@ -39,9 +38,6 @@ type S3VectorService struct {
 	retryDelay        time.Duration
 	backoffMultiplier float64
 }
-
-// Ensure S3VectorService implements VectorStore interface
-var _ vectorizer.VectorStore = (*S3VectorService)(nil)
 
 // S3Config holds the configuration for S3 Vectors client
 type S3Config struct {

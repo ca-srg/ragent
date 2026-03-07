@@ -6,13 +6,13 @@ import (
 	"log"
 	"time"
 
+	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	"github.com/ca-srg/ragent/internal/pkg/config"
-	"github.com/ca-srg/ragent/internal/pkg/s3vector"
 )
 
-// RunList lists all vectors stored in the S3 Vector Index with optional prefix filtering.
+// RunList lists all vectors stored in the vector store with optional prefix filtering.
 func RunList(prefix string) error {
-	log.Println("Listing vectors from S3 Vector Index...")
+	log.Println("Listing vectors from vector store...")
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -20,27 +20,19 @@ func RunList(prefix string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Create S3 Vector service
-	s3Config := &s3vector.S3Config{
-		VectorBucketName: cfg.AWSS3VectorBucket,
-		IndexName:        cfg.AWSS3VectorIndex,
-		Region:           cfg.S3VectorRegion,
-		MaxRetries:       cfg.RetryAttempts,
-		RetryDelay:       cfg.RetryDelay,
-	}
-
-	service, err := s3vector.NewS3VectorService(s3Config)
+	sf := vectorizer.NewServiceFactory(cfg)
+	service, err := sf.CreateVectorStore()
 	if err != nil {
-		return fmt.Errorf("failed to create S3 Vector service: %w", err)
+		return fmt.Errorf("failed to create vector store service: %w", err)
 	}
 
 	// Validate access
-	log.Println("Validating S3 Vector access...")
+	log.Println("Validating vector store access...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := service.ValidateAccess(ctx); err != nil {
-		return fmt.Errorf("S3 Vector access validation failed: %w", err)
+		return fmt.Errorf("vector store access validation failed: %w", err)
 	}
 
 	// List vectors
@@ -51,10 +43,13 @@ func RunList(prefix string) error {
 	}
 
 	// Display results
-	fmt.Printf("\nFound %d vectors in S3 Vector Index:\n", len(vectors))
-	fmt.Printf("Bucket: %s\n", cfg.AWSS3VectorBucket)
-	fmt.Printf("Index: %s\n", cfg.AWSS3VectorIndex)
-	fmt.Printf("Region: %s\n", cfg.S3VectorRegion)
+	fmt.Printf("\nFound %d vectors in vector store:\n", len(vectors))
+	info, err := service.GetBackendInfo(ctx)
+	if err == nil {
+		for k, v := range info {
+			fmt.Printf("%s: %v\n", k, v)
+		}
+	}
 
 	if prefix != "" {
 		fmt.Printf("Prefix filter: %s\n", prefix)

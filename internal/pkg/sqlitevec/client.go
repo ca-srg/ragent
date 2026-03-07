@@ -25,11 +25,7 @@ import (
 	_ "modernc.org/sqlite" // registers "sqlite" driver – pure Go, CGO-free
 
 	"github.com/ca-srg/ragent/internal/ingestion/domain"
-	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 )
-
-// Ensure SqliteVecStore implements the VectorStore interface at compile time.
-var _ vectorizer.VectorStore = (*SqliteVecStore)(nil)
 
 // createTableSQL defines the schema for vector storage.
 // Embeddings are stored as raw little-endian float32 bytes in a BLOB column.
@@ -80,6 +76,11 @@ func NewSqliteVecStore(dbPath string) (*SqliteVecStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database at %s: %w", dbPath, err)
 	}
+
+	// Enforce single-writer policy: SQLite WAL mode allows multiple concurrent readers
+	// but only one writer at a time. Limiting the pool to 1 connection prevents
+	// concurrent write conflicts without requiring an external mutex.
+	db.SetMaxOpenConns(1)
 
 	// Verify the connection is usable before returning.
 	if err := db.Ping(); err != nil {

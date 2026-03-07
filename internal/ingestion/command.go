@@ -25,7 +25,6 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
-	"github.com/ca-srg/ragent/internal/pkg/s3vector"
 )
 
 // DefaultFollowInterval is the default interval for follow mode.
@@ -194,30 +193,24 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 			return nil, nil
 		}
 
-		s3Config := &s3vector.S3Config{
-			VectorBucketName: cfg.AWSS3VectorBucket,
-			IndexName:        cfg.AWSS3VectorIndex,
-			Region:           resolveS3VectorRegion(cfg),
-			MaxRetries:       cfg.RetryAttempts,
-			RetryDelay:       cfg.RetryDelay,
-		}
-		s3Client, err := s3vector.NewS3VectorService(s3Config)
+		cfg.S3VectorRegion = resolveS3VectorRegion(cfg)
+		serviceFactory := vectorizer.NewServiceFactory(cfg)
+		vectorStore, err := serviceFactory.CreateVectorStore()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create S3 client for deletion: %w", err)
+			return nil, fmt.Errorf("failed to create vector store for deletion: %w", err)
 		}
 
-		log.Printf("S3 Vector index name: %s", cfg.AWSS3VectorIndex)
-		log.Printf("S3 Vector bucket name: %s", cfg.AWSS3VectorBucket)
-		log.Println("Deleting all existing vectors from S3 Vector index...")
+		log.Printf("Using vector backend: %s", cfg.VectorDBBackend)
+		log.Println("Deleting all existing vectors from vector store...")
 		timedCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
 
-		deletedCount, err := s3Client.DeleteAllVectors(timedCtx)
+		deletedCount, err := vectorStore.DeleteAllVectors(timedCtx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to delete existing vectors: %w", err)
 		}
 
-		log.Printf("Successfully deleted %d vectors from S3 Vector index (%s) in bucket (%s)", deletedCount, cfg.AWSS3VectorIndex, cfg.AWSS3VectorBucket)
+		log.Printf("Successfully deleted %d vectors from vector store", deletedCount)
 
 		log.Printf("Deleting OpenSearch index: %s", openSearchIndexName)
 		tempService, err := createVectorizerService(cfg)
@@ -229,7 +222,6 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 		defer deleteCancel()
 
 		if tempService != nil {
-			serviceFactory := vectorizer.NewServiceFactory(cfg)
 			if serviceFactory != nil {
 				indexerFactory := vectorizer.NewIndexerFactory(cfg)
 				if indexerFactory.IsOpenSearchEnabled() {
@@ -775,28 +767,18 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 	// Create embedding client using Bedrock
 	embeddingClient := bedrock.NewBedrockClient(awsCfg, "amazon.titan-embed-text-v2:0")
 
-	// Create S3 Vectors client
-	var s3Client vectorizer.VectorStore
-	s3Config := &s3vector.S3Config{
-		VectorBucketName: cfg.AWSS3VectorBucket,
-		IndexName:        cfg.AWSS3VectorIndex,
-		Region:           resolveS3VectorRegion(cfg),
-		MaxRetries:       cfg.RetryAttempts,
-		RetryDelay:       cfg.RetryDelay,
-	}
-	s3ClientImpl, err := s3vector.NewS3VectorService(s3Config)
+	// Create vector store client via factory
+	cfg.S3VectorRegion = resolveS3VectorRegion(cfg)
+	serviceFactory := vectorizer.NewServiceFactory(cfg)
+	s3Client, err := serviceFactory.CreateVectorStore()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 client: %w", err)
+		return nil, fmt.Errorf("failed to create vector store client: %w", err)
 	}
-	s3Client = s3ClientImpl
-	log.Println("S3 Vector client initialized")
+	log.Printf("Vector store client initialized (backend: %s)", cfg.VectorDBBackend)
 
 	// Create metadata extractor and file scanner
 	metadataExtractor := metadata.NewMetadataExtractor()
 	fileScanner := scanner.NewFileScanner()
-
-	// Create service factory for dependency injection
-	serviceFactory := vectorizer.NewServiceFactory(cfg)
 
 	// OpenSearch is always enabled
 	enableOpenSearch := true
@@ -1174,28 +1156,20 @@ func createVectorizerServiceForSpreadsheet(cfg *appconfig.Config) (*vectorizer.V
 	// Create embedding client using Bedrock
 	embeddingClient := bedrock.NewBedrockClient(awsCfg, "amazon.titan-embed-text-v2:0")
 
-	// Create S3 Vectors client
-	s3Config := &s3vector.S3Config{
-		VectorBucketName: cfg.AWSS3VectorBucket,
-		IndexName:        cfg.AWSS3VectorIndex,
-		Region:           resolveS3VectorRegion(cfg),
-		MaxRetries:       cfg.RetryAttempts,
-		RetryDelay:       cfg.RetryDelay,
-	}
-	s3Client, err := s3vector.NewS3VectorService(s3Config)
+	// Create vector store client via factory
+	cfg.S3VectorRegion = resolveS3VectorRegion(cfg)
+	serviceFactory := vectorizer.NewServiceFactory(cfg)
+	s3Client, err := serviceFactory.CreateVectorStore()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 client: %w", err)
+		return nil, fmt.Errorf("failed to create vector store client: %w", err)
 	}
-	log.Println("S3 Vector client initialized")
+	log.Printf("Vector store client initialized (backend: %s)", cfg.VectorDBBackend)
 
 	// Create metadata extractor (reuse from existing)
 	metadataExtractor := metadata.NewMetadataExtractor()
 
 	// Create a no-op file scanner since we're using spreadsheet data
 	fileScanner := scanner.NewFileScanner()
-
-	// Create service factory for dependency injection
-	serviceFactory := vectorizer.NewServiceFactory(cfg)
 
 	// OpenSearch is always enabled
 	enableOpenSearch := true

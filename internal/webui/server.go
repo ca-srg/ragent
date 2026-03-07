@@ -19,7 +19,6 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
-	"github.com/ca-srg/ragent/internal/pkg/s3vector"
 )
 
 // ServerConfig holds the web UI server configuration
@@ -263,14 +262,10 @@ func (s *Server) initializeVectorizer(ctx context.Context) error {
 	// Create embedding client
 	embeddingClient := bedrock.NewBedrockClient(awsCfg, "")
 
-	// Create S3 Vector client
-	s3VectorClient, err := s3vector.NewS3VectorService(&s3vector.S3Config{
-		VectorBucketName: s.appConfig.AWSS3VectorBucket,
-		IndexName:        s.appConfig.AWSS3VectorIndex,
-		Region:           s.appConfig.S3VectorRegion,
-	})
+	sf := vectorizer.NewServiceFactory(s.appConfig)
+	vectorStoreClient, err := sf.CreateVectorStore()
 	if err != nil {
-		return fmt.Errorf("failed to create S3 Vector client: %w", err)
+		return fmt.Errorf("failed to create vector store client: %w", err)
 	}
 
 	// Create metadata extractor
@@ -290,7 +285,7 @@ func (s *Server) initializeVectorizer(ctx context.Context) error {
 	serviceConfig := &vectorizer.ServiceConfig{
 		Config:              s.appConfig,
 		EmbeddingClient:     embeddingClient,
-		S3Client:            s3VectorClient,
+		S3Client:            vectorStoreClient,
 		OpenSearchIndexer:   osIndexer,
 		MetadataExtractor:   metadataExtractor,
 		FileScanner:         s.fileScanner,

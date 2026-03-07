@@ -411,6 +411,10 @@ S3_BUCKET_NAME=your_s3_bucket_name
 S3_VECTOR_REGION=us-east-1           # S3 Vectorバケット用AWSリージョン
 S3_SOURCE_REGION=ap-northeast-1      # ソースファイル用S3バケットのAWSリージョン（--enable-s3）
 
+# Vector DBバックエンドの選択
+VECTOR_DB_BACKEND=s3            # バックエンド種別: "s3"（Amazon S3 Vectors）または "sqlite"（ローカル sqlite-vec）（デフォルト: s3）
+SQLITE_VEC_DB_PATH=~/.ragent/vectors.db  # sqlite-vec DBファイルのパス（VECTOR_DB_BACKEND=sqlite 時に使用）
+
 # OpenSearch設定（ハイブリッドRAG用）
 OPENSEARCH_ENDPOINT=your_opensearch_endpoint
 OPENSEARCH_INDEX=your_opensearch_index
@@ -667,6 +671,50 @@ shasum -a 256 -c checksums_<VERSION>.txt
 ```
 
 すべてのエントリが `OK` と表示されれば検証成功です。誤りがある場合は再ダウンロードしてください。
+
+## Vector DB バックエンドの選択
+
+RAGentは `VECTOR_DB_BACKEND` 環境変数で選択できる2種類のベクトルストレージバックエンドをサポートしています。
+
+### Amazon S3 Vectors（デフォルト、`VECTOR_DB_BACKEND=s3`）
+
+```env
+VECTOR_DB_BACKEND=s3
+AWS_S3_VECTOR_BUCKET=your-bucket
+AWS_S3_VECTOR_INDEX=your-index
+S3_VECTOR_REGION=us-east-1
+```
+
+AWSインフラ上での本番環境や大規模なドキュメントセットに適しています。
+
+### sqlite-vec（ローカル、`VECTOR_DB_BACKEND=sqlite`）
+
+```env
+VECTOR_DB_BACKEND=sqlite
+SQLITE_VEC_DB_PATH=./vectors.db
+```
+
+AWS依存なしのローカル開発や中小規模のデプロイメントに適しています。
+
+**制限事項:**
+- シングルライター（WALモードは自動的に有効化されます）
+- embeddingの最大次元数は8,192
+- ベクトル類似検索は常にOpenSearchを使用します（sqlite-vecはベクトルの保存のみ担当）
+
+**使用例:**
+```bash
+# sqlite-vecバックエンドでベクトル化
+VECTOR_DB_BACKEND=sqlite SQLITE_VEC_DB_PATH=./vectors.db \
+  OPENSEARCH_ENDPOINT=https://... OPENSEARCH_INDEX=ragent \
+  RAGent vectorize
+
+# 保存済みベクトルの一覧表示
+VECTOR_DB_BACKEND=sqlite SQLITE_VEC_DB_PATH=./vectors.db \
+  OPENSEARCH_ENDPOINT=https://... OPENSEARCH_INDEX=ragent \
+  RAGent list
+```
+
+> **注意**: ベクトルバックエンドの選択に関わらず、OpenSearchは必須です。
 
 ## コマンド一覧
 
