@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
@@ -758,8 +757,7 @@ func createVectorizerService(cfg *appconfig.Config) (*vectorizer.VectorizerServi
 
 // createVectorizerServiceWithCSVConfig creates a vectorizer service with CSV configuration
 func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Config) (*vectorizer.VectorizerService, error) {
-	// Load AWS configuration with fixed region
-	awsCfg, err := awsconfig.LoadDefaultConfig(context.TODO(), awsconfig.WithRegion("us-east-1"))
+	awsCfg, err := bedrock.BuildBedrockAWSConfig(context.TODO(), cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
@@ -1147,8 +1145,7 @@ func runSpreadsheetDryRun(ctx context.Context, fetcher *spreadsheet.Fetcher) err
 
 // createVectorizerServiceForSpreadsheet creates a vectorizer service for spreadsheet processing
 func createVectorizerServiceForSpreadsheet(cfg *appconfig.Config) (*vectorizer.VectorizerService, error) {
-	// Load AWS configuration with fixed region
-	awsCfg, err := awsconfig.LoadDefaultConfig(context.TODO(), awsconfig.WithRegion("us-east-1"))
+	awsCfg, err := bedrock.BuildBedrockAWSConfig(context.TODO(), cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
