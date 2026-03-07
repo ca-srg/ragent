@@ -13,7 +13,7 @@ import (
 
 // ParallelController manages concurrent processing of files for both S3 Vector and OpenSearch
 type ParallelController struct {
-	s3Client          S3VectorClient
+	s3Client          VectorStore
 	opensearchIndexer OpenSearchIndexer
 	concurrencyLimit  int
 
@@ -85,7 +85,7 @@ type FileProcessingResult struct {
 }
 
 // NewParallelController creates a new parallel controller
-func NewParallelController(s3Client S3VectorClient, opensearchIndexer OpenSearchIndexer, concurrencyLimit int) *ParallelController {
+func NewParallelController(s3Client VectorStore, opensearchIndexer OpenSearchIndexer, concurrencyLimit int) *ParallelController {
 	if concurrencyLimit <= 0 {
 		concurrencyLimit = 3 // Default concurrency
 	}

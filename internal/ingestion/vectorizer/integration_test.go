@@ -16,7 +16,7 @@ import (
 func TestVectorizerService_IntegrationWithMocks(t *testing.T) {
 	// Create mock services
 	mockEmbedding := NewMockEmbeddingClient()
-	mockS3 := NewMockS3VectorClient()
+	mockS3 := NewMockVectorStore()
 	mockMetadata := NewMockMetadataExtractor()
 	mockScanner := NewMockFileScanner()
 	mockOSIndexer := NewMockOpenSearchIndexerIntegration()
@@ -84,7 +84,7 @@ func TestVectorizerService_IntegrationWithMocks(t *testing.T) {
 
 func TestDualBackendProcessing_WithMocks(t *testing.T) {
 	// Setup mocks
-	mockS3Client := NewMockS3VectorClient()
+	mockS3Client := NewMockVectorStore()
 	mockOSIndexer := NewMockOpenSearchIndexerIntegration()
 
 	// Create test documents
@@ -296,7 +296,7 @@ func TestServiceConfiguration_ValidationWithMocks(t *testing.T) {
 			config: &ServiceConfig{
 				Config:              &Config{Concurrency: 3, RetryAttempts: 2},
 				EmbeddingClient:     NewMockEmbeddingClient(),
-				S3Client:            NewMockS3VectorClient(),
+				S3Client:            NewMockVectorStore(),
 				OpenSearchIndexer:   NewMockOpenSearchIndexerIntegration(),
 				MetadataExtractor:   NewMockMetadataExtractor(),
 				FileScanner:         NewMockFileScanner(),
@@ -316,7 +316,7 @@ func TestServiceConfiguration_ValidationWithMocks(t *testing.T) {
 			config: &ServiceConfig{
 				Config:              &Config{Concurrency: 3},
 				EmbeddingClient:     nil,
-				S3Client:            NewMockS3VectorClient(),
+				S3Client:            NewMockVectorStore(),
 				OpenSearchIndexer:   NewMockOpenSearchIndexerIntegration(),
 				MetadataExtractor:   NewMockMetadataExtractor(),
 				FileScanner:         NewMockFileScanner(),

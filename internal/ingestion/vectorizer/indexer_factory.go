@@ -176,7 +176,7 @@ func NewServiceFactory(config *Config) *ServiceFactory {
 // CreateServiceConfig creates a complete ServiceConfig with all dependencies
 func (sf *ServiceFactory) CreateServiceConfig(
 	embeddingClient EmbeddingClient,
-	s3Client S3VectorClient,
+	s3Client VectorStore,
 	metadataExtractor MetadataExtractor,
 	fileScanner FileScanner,
 	enableOpenSearch bool,
@@ -220,7 +220,7 @@ func (sf *ServiceFactory) CreateServiceConfig(
 // CreateVectorizerServiceWithDefaults creates a VectorizerService with default settings
 func (sf *ServiceFactory) CreateVectorizerServiceWithDefaults(
 	embeddingClient EmbeddingClient,
-	s3Client S3VectorClient,
+	s3Client VectorStore,
 	metadataExtractor MetadataExtractor,
 	fileScanner FileScanner,
 	enableOpenSearch bool,
@@ -241,7 +241,7 @@ func (sf *ServiceFactory) CreateVectorizerServiceWithDefaults(
 // CreateVectorizerServiceWithCSVConfig creates a VectorizerService with CSV configuration
 func (sf *ServiceFactory) CreateVectorizerServiceWithCSVConfig(
 	embeddingClient EmbeddingClient,
-	s3Client S3VectorClient,
+	s3Client VectorStore,
 	metadataExtractor MetadataExtractor,
 	fileScanner FileScanner,
 	enableOpenSearch bool,

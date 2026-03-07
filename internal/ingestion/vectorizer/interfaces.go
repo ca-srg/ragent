@@ -16,22 +16,25 @@ type EmbeddingClient interface {
 	GetModelInfo() (string, int, error) // model name, dimension, error
 }
 
-// S3VectorClient defines the interface for storing vectors in S3
-type S3VectorClient interface {
-	// StoreVector saves a vector with its metadata to S3
+// VectorStore defines the interface for storing and managing vectors in a backend store
+type VectorStore interface {
+	// StoreVector saves a vector with its metadata to the vector store
 	StoreVector(ctx context.Context, vectorData *VectorData) error
 
-	// ValidateAccess checks if S3 bucket is accessible
+	// ValidateAccess checks if the vector store is accessible
 	ValidateAccess(ctx context.Context) error
 
 	// ListVectors returns a list of stored vector keys (optional, for debugging)
 	ListVectors(ctx context.Context, prefix string) ([]string, error)
 
-	// DeleteVector removes a vector from S3 (optional, for cleanup)
+	// DeleteVector removes a vector from the store (optional, for cleanup)
 	DeleteVector(ctx context.Context, vectorID string) error
 
-	// GetBucketInfo returns information about the S3 bucket
-	GetBucketInfo(ctx context.Context) (map[string]interface{}, error)
+	// GetBackendInfo returns information about the vector store backend
+	GetBackendInfo(ctx context.Context) (map[string]interface{}, error)
+
+	// DeleteAllVectors removes all vectors from the store
+	DeleteAllVectors(ctx context.Context) (int, error)
 }
 
 // MetadataExtractor defines the interface for extracting metadata from files

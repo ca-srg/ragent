@@ -19,7 +19,7 @@ type ProgressCallback func(processed, total int)
 // VectorizerService orchestrates the vectorization process
 type VectorizerService struct {
 	embeddingClient     EmbeddingClient
-	s3Client            S3VectorClient
+	s3Client            VectorStore
 	opensearchIndexer   OpenSearchIndexer
 	metadataExtractor   MetadataExtractor
 	fileScanner         FileScanner
@@ -51,7 +51,7 @@ type ProcessingStats struct {
 type ServiceConfig struct {
 	Config              *Config
 	EmbeddingClient     EmbeddingClient
-	S3Client            S3VectorClient
+	S3Client            VectorStore
 	OpenSearchIndexer   OpenSearchIndexer
 	MetadataExtractor   MetadataExtractor
 	FileScanner         FileScanner
@@ -824,7 +824,7 @@ func (vs *VectorizerService) GetServiceInfo(ctx context.Context) (map[string]int
 	}
 
 	// Get S3 bucket info
-	if bucketInfo, err := vs.s3Client.GetBucketInfo(ctx); err == nil {
+	if bucketInfo, err := vs.s3Client.GetBackendInfo(ctx); err == nil {
 		info["s3_info"] = bucketInfo
 	}
 

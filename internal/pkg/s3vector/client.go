@@ -19,6 +19,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"github.com/ca-srg/ragent/internal/ingestion/domain"
+	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	"github.com/ca-srg/ragent/internal/query"
 )
 
@@ -28,7 +29,7 @@ const (
 	defaultS3BackoffMultiplier = 2.0
 )
 
-// S3VectorService implements the S3VectorClient interface
+// S3VectorService implements the VectorStore interface
 type S3VectorService struct {
 	client            *s3vectors.Client
 	vectorBucketName  string
@@ -38,6 +39,9 @@ type S3VectorService struct {
 	retryDelay        time.Duration
 	backoffMultiplier float64
 }
+
+// Ensure S3VectorService implements VectorStore interface
+var _ vectorizer.VectorStore = (*S3VectorService)(nil)
 
 // S3Config holds the configuration for S3 Vectors client
 type S3Config struct {
@@ -403,8 +407,8 @@ func (s *S3VectorService) BatchStoreVectors(ctx context.Context, vectors []*doma
 	return nil
 }
 
-// GetBucketInfo returns information about the S3 Vector bucket
-func (s *S3VectorService) GetBucketInfo(ctx context.Context) (map[string]interface{}, error) {
+// GetBackendInfo returns information about the S3 Vector bucket
+func (s *S3VectorService) GetBackendInfo(ctx context.Context) (map[string]interface{}, error) {
 	info := make(map[string]interface{})
 
 	// Get vector bucket info

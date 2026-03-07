@@ -776,7 +776,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 	embeddingClient := bedrock.NewBedrockClient(awsCfg, "amazon.titan-embed-text-v2:0")
 
 	// Create S3 Vectors client
-	var s3Client vectorizer.S3VectorClient
+	var s3Client vectorizer.VectorStore
 	s3Config := &s3vector.S3Config{
 		VectorBucketName: cfg.AWSS3VectorBucket,
 		IndexName:        cfg.AWSS3VectorIndex,

@@ -11,8 +11,8 @@ import (
 
 // Mock implementations for testing
 
-// MockS3VectorClient implements S3VectorClient for testing
-type MockS3VectorClient struct {
+// MockVectorStore implements VectorStore for testing
+type MockVectorStore struct {
 	shouldFail  bool
 	failureRate float64 // 0.0 = never fail, 1.0 = always fail
 	processTime time.Duration
@@ -20,35 +20,35 @@ type MockS3VectorClient struct {
 	mu          sync.Mutex
 }
 
-func NewMockS3VectorClient() *MockS3VectorClient {
-	return &MockS3VectorClient{
+func NewMockVectorStore() *MockVectorStore {
+	return &MockVectorStore{
 		processTime: 10 * time.Millisecond, // Simulate processing time
 	}
 }
 
-func (m *MockS3VectorClient) SetFailure(shouldFail bool) {
+func (m *MockVectorStore) SetFailure(shouldFail bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.shouldFail = shouldFail
 }
 
-func (m *MockS3VectorClient) SetFailureRate(rate float64) {
+func (m *MockVectorStore) SetFailureRate(rate float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.failureRate = rate
 }
 
-func (m *MockS3VectorClient) SetProcessTime(duration time.Duration) {
+func (m *MockVectorStore) SetProcessTime(duration time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.processTime = duration
 }
 
-func (m *MockS3VectorClient) GetCallCount() int64 {
+func (m *MockVectorStore) GetCallCount() int64 {
 	return atomic.LoadInt64(&m.callCount)
 }
 
-func (m *MockS3VectorClient) StoreVector(ctx context.Context, vectorData *VectorData) error {
+func (m *MockVectorStore) StoreVector(ctx context.Context, vectorData *VectorData) error {
 	atomic.AddInt64(&m.callCount, 1)
 
 	m.mu.Lock()
@@ -68,20 +68,24 @@ func (m *MockS3VectorClient) StoreVector(ctx context.Context, vectorData *Vector
 	return nil
 }
 
-func (m *MockS3VectorClient) ValidateAccess(ctx context.Context) error {
+func (m *MockVectorStore) ValidateAccess(ctx context.Context) error {
 	return nil
 }
 
-func (m *MockS3VectorClient) ListVectors(ctx context.Context, prefix string) ([]string, error) {
+func (m *MockVectorStore) ListVectors(ctx context.Context, prefix string) ([]string, error) {
 	return []string{}, nil
 }
 
-func (m *MockS3VectorClient) DeleteVector(ctx context.Context, vectorID string) error {
+func (m *MockVectorStore) DeleteVector(ctx context.Context, vectorID string) error {
 	return nil
 }
 
-func (m *MockS3VectorClient) GetBucketInfo(ctx context.Context) (map[string]interface{}, error) {
+func (m *MockVectorStore) GetBackendInfo(ctx context.Context) (map[string]interface{}, error) {
 	return map[string]interface{}{"bucket": "test-bucket"}, nil
+}
+
+func (m *MockVectorStore) DeleteAllVectors(ctx context.Context) (int, error) {
+	return 0, nil
 }
 
 // MockOpenSearchIndexer implements OpenSearchIndexer for testing
@@ -204,7 +208,7 @@ func TestNewParallelController(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s3Client := NewMockS3VectorClient()
+			s3Client := NewMockVectorStore()
 			osIndexer := NewMockOpenSearchIndexer()
 
 			pc := NewParallelController(s3Client, osIndexer, tt.concurrencyLimit)
@@ -311,7 +315,7 @@ func TestParallelController_ProcessingDecisions(t *testing.T) {
 }
 
 func TestParallelController_ConcurrencyControl(t *testing.T) {
-	s3Client := NewMockS3VectorClient()
+	s3Client := NewMockVectorStore()
 	osIndexer := NewMockOpenSearchIndexer()
 
 	// Set processing time to ensure concurrent execution
@@ -362,7 +366,7 @@ func TestParallelController_ConcurrencyControl(t *testing.T) {
 }
 
 func TestParallelController_ErrorHandling(t *testing.T) {
-	s3Client := NewMockS3VectorClient()
+	s3Client := NewMockVectorStore()
 	osIndexer := NewMockOpenSearchIndexer()
 
 	// Configure different failure scenarios
@@ -465,7 +469,7 @@ func TestFileProcessingResult_ValidateFields(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkParallelController_ConcurrentProcessing(b *testing.B) {
-	s3Client := NewMockS3VectorClient()
+	s3Client := NewMockVectorStore()
 	osIndexer := NewMockOpenSearchIndexer()
 
 	// Set minimal processing times for benchmarking
