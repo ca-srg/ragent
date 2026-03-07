@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: e2e-${{ github.workflow }}-${{ github.ref }}
@@ -19,6 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: e2e-test
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout
@@ -93,3 +95,142 @@ jobs:
           AWS_S3_VECTOR_INDEX: ${{ secrets.AWS_S3_VECTOR_INDEX }}
           S3_VECTOR_REGION: ${{ secrets.S3_VECTOR_REGION }}
         run: go test -v -run "TestE2E_" ./tests/integration/... -timeout 120s
+
+  e2e-backend-matrix:
+    name: E2E Backend Matrix Tests
+    needs: []
+    runs-on: ubuntu-latest
+    environment: e2e-test
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: s3-iam
+            vector_db: s3
+            needs_bearer: false
+            needs_gemini: false
+            ocr_provider: ""
+          - name: s3-bearer
+            vector_db: s3
+            needs_bearer: true
+            needs_gemini: false
+            ocr_provider: ""
+          - name: sqlite-iam
+            vector_db: sqlite
+            needs_bearer: false
+            needs_gemini: false
+            ocr_provider: ""
+          - name: sqlite-bearer
+            vector_db: sqlite
+            needs_bearer: true
+            needs_gemini: false
+            ocr_provider: ""
+          - name: s3-iam-gemini
+            vector_db: s3
+            needs_bearer: false
+            needs_gemini: true
+            ocr_provider: gemini
+          - name: s3-iam-bedrock
+            vector_db: s3
+            needs_bearer: false
+            needs_gemini: false
+            ocr_provider: bedrock
+          - name: s3-bearer-gemini
+            vector_db: s3
+            needs_bearer: true
+            needs_gemini: true
+            ocr_provider: gemini
+          - name: s3-bearer-bedrock
+            vector_db: s3
+            needs_bearer: true
+            needs_gemini: false
+            ocr_provider: bedrock
+          - name: sqlite-iam-gemini
+            vector_db: sqlite
+            needs_bearer: false
+            needs_gemini: true
+            ocr_provider: gemini
+          - name: sqlite-iam-bedrock
+            vector_db: sqlite
+            needs_bearer: false
+            needs_gemini: false
+            ocr_provider: bedrock
+          - name: sqlite-bearer-gemini
+            vector_db: sqlite
+            needs_bearer: true
+            needs_gemini: true
+            ocr_provider: gemini
+          - name: sqlite-bearer-bedrock
+            vector_db: sqlite
+            needs_bearer: true
+            needs_gemini: false
+            ocr_provider: bedrock
+    env:
+      E2E_MATRIX_ENABLED: "true"
+      OPENSEARCH_ENDPOINT: http://localhost:9200
+      OPENSEARCH_INDEX: ragent-e2e-matrix-${{ matrix.name }}
+      VECTOR_DB_BACKEND: ${{ matrix.vector_db }}
+      OCR_PROVIDER: ${{ matrix.ocr_provider }}
+      AWS_S3_VECTOR_BUCKET: ${{ secrets.AWS_S3_VECTOR_BUCKET }}
+      AWS_S3_VECTOR_INDEX: ${{ secrets.AWS_S3_VECTOR_INDEX }}
+      S3_VECTOR_REGION: ${{ secrets.S3_VECTOR_REGION }}
+      AWS_BEARER_TOKEN_BEDROCK: ${{ matrix.needs_bearer && secrets.AWS_BEARER_TOKEN_BEDROCK || '' }}
+      GEMINI_API_KEY: ${{ matrix.needs_gemini && secrets.GEMINI_API_KEY || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Start OpenSearch
+        run: docker compose up -d opensearch
+
+      - name: Wait for OpenSearch to be healthy
+        run: |
+          echo "Waiting for OpenSearch to be healthy..."
+          for i in $(seq 1 36); do
+            if curl -sf http://localhost:9200/_cluster/health | grep -qE '"status":"(green|yellow)"'; then
+              echo "OpenSearch is ready!"
+              curl -s http://localhost:9200/_cluster/health | python3 -m json.tool
+              exit 0
+            fi
+            echo "  Waiting... ($i/36)"
+            sleep 5
+          done
+          echo "::error::OpenSearch failed to become healthy within 3 minutes"
+          docker compose logs opensearch
+          exit 1
+
+      - name: Create E2E matrix test index
+        run: |
+          curl -sf -X PUT "http://localhost:9200/ragent-e2e-matrix-${{ matrix.name }}" \
+            -H "Content-Type: application/json" \
+            -d @tests/testdata/e2e-index-mapping.json
+          echo ""
+          echo "Index ragent-e2e-matrix-${{ matrix.name }} created successfully"
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run E2E backend matrix test (${{ matrix.name }})
+        run: go test -v -run "TestE2E_BackendMatrix/${{ matrix.name }}" ./tests/integration/... -timeout 300s
