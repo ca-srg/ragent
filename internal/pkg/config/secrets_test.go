@@ -64,9 +64,9 @@ func unsetEnv(t *testing.T, key string) {
 	require.NoError(t, os.Unsetenv(key))
 	t.Cleanup(func() {
 		if wasSet {
-			os.Setenv(key, prev)
+			_ = os.Setenv(key, prev)
 		} else {
-			os.Unsetenv(key)
+			_ = os.Unsetenv(key)
 		}
 	})
 }
