@@ -1,6 +1,8 @@
 package config
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	env "github.com/netflix/go-env"
@@ -28,6 +30,10 @@ type SlackConfig struct {
 
 // LoadSlack loads Slack configuration from environment variables
 func LoadSlack() (*SlackConfig, error) {
+	if err := LoadSecretsIntoEnv(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to load secrets from Secrets Manager: %w", err)
+	}
+
 	var cfg SlackConfig
 	_, err := env.UnmarshalFromEnviron(&cfg)
 	if err != nil {
