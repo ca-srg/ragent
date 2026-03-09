@@ -157,3 +157,28 @@ resource "aws_iam_role_policy" "s3_vectorize_source_read" {
     ]
   })
 }
+
+# -----------------------------------------------------------------------------
+# Secrets Manager — read access to E2E test secrets
+# -----------------------------------------------------------------------------
+resource "aws_iam_role_policy" "secrets_manager_read" {
+  name = "AllowSecretsManagerRead"
+  role = aws_iam_role.e2e_test.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SecretsManagerGetValue"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret",
+        ]
+        Resource = [
+          aws_secretsmanager_secret.e2e_test.arn,
+        ]
+      },
+    ]
+  })
+}
