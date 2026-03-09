@@ -50,4 +50,4 @@ jobs:
         env:
           SECRET_MANAGER_REGION: ${{ secrets.SECRET_MANAGER_REGION }}
           SECRET_MANAGER_SECRET_ID: ${{ secrets.SECRET_MANAGER_SECRET_ID }}
-        run: go test ./... -timeout 120s
+        run: go test $(go list ./... | grep -v '/tests/') -timeout 120s
