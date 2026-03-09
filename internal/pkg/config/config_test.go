@@ -10,6 +10,17 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/config"
 )
 
+// disableSecretsManager resets the sync.Once-guarded SM loader and ensures
+// SECRET_MANAGER_SECRET_ID is empty so that Load() never attempts a real
+// Secrets Manager call. This must be called in every test that invokes
+// config.Load() to avoid CI failures when the env var is set externally.
+func disableSecretsManager(t *testing.T) {
+	t.Helper()
+	config.ResetSecretsLoaderForTest()
+	t.Cleanup(config.ResetSecretsLoaderForTest)
+	t.Setenv("SECRET_MANAGER_SECRET_ID", "")
+}
+
 // setRequiredEnvVars sets the minimum required env vars to pass Load() validation.
 // OPENSEARCH_ENDPOINT and OPENSEARCH_INDEX remain required=true in the env tag.
 func setRequiredEnvVars(t *testing.T) {
@@ -21,6 +32,7 @@ func setRequiredEnvVars(t *testing.T) {
 // TestLoadSQLiteBackendWithoutS3Vars verifies that sqlite backend loads successfully
 // without AWS_S3_VECTOR_BUCKET or AWS_S3_VECTOR_INDEX being set.
 func TestLoadSQLiteBackendWithoutS3Vars(t *testing.T) {
+	disableSecretsManager(t)
 	setRequiredEnvVars(t)
 	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
 	// Explicitly empty S3 vars to ensure they are not picked up from environment
@@ -35,6 +47,7 @@ func TestLoadSQLiteBackendWithoutS3Vars(t *testing.T) {
 // TestLoadS3BackendRequiresBucket verifies that s3 backend returns an error
 // when AWS_S3_VECTOR_BUCKET is not set.
 func TestLoadS3BackendRequiresBucket(t *testing.T) {
+	disableSecretsManager(t)
 	setRequiredEnvVars(t)
 	t.Setenv("VECTOR_DB_BACKEND", "s3")
 	t.Setenv("AWS_S3_VECTOR_BUCKET", "")
@@ -48,6 +61,7 @@ func TestLoadS3BackendRequiresBucket(t *testing.T) {
 // TestLoadInvalidBackendReturnsError verifies that an unrecognized backend value
 // causes Load() to return an error with a clear message.
 func TestLoadInvalidBackendReturnsError(t *testing.T) {
+	disableSecretsManager(t)
 	setRequiredEnvVars(t)
 	t.Setenv("VECTOR_DB_BACKEND", "badvalue")
 	// Provide S3 vars so the error comes from backend validation, not bucket check
@@ -60,6 +74,7 @@ func TestLoadInvalidBackendReturnsError(t *testing.T) {
 }
 
 func TestBedrockRegionDefault(t *testing.T) {
+	disableSecretsManager(t)
 	loadDotEnvForTest(t)
 	setRequiredEnvVars(t)
 	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
@@ -82,6 +97,7 @@ func TestBedrockRegionDefault(t *testing.T) {
 }
 
 func TestBedrockRegionCustom(t *testing.T) {
+	disableSecretsManager(t)
 	loadDotEnvForTest(t)
 	setRequiredEnvVars(t)
 	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
@@ -95,6 +111,7 @@ func TestBedrockRegionCustom(t *testing.T) {
 }
 
 func TestBedrockRegionEmpty(t *testing.T) {
+	disableSecretsManager(t)
 	loadDotEnvForTest(t)
 	setRequiredEnvVars(t)
 	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
@@ -108,6 +125,7 @@ func TestBedrockRegionEmpty(t *testing.T) {
 }
 
 func TestBedrockBearerTokenLoaded(t *testing.T) {
+	disableSecretsManager(t)
 	loadDotEnvForTest(t)
 	setRequiredEnvVars(t)
 	t.Setenv("VECTOR_DB_BACKEND", "sqlite")
@@ -121,6 +139,7 @@ func TestBedrockBearerTokenLoaded(t *testing.T) {
 }
 
 func TestBedrockBearerTokenEmpty(t *testing.T) {
+	disableSecretsManager(t)
 	loadDotEnvForTest(t)
 	setRequiredEnvVars(t)
 	t.Setenv("VECTOR_DB_BACKEND", "sqlite")

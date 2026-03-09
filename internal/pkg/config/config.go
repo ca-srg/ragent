@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -12,6 +13,10 @@ import (
 
 // Load loads configuration from environment variables
 func Load() (*Config, error) {
+	if err := LoadSecretsIntoEnv(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to load secrets from Secrets Manager: %w", err)
+	}
+
 	var config Config
 
 	_, err := env.UnmarshalFromEnviron(&config)
