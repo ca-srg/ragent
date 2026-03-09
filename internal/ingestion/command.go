@@ -29,6 +29,9 @@ import (
 // DefaultFollowInterval is the default interval for follow mode.
 const DefaultFollowInterval = "30m"
 
+// MinFollowInterval is the minimum allowed interval for follow mode.
+const MinFollowInterval = 5 * time.Minute
+
 var (
 	directory           string
 	dryRun              bool
@@ -998,6 +1001,10 @@ func validateFollowModeFlags(cmd *cobra.Command) error {
 	duration, err := time.ParseDuration(intervalValue)
 	if err != nil {
 		return fmt.Errorf("invalid interval: %w", err)
+	}
+
+	if duration < MinFollowInterval {
+		return fmt.Errorf("interval must be at least %v", MinFollowInterval)
 	}
 
 	followIntervalDuration = duration
