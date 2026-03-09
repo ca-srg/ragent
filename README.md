@@ -27,6 +27,7 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 - [Development](#development)
 - [Typical Workflow](#typical-workflow)
 - [Troubleshooting](#troubleshooting)
+- [AWS Secrets Manager Integration](#aws-secrets-manager-integration)
 - [OpenSearch RAG Configuration](#opensearch-rag-configuration)
 - [Automated Setup (setup.sh)](#automated-setup-setupsh)
 - [License](#license)
@@ -48,6 +49,7 @@ RAGent is a CLI tool for building a RAG (Retrieval-Augmented Generation) system 
 - **OIDC Authentication**: OpenID Connect authentication with multiple providers
 - **IP-based Security**: IP address-based access control with configurable bypass ranges and audit logging
 - **Dual Transport**: HTTP and Server-Sent Events (SSE) transport support
+- **AWS Secrets Manager Integration**: Automatic secret injection as environment variable fallback
 
 ## Slack Search Integration
 
@@ -838,6 +840,10 @@ OCR_TIMEOUT=120s                                        # OCR request timeout (d
 
 # Gemini API Configuration (required when OCR_PROVIDER=gemini)
 GEMINI_API_KEY=your_gemini_api_key                      # Google AI Studio API key
+
+# AWS Secrets Manager Configuration (optional)
+SECRET_MANAGER_SECRET_ID=ragent/app              # Secret ID in AWS Secrets Manager (omit to disable)
+SECRET_MANAGER_REGION=us-east-1                  # AWS region for Secrets Manager (default: us-east-1)
 ```
 
 Slack search requires `SLACK_SEARCH_ENABLED=true`, a valid `SLACK_BOT_TOKEN`, **and** a user token `SLACK_USER_TOKEN` that includes scopes such as `search:read`, `channels:history`, `groups:history`, and other conversation history scopes relevant to the channels you query. The search-specific knobs let you tune throughput and cost per workspace without touching the core document pipeline.
@@ -848,6 +854,115 @@ Slack search requires `SLACK_SEARCH_ENABLED=true`, a valid `SLACK_BOT_TOKEN`, **
 - `MCP_BYPASS_VERBOSE_LOG`: Enables detailed logging for bypass decisions to aid troubleshooting.
 - `MCP_BYPASS_AUDIT_LOG`: Emits JSON audit entries for bypassed requests (enabled by default for compliance).
 - `MCP_TRUSTED_PROXIES`: Comma-separated list of proxy IPs whose `X-Forwarded-For` headers are trusted during bypass checks.
+
+## AWS Secrets Manager Integration
+
+RAGent supports AWS Secrets Manager as a fallback for environment variables. When configured, secrets stored in Secrets Manager are automatically injected as environment variables at startup — but **only for keys that are not already set**. This means existing environment variables always take priority and are never overwritten.
+
+### How It Works
+
+1. On startup, RAGent checks for the `SECRET_MANAGER_SECRET_ID` environment variable.
+2. If set, it fetches the secret from AWS Secrets Manager (the secret must be stored as a JSON key-value pair).
+3. For each key in the JSON, if the corresponding environment variable is **not already set**, the value is injected.
+4. If the environment variable is already set (via `.env`, shell export, etc.), the Secrets Manager value is ignored.
+
+This design allows you to:
+- Store sensitive credentials (API keys, tokens) centrally in Secrets Manager
+- Override any secret locally by setting the environment variable directly
+- Use the same secret across multiple deployment environments
+
+### Configuration
+
+| Environment Variable | Description | Default |
+|---|---|---|
+| `SECRET_MANAGER_SECRET_ID` | Secret ID or ARN in AWS Secrets Manager | _(not set — feature disabled)_ |
+| `SECRET_MANAGER_REGION` | AWS region for Secrets Manager | `us-east-1` |
+
+### Registering Secrets
+
+Store your secrets as a JSON object in AWS Secrets Manager. Each key should match the environment variable name used by RAGent.
+
+**Using AWS CLI:**
+
+```bash
+# Create a new secret
+aws secretsmanager create-secret \
+  --name "ragent/app" \
+  --description "RAGent application secrets" \
+  --secret-string '{
+    "SLACK_BOT_TOKEN": "xoxb-your-bot-token",
+    "SLACK_USER_TOKEN": "xoxp-your-user-token",
+    "OIDC_CLIENT_SECRET": "your-oidc-secret",
+    "GITHUB_TOKEN": "ghp_your-github-token",
+    "GEMINI_API_KEY": "your-gemini-api-key"
+  }' \
+  --region us-east-1
+
+# Update an existing secret
+aws secretsmanager put-secret-value \
+  --secret-id "ragent/app" \
+  --secret-string '{
+    "SLACK_BOT_TOKEN": "xoxb-new-token",
+    "SLACK_USER_TOKEN": "xoxp-new-token",
+    "OIDC_CLIENT_SECRET": "new-secret",
+    "GITHUB_TOKEN": "ghp_new-token",
+    "GEMINI_API_KEY": "new-api-key"
+  }' \
+  --region us-east-1
+```
+
+**Using AWS Console:**
+
+1. Open the [AWS Secrets Manager Console](https://console.aws.amazon.com/secretsmanager/)
+2. Click **Store a new secret**
+3. Select **Other type of secret**
+4. Choose **Plaintext** and enter a JSON object with key-value pairs
+5. Name the secret (e.g., `ragent/app`) and complete the wizard
+
+### IAM Permissions
+
+The IAM role or user running RAGent needs the following permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:<region>:<account-id>:secret:ragent/app-*"
+    }
+  ]
+}
+```
+
+### Usage Example
+
+```bash
+# Set only the Secrets Manager config — all other secrets are fetched automatically
+export SECRET_MANAGER_SECRET_ID=ragent/app
+export SECRET_MANAGER_REGION=us-east-1
+
+# Non-secret config still set via environment / .env
+export OPENSEARCH_ENDPOINT=https://your-opensearch-endpoint
+export OPENSEARCH_INDEX=your-index
+
+# Start RAGent — SLACK_BOT_TOKEN, GITHUB_TOKEN, etc. are loaded from Secrets Manager
+RAGent slack-bot
+```
+
+```bash
+# Override a specific secret locally (takes priority over Secrets Manager)
+export SECRET_MANAGER_SECRET_ID=ragent/app
+export SLACK_BOT_TOKEN=xoxb-local-override-token  # This value wins
+
+RAGent slack-bot  # Uses the local SLACK_BOT_TOKEN, other secrets from SM
+```
+
+> **Note**: Only string values in the JSON are injected. Non-string values (objects, arrays, numbers, booleans, null) are silently skipped.
 
 ## OpenTelemetry Observability
 
@@ -1706,6 +1821,18 @@ RAGent/
    slack search failed: not_in_channel
    ```
    → Invite the bot user to the channels you want to search.
+
+10. **Secrets Manager access denied**
+    ```
+    failed to get secret value from Secrets Manager: AccessDeniedException
+    ```
+    → Ensure the IAM role has `secretsmanager:GetSecretValue` permission for the target secret ARN.
+
+11. **Secrets Manager secret not found**
+    ```
+    failed to get secret value from Secrets Manager: ResourceNotFoundException
+    ```
+    → Verify that `SECRET_MANAGER_SECRET_ID` matches an existing secret name/ARN and `SECRET_MANAGER_REGION` is correct.
 
 ### Debugging Methods
 
