@@ -308,7 +308,7 @@ func runOCRVerification(
 			pages, err = ocrClient.ExtractPages(ctx, pdfData, "e2e-test-sample.pdf")
 		}
 	case "gemini":
-		ocrClient, clientErr := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
+		ocrClient, clientErr := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.GeminiGCPProject, cfg.GeminiGCPLocation, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
 		require.NoError(t, clientErr)
 
 		pages, err = ocrClient.ExtractPages(ctx, pdfData, "e2e-test-sample.pdf")

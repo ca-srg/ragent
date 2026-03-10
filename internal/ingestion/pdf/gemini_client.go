@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	// defaultGeminiModel is the default Gemini model for OCR.
-	defaultGeminiModel = "gemini-2.5-flash"
+	defaultGeminiModel = "gemini-3.1-pro-preview"
 )
 
 // GeminiOCRClient implements the OCRClient interface using Google Gemini API.
@@ -31,10 +30,11 @@ type GeminiOCRClient struct {
 }
 
 // NewGeminiOCRClient creates a new GeminiOCRClient.
-func NewGeminiOCRClient(apiKey string, model string, timeout time.Duration, maxTokens int, concurrency int) (*GeminiOCRClient, error) {
-	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is required for OCR_PROVIDER=gemini")
-	}
+// If apiKey is provided, the Gemini API backend is used. Otherwise, the Vertex AI
+// backend with Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS) is
+// used, requiring gcpProject and gcpLocation (or their environment variable equivalents
+// GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION).
+func NewGeminiOCRClient(apiKey string, gcpProject string, gcpLocation string, model string, timeout time.Duration, maxTokens int, concurrency int) (*GeminiOCRClient, error) {
 	if model == "" {
 		model = defaultGeminiModel
 	}
@@ -44,18 +44,32 @@ func NewGeminiOCRClient(apiKey string, model string, timeout time.Duration, maxT
 	if maxTokens <= 0 {
 		maxTokens = 200000
 	}
-	if maxTokens <= 0 {
-		maxTokens = 200000
-	}
 	if concurrency <= 0 {
 		concurrency = 5
 	}
 
-	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
-	})
+	var clientConfig *genai.ClientConfig
+	if apiKey != "" {
+		clientConfig = &genai.ClientConfig{
+			APIKey:  apiKey,
+			Backend: genai.BackendGeminiAPI,
+		}
+	} else {
+		// Use Vertex AI backend with Application Default Credentials.
+		// The genai library reads GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION
+		// from environment variables when not set explicitly.
+		clientConfig = &genai.ClientConfig{
+			Backend:  genai.BackendVertexAI,
+			Project:  gcpProject,
+			Location: gcpLocation,
+		}
+	}
+
+	client, err := genai.NewClient(context.Background(), clientConfig)
 	if err != nil {
+		if apiKey == "" {
+			return nil, fmt.Errorf("failed to create Gemini client with ADC (Vertex AI): %w (set GOOGLE_APPLICATION_CREDENTIALS or GEMINI_API_KEY)", err)
+		}
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 

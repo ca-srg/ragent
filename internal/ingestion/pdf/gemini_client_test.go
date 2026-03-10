@@ -11,17 +11,23 @@ func TestGeminiOCRClient_ImplementsInterface(t *testing.T) {
 	var _ OCRClient = &GeminiOCRClient{}
 }
 
-func TestNewGeminiOCRClient_MissingAPIKey(t *testing.T) {
-	_, err := NewGeminiOCRClient("", "gemini-2.5-flash", 0, 0, 0)
+func TestNewGeminiOCRClient_MissingCredentials(t *testing.T) {
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+	t.Setenv("GOOGLE_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "")
+	_, err := NewGeminiOCRClient("", "", "", "gemini-2.5-flash", 0, 0, 0)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "GEMINI_API_KEY is required")
+	assert.Contains(t, err.Error(), "failed to create Gemini client with ADC")
 }
 
 func TestNewGeminiOCRClient_DefaultValues(t *testing.T) {
-	// Cannot create a real client without a valid API key,
-	// but we can verify default values via the error path.
-	_, err := NewGeminiOCRClient("", "", 0, 0, 0)
-	assert.Error(t, err, "should fail without API key")
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+	t.Setenv("GOOGLE_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "")
+	_, err := NewGeminiOCRClient("", "", "", "", 0, 0, 0)
+	assert.Error(t, err, "should fail without API key or ADC credentials")
 }
 
 func TestDefaultGeminiModel_IsDefined(t *testing.T) {

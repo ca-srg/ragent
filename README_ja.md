@@ -187,7 +187,12 @@ flowchart TD
     OCR -->|gemini| OCRGemini["Gemini OCR 設定
     ━━━━━━━━━━━━━━━━━━━
     OCR_PROVIDER=gemini
-    * GEMINI_API_KEY
+    GEMINI_API_KEY（API キー認証）
+    ━━━ OR ━━━
+    GOOGLE_APPLICATION_CREDENTIALS
+    GEMINI_GCP_PROJECT
+    GEMINI_GCP_LOCATION（default: us-central1）
+    ━━━━━━━━━━━━━━━━━━━
     OCR_MODEL（任意）"]
 
     NoOCR --> Optional
@@ -820,8 +825,12 @@ OCR_PROVIDER=bedrock                                    # OCR プロバイダー
 OCR_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0    # OCR 用モデル（Bedrock モデル ID または Gemini モデル名）
 OCR_TIMEOUT=120s                                        # OCR リクエストタイムアウト（デフォルト: 120s）
 
-# Gemini API 設定（OCR_PROVIDER=gemini の場合に必要）
+# Gemini 設定（OCR_PROVIDER=gemini の場合）
+# 方法1: API キー認証
 GEMINI_API_KEY=your_gemini_api_key                      # Google AI Studio API キー
+# 方法2: Application Default Credentials（GOOGLE_APPLICATION_CREDENTIALS）
+GEMINI_GCP_PROJECT=your_gcp_project_id                  # Vertex AI 用 GCP プロジェクト ID
+GEMINI_GCP_LOCATION=us-central1                         # Vertex AI 用 GCP リージョン（デフォルト: us-central1）
 
 # AWS Secrets Manager 設定（任意）
 SECRET_MANAGER_SECRET_ID=ragent/app              # AWS Secrets Manager のシークレットID（未設定で無効）

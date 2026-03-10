@@ -805,7 +805,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
 		}
 	} else if cfg.OCRProvider == "gemini" {
-		ocrClient, err := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
+		ocrClient, err := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.GeminiGCPProject, cfg.GeminiGCPLocation, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
 		if err != nil {
 			log.Printf("Warning: failed to create Gemini OCR client: %v, PDF files will be skipped", err)
 		} else {
