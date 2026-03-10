@@ -22,7 +22,7 @@ func NewWriter(dirPath string) (*Writer, error) {
 	return &Writer{dirPath: dirPath}, nil
 }
 
-func (w *Writer) WriteRecord(record *EvalRecord) (err error) {
+func (w *Writer) WriteRecord(record *EvalRecord) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -33,11 +33,7 @@ func (w *Writer) WriteRecord(record *EvalRecord) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", filePath, err)
 	}
-	defer func() {
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("failed to close file %s: %w", filePath, cerr)
-		}
-	}()
+	defer f.Close()
 
 	data, err := json.Marshal(record)
 	if err != nil {
