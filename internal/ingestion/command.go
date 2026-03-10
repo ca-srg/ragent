@@ -230,7 +230,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 					indexer, err := indexerFactory.CreateOpenSearchIndexer(openSearchIndexName, 1024)
 					if err != nil {
 						log.Printf("Warning: Failed to create OpenSearch indexer for deletion: %v", err)
-					} else {
+					} else if indexer != nil {
 						if err := indexer.DeleteIndex(deleteCtx, openSearchIndexName); err != nil {
 							log.Printf("Warning: Failed to delete OpenSearch index: %v", err)
 						} else {
@@ -473,7 +473,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 	}
 
 	// Handle pruning of deleted files
-	if pruneDeleted && changeResult != nil && len(changeResult.Deleted) > 0 && !dryRun {
+	if pruneDeleted && hashStore != nil && changeResult != nil && len(changeResult.Deleted) > 0 && !dryRun {
 		log.Printf("Pruning %d deleted files from hash store...", len(changeResult.Deleted))
 		for _, deletedPath := range changeResult.Deleted {
 			sourceType := "local"
@@ -659,12 +659,17 @@ func runFollowMode(ctx context.Context, cfg *appconfig.Config) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	var ipcStopChan <-chan struct{}
+	if ipcServer != nil {
+		ipcStopChan = ipcServer.StopChan()
+	}
+
 	for {
 		select {
 		case <-followCtx.Done():
 			log.Println("[Follow Mode] Shutdown complete.")
 			return nil
-		case <-ipcServer.StopChan():
+		case <-ipcStopChan:
 			log.Println("[Follow Mode] Stop requested via IPC.")
 			return nil
 		case <-ticker.C:
@@ -805,7 +810,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
 		}
 	} else if cfg.OCRProvider == "gemini" {
-		ocrClient, err := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
+		ocrClient, err := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.GeminiGCPProject, cfg.GeminiGCPLocation, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
 		if err != nil {
 			log.Printf("Warning: failed to create Gemini OCR client: %v, PDF files will be skipped", err)
 		} else {
@@ -1250,6 +1255,10 @@ func printCSVConfigInfo(files []*FileInfo, csvCfg *csv.Config) {
 		}
 		if err != nil {
 			fmt.Printf("  Error: %v\n", err)
+			continue
+		}
+		if info == nil {
+			fmt.Printf("  No column information detected\n")
 			continue
 		}
 

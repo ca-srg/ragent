@@ -34,7 +34,6 @@ linters:
     - contextcheck
     - lll
     - nolintlint
-
 linters-settings:
   goimports:
     local-prefixes: github.com/ca-srg/ragent
@@ -77,4 +76,3 @@ issues:
         - lll
         - wrapcheck
         - dupl
-

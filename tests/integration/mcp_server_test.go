@@ -232,7 +232,10 @@ func TestMCPServer_ToolsList(t *testing.T) {
 	req := createJSONRPCRequest("tools/list", nil, "test-1")
 	url := fmt.Sprintf("http://%s:%d", server.GetConfig().Host, server.GetConfig().Port)
 	client := &http.Client{Timeout: 5 * time.Second}
-	httpReq, _ := http.NewRequest("POST", url, req.Body)
+	httpReq, err := http.NewRequest("POST", url, req.Body)
+	if err != nil {
+		t.Fatalf("Failed to create HTTP request: %v", err)
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(httpReq)
 	if err != nil {

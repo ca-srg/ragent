@@ -502,12 +502,15 @@ func TestBypassIPCheckerImpl_ConcurrentAccess(t *testing.T) {
 }
 
 func BenchmarkShouldBypass(b *testing.B) {
-	checker, _ := NewBypassIPChecker([]string{
+	checker, err := NewBypassIPChecker([]string{
 		"10.0.0.0/8",
 		"172.16.0.0/12",
 		"192.168.0.0/16",
 		"2001:db8::/32",
 	}, false)
+	if err != nil {
+		b.Fatalf("failed to create checker: %v", err)
+	}
 
 	testIPs := []string{
 		"10.0.0.1",
@@ -527,16 +530,18 @@ func BenchmarkShouldBypass(b *testing.B) {
 
 func BenchmarkShouldBypassWithManyRanges(b *testing.B) {
 	var ranges []string
-	// Create 100 different ranges
 	for i := 0; i < 100; i++ {
 		ranges = append(ranges, fmt.Sprintf("10.%d.0.0/24", i))
 	}
 
-	checker, _ := NewBypassIPChecker(ranges, false)
+	checker, err := NewBypassIPChecker(ranges, false)
+	if err != nil {
+		b.Fatalf("failed to create checker: %v", err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		checker.ShouldBypass("10.50.0.1") // IP in middle of ranges
+		checker.ShouldBypass("10.50.0.1")
 	}
 }
 

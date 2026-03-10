@@ -175,10 +175,12 @@ func TestSSEManagerSendEventWithFilters(t *testing.T) {
 	manager.Start(context.Background())
 	defer manager.Stop()
 
-	// Client 1 only wants progress events
-	client1, _ := manager.RegisterClient("client1", []string{EventTypeVectorizeProgress})
-	// Client 2 wants all events
-	client2, _ := manager.RegisterClient("client2", nil)
+	client1, err := manager.RegisterClient("client1", []string{EventTypeVectorizeProgress})
+	require.NoError(t, err)
+	require.NotNil(t, client1)
+	client2, err := manager.RegisterClient("client2", nil)
+	require.NoError(t, err)
+	require.NotNil(t, client2)
 
 	// Send a completed event (should only go to client2)
 	manager.SendEvent(&SSEEvent{
@@ -214,8 +216,12 @@ func TestSSEManagerBroadcastToMultipleClients(t *testing.T) {
 	manager.Start(context.Background())
 	defer manager.Stop()
 
-	client1, _ := manager.RegisterClient("client1", nil)
-	client2, _ := manager.RegisterClient("client2", nil)
+	client1, err := manager.RegisterClient("client1", nil)
+	require.NoError(t, err)
+	require.NotNil(t, client1)
+	client2, err := manager.RegisterClient("client2", nil)
+	require.NoError(t, err)
+	require.NotNil(t, client2)
 
 	manager.SendEvent(&SSEEvent{
 		Event: EventTypeVectorizeProgress,
@@ -309,9 +315,10 @@ func TestSSEManagerClientClosesSafely(t *testing.T) {
 	manager.Start(context.Background())
 	defer manager.Stop()
 
-	client, _ := manager.RegisterClient("client1", nil)
+	client, err := manager.RegisterClient("client1", nil)
+	require.NoError(t, err)
+	require.NotNil(t, client)
 
-	// Unregister closes channels
 	manager.UnregisterClient("client1")
 
 	// Verify Done channel is closed

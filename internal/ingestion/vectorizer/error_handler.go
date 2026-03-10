@@ -383,7 +383,7 @@ func (eh *DualBackendErrorHandler) combineDualBackendDecisions(
 ) *ErrorHandlingDecision {
 
 	// If only one backend failed
-	if s3Error == nil && osError != nil {
+	if s3Error == nil && osError != nil && osDecision != nil {
 		// S3 succeeded, OpenSearch failed - partial success
 		decision := *osDecision
 		decision.ProcessingDecision = ProcessingPartialSuccess
@@ -391,7 +391,7 @@ func (eh *DualBackendErrorHandler) combineDualBackendDecisions(
 		return &decision
 	}
 
-	if osError == nil && s3Error != nil {
+	if osError == nil && s3Error != nil && s3Decision != nil {
 		// OpenSearch succeeded, S3 failed - partial success
 		decision := *s3Decision
 		decision.ProcessingDecision = ProcessingPartialSuccess

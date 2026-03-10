@@ -646,7 +646,10 @@ func BenchmarkMemoryUsage_SDK(b *testing.B) {
 			MCPSSEEnabled: false,
 		}
 
-		serverWrapper, _ := mcpserver.NewServerWrapper(mcpConfig)
+		serverWrapper, err := mcpserver.NewServerWrapper(mcpConfig)
+		if err != nil {
+			b.Fatalf("Failed to create server wrapper: %v", err)
+		}
 		hybridSearchHandler := mcpserver.NewHybridSearchHandler(
 			benchConfig.osClient,
 			benchConfig.embeddingClient,

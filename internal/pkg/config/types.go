@@ -108,7 +108,9 @@ type Config struct {
 	OCRConcurrency int           `json:"ocr_concurrency" env:"OCR_CONCURRENCY,default=5"`
 
 	// Gemini API configuration (for OCR_PROVIDER=gemini)
-	GeminiAPIKey string `json:"gemini_api_key" env:"GEMINI_API_KEY"`
+	GeminiAPIKey      string `json:"gemini_api_key" env:"GEMINI_API_KEY"`
+	GeminiGCPProject  string `json:"gemini_gcp_project" env:"GEMINI_GCP_PROJECT"`
+	GeminiGCPLocation string `json:"gemini_gcp_location" env:"GEMINI_GCP_LOCATION,default=us-central1"`
 }
 
 // ErrorType represents the type of error that occurred

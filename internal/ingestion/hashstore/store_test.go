@@ -68,6 +68,7 @@ func TestHashStore_UpsertAndGetFileHash(t *testing.T) {
 
 	retrieved, err = store.GetFileHash(ctx, "local", "/path/to/file.md")
 	require.NoError(t, err)
+	require.NotNil(t, retrieved)
 	assert.Equal(t, "newHash789", retrieved.ContentHash)
 	assert.Equal(t, int64(2048), retrieved.FileSize)
 }

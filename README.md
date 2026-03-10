@@ -195,7 +195,12 @@ flowchart TD
     OCR -->|gemini| OCRGemini["Gemini OCR Config
     ━━━━━━━━━━━━━━━━━━━
     OCR_PROVIDER=gemini
-    * GEMINI_API_KEY
+    GEMINI_API_KEY (API key auth)
+    ━━━ OR ━━━
+    GOOGLE_APPLICATION_CREDENTIALS
+    GEMINI_GCP_PROJECT
+    GEMINI_GCP_LOCATION (default: us-central1)
+    ━━━━━━━━━━━━━━━━━━━
     OCR_MODEL (optional)"]
 
     NoOCR --> Optional
@@ -838,8 +843,12 @@ OCR_PROVIDER=bedrock                                    # OCR provider ("bedrock
 OCR_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0    # Model for OCR (Bedrock model ID or Gemini model name)
 OCR_TIMEOUT=120s                                        # OCR request timeout (default: 120s)
 
-# Gemini API Configuration (required when OCR_PROVIDER=gemini)
+# Gemini Configuration (OCR_PROVIDER=gemini)
+# Option 1: API key authentication
 GEMINI_API_KEY=your_gemini_api_key                      # Google AI Studio API key
+# Option 2: Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS)
+GEMINI_GCP_PROJECT=your_gcp_project_id                  # GCP project ID for Vertex AI
+GEMINI_GCP_LOCATION=us-central1                         # GCP region for Vertex AI (default: us-central1)
 
 # AWS Secrets Manager Configuration (optional)
 SECRET_MANAGER_SECRET_ID=ragent/app              # Secret ID in AWS Secrets Manager (omit to disable)
