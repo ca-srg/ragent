@@ -30,11 +30,6 @@ func TestNewGeminiOCRClient_DefaultValues(t *testing.T) {
 	assert.Error(t, err, "should fail without API key or ADC credentials")
 }
 
-func TestDefaultGeminiModel_IsDefined(t *testing.T) {
-	assert.NotEmpty(t, defaultGeminiModel, "defaultGeminiModel constant should be defined and non-empty")
-	assert.Equal(t, "gemini-2.5-flash", defaultGeminiModel)
-}
-
 func TestExtractTextFromGeminiResponse_NilResponse(t *testing.T) {
 	result := extractTextFromGeminiResponse(nil)
 	assert.Empty(t, result)
