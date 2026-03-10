@@ -280,6 +280,9 @@ func (s *Server) handleRequest(ctx context.Context, req *Request) *Response {
 }
 
 func isRPCError(err error, target **RPCError) bool {
+	if target == nil {
+		return false
+	}
 	if rpcErr, ok := err.(*RPCError); ok {
 		*target = rpcErr
 		return true

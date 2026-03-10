@@ -443,12 +443,15 @@ func (m *SSEManager) NotifyToolExecution(toolName string, params interface{}, re
 		},
 	}
 
+	data := event.Data.(map[string]interface{})
 	if err != nil {
-		event.Data.(map[string]interface{})["error"] = err.Error()
-		event.Data.(map[string]interface{})["status"] = "error"
+		data["error"] = err.Error()
+		data["status"] = "error"
 	} else {
-		event.Data.(map[string]interface{})["result"] = result
-		event.Data.(map[string]interface{})["status"] = "success"
+		if result != nil {
+			data["result"] = result
+		}
+		data["status"] = "success"
 	}
 
 	m.SendEvent(event)

@@ -24,6 +24,7 @@ func TestBotSlackSearcherSearchesConversations(t *testing.T) {
 	}
 
 	searcher := newBotSlackSearcher(stub, nil)
+	require.NotNil(t, searcher)
 	res, err := searcher.SearchConversations(context.Background(), "release plan", slackbot.SearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, res)

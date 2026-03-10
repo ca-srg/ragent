@@ -48,10 +48,12 @@ func NewBot(client SlackClient, processor *Processor, logger *log.Logger) (*Bot,
 	if logger == nil {
 		logger = log.New(os.Stdout, "slackbot ", log.LstdFlags)
 	}
-	// auth test to get bot user id
 	auth, err := client.AuthTest()
 	if err != nil {
 		return nil, err
+	}
+	if auth == nil {
+		return nil, fmt.Errorf("auth test returned nil response")
 	}
 	bot := &Bot{
 		client:    client,

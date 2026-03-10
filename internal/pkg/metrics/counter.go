@@ -33,6 +33,10 @@ func RecordInvocation(mode Mode) {
 			log.Printf("metrics: cannot record invocation, store not initialized: %v", err)
 			return
 		}
+		if globalStore == nil {
+			log.Printf("metrics: store is nil after initialization")
+			return
+		}
 	}
 
 	if err := globalStore.Increment(mode); err != nil {

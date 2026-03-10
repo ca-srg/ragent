@@ -1,0 +1,5 @@
+version: v1.57.0
+plugins:
+  - module: "go.uber.org/nilaway"
+    import: "go.uber.org/nilaway/cmd/gclplugin"
+    version: latest

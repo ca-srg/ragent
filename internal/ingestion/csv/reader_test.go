@@ -27,6 +27,9 @@ func TestReader_ReadFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read CSV file: %v", err)
 	}
+	if files == nil {
+		t.Fatal("expected non-nil files")
+	}
 
 	if len(files) != 3 {
 		t.Errorf("expected 3 files, got %d", len(files))
@@ -83,6 +86,9 @@ func TestReader_ReadFile_WithConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read CSV file: %v", err)
 	}
+	if files == nil {
+		t.Fatal("expected non-nil files")
+	}
 
 	if len(files) != 2 {
 		t.Errorf("expected 2 files, got %d", len(files))
@@ -135,6 +141,9 @@ Title2,Body2
 	files, err := reader.ReadFile(csvPath)
 	if err != nil {
 		t.Fatalf("failed to read CSV file: %v", err)
+	}
+	if files == nil {
+		t.Fatal("expected non-nil files")
 	}
 
 	expectedContent := "# Title1\n\nBody1"
@@ -605,6 +614,9 @@ func TestReader_ReadFile_WithHeaderRow(t *testing.T) {
 	files, err := reader.ReadFile(csvPath)
 	if err != nil {
 		t.Fatalf("failed to read CSV file: %v", err)
+	}
+	if files == nil {
+		t.Fatal("expected non-nil files")
 	}
 
 	// Should have 3 data rows (rows 8, 9, 10)

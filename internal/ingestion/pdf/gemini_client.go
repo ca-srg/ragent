@@ -147,8 +147,8 @@ func (c *GeminiOCRClient) extractPagesFromLargePDF(ctx context.Context, pdfData 
 		}
 		batch := pages[i:end]
 
-		var pagePDFs [][]byte
-		var pageIndices []int
+		pagePDFs := make([][]byte, 0, len(batch))
+		pageIndices := make([]int, 0, len(batch))
 		for _, p := range batch {
 			pagePDFs = append(pagePDFs, p.data)
 			pageIndices = append(pageIndices, p.index)
