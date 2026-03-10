@@ -10,7 +10,6 @@ run:
 linters:
   disable-all: true
   enable:
-    - nilaway
     - govet
     - staticcheck
     - revive
@@ -35,13 +34,6 @@ linters:
     - contextcheck
     - lll
     - nolintlint
-  settings:
-    custom:
-      nilaway:
-        type: module
-        description: Static analysis tool to detect potential nil panics in Go code.
-        settings:
-          include-pkgs: "github.com/ca-srg/ragent"
 linters-settings:
   goimports:
     local-prefixes: github.com/ca-srg/ragent
