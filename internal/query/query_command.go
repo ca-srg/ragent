@@ -158,6 +158,22 @@ func runSlackOnlySearch(opts QueryOptions) error {
 		return fmt.Errorf("slack search failed: %w", err)
 	}
 
+	if opts.ExportEval {
+		record := evalexport.NewEvalRecord("query", opts.QueryText)
+		record.RunConfig = evalexport.RunConfig{
+			SearchMode:         "slack_only",
+			ChatModel:          cfg.ChatModel,
+			EmbeddingModel:     "amazon.titan-embed-text-v2:0",
+			SlackSearchEnabled: true,
+		}
+		record.References = map[string]string{}
+		if writer, werr := evalexport.NewWriter(opts.ExportEvalPath); werr != nil {
+			log.Printf("Warning: failed to create eval export writer: %v", werr)
+		} else if werr := writer.WriteRecord(record); werr != nil {
+			log.Printf("Warning: failed to export eval record: %v", werr)
+		}
+	}
+
 	return outputSlackOnlyResults(result, opts.QueryText, opts.OutputJSON)
 }
 
