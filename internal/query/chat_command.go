@@ -125,6 +125,15 @@ func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockCli
 	// Note: System prompt will be added to the first user message context instead of using "system" role
 	// because Bedrock Claude API only supports "user" and "assistant" roles
 
+	var evalWriter *evalexport.Writer
+	if opts.ExportEval {
+		var werr error
+		evalWriter, werr = evalexport.NewWriter(opts.ExportEvalPath)
+		if werr != nil {
+			log.Printf("Warning: failed to create eval export writer: %v", werr)
+		}
+	}
+
 	for {
 		fmt.Print("You: ")
 		if !scanner.Scan() {
@@ -163,7 +172,7 @@ func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockCli
 
 		fmt.Printf("Assistant: %s\n\n", result.Response)
 
-		if opts.ExportEval {
+		if evalWriter != nil {
 			record := evalexport.NewEvalRecord("chat", userInput)
 			record.Response = result.Response
 			record.RetrievedContexts = result.ContextParts
@@ -184,11 +193,8 @@ func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockCli
 				EmbeddingModel:     "amazon.titan-embed-text-v2:0",
 				SlackSearchEnabled: cfg.SlackSearchEnabled,
 			}
-
-			if writer, err := evalexport.NewWriter(opts.ExportEvalPath); err != nil {
-				log.Printf("Warning: failed to create eval export writer: %v", err)
-			} else if err := writer.WriteRecord(record); err != nil {
-				log.Printf("Warning: failed to export eval record: %v", err)
+			if werr := evalWriter.WriteRecord(record); werr != nil {
+				log.Printf("Warning: failed to export eval record: %v", werr)
 			}
 		}
 	}
