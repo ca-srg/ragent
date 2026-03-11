@@ -26,6 +26,7 @@ func NewEmbeddingClient(cfg *config.Config) (EmbeddingClient, error) {
 			cfg.GeminiGCPProject,
 			cfg.GeminiGCPLocation,
 			cfg.EmbeddingModel,
+			cfg.EmbeddingDimension,
 		)
 	default:
 		return nil, fmt.Errorf(

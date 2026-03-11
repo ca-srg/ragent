@@ -846,6 +846,7 @@ OCR_TIMEOUT=120s                                        # OCR request timeout (d
 # Embedding Configuration
 EMBEDDING_PROVIDER=bedrock                              # Embedding provider ("bedrock" [default] or "gemini")
 EMBEDDING_MODEL=                                        # Embedding model ID (optional; defaults to provider's default)
+EMBEDDING_DIMENSION=                                    # Output vector dimension (optional; overrides model default)
 
 # Gemini Configuration (OCR_PROVIDER=gemini and/or EMBEDDING_PROVIDER=gemini)
 # Option 1: API key authentication
@@ -876,6 +877,8 @@ export GEMINI_GCP_LOCATION=us-central1
 ```
 
 When `EMBEDDING_MODEL` is omitted, Gemini defaults to `text-embedding-004` (768 dimensions). Bedrock defaults to `amazon.titan-embed-text-v2:0` (1024 dimensions).
+
+Models such as `gemini-embedding-2-preview` support configurable output dimensions. Set `EMBEDDING_DIMENSION` to match your vector store index — for example `EMBEDDING_DIMENSION=1024` for an OpenSearch index created with 1024 dimensions. When omitted, the model's default dimension is used.
 
 Slack search requires `SLACK_SEARCH_ENABLED=true`, a valid `SLACK_BOT_TOKEN`, **and** a user token `SLACK_USER_TOKEN` that includes scopes such as `search:read`, `channels:history`, `groups:history`, and other conversation history scopes relevant to the channels you query. The search-specific knobs let you tune throughput and cost per workspace without touching the core document pipeline.
 

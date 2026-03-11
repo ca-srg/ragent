@@ -828,6 +828,7 @@ OCR_TIMEOUT=120s                                        # OCR リクエストタ
 # Embedding 設定
 EMBEDDING_PROVIDER=bedrock                              # Embedding プロバイダー（"bedrock"[デフォルト] または "gemini"）
 EMBEDDING_MODEL=                                        # Embedding モデル ID（任意。省略時はプロバイダーのデフォルトを使用）
+EMBEDDING_DIMENSION=                                    # 出力ベクトルの次元数（任意。モデルのデフォルトを上書き）
 
 # Gemini 設定（OCR_PROVIDER=gemini および/または EMBEDDING_PROVIDER=gemini の場合）
 # 方法1: API キー認証
@@ -858,6 +859,8 @@ export GEMINI_GCP_LOCATION=us-central1
 ```
 
 `EMBEDDING_MODEL` を省略した場合、Gemini は `text-embedding-004`（768次元）をデフォルトとして使用します。Bedrock のデフォルトは `amazon.titan-embed-text-v2:0`（1024次元）です。
+
+`gemini-embedding-2-preview` などのモデルは出力次元数を変更できます。`EMBEDDING_DIMENSION` でベクトルストアのインデックスに合わせてください。例えば、1024次元で作成された OpenSearch インデックスには `EMBEDDING_DIMENSION=1024` を指定します。省略時はモデルのデフォルト次元数が使用されます。
 
 Slack検索を利用する場合は、`SLACK_SEARCH_ENABLED=true`・`SLACK_BOT_TOKEN` に加えて、`search:read` や `channels:history` / `groups:history` など必要なスコープを付与した `SLACK_USER_TOKEN` を同じワークスペースで設定してください。Slack検索用の環境変数でスループットや動作を調整できます。
 

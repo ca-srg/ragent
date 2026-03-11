@@ -22,7 +22,7 @@ type GeminiEmbeddingClient struct {
 	dimension   int
 }
 
-func NewGeminiEmbeddingClient(apiKey, gcpProject, gcpLocation, model string) (*GeminiEmbeddingClient, error) {
+func NewGeminiEmbeddingClient(apiKey, gcpProject, gcpLocation, model string, dimension int) (*GeminiEmbeddingClient, error) {
 	if model == "" {
 		model = defaultGeminiEmbeddingModel
 	}
@@ -53,10 +53,14 @@ func NewGeminiEmbeddingClient(apiKey, gcpProject, gcpLocation, model string) (*G
 		return nil, fmt.Errorf("failed to create Gemini embedding client: %w", err)
 	}
 
+	if dimension <= 0 {
+		dimension = modelDimension(model)
+	}
+
 	return &GeminiEmbeddingClient{
 		genaiClient: client,
 		model:       model,
-		dimension:   modelDimension(model),
+		dimension:   dimension,
 	}, nil
 }
 

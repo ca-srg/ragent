@@ -19,7 +19,7 @@ func TestGeminiEmbeddingClientImplementsInterface(t *testing.T) {
 }
 
 func TestNewGeminiEmbeddingClientValidation(t *testing.T) {
-	client, err := NewGeminiEmbeddingClient("", "", "", "")
+	client, err := NewGeminiEmbeddingClient("", "", "", "", 0)
 	require.Error(t, err)
 	assert.Nil(t, client)
 	assert.Contains(t, err.Error(), "gemini credentials not configured")
