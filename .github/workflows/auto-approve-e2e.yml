@@ -14,7 +14,7 @@ permissions: {}
 jobs:
   auto-approve:
     name: Auto-approve for maintainers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     permissions:
       actions: write # Required to approve pending deployments.
