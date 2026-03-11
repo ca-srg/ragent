@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/pflag"
 
 	appcfg "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/observability"
@@ -418,8 +419,10 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		}
 		logger.Printf("OpenSearch connection established: %s", cfg.OpenSearchEndpoint)
 
-		// Initialize Bedrock embedding client
-		embeddingClient := bedrock.NewBedrockClient(awsConfig, "amazon.titan-embed-text-v2:0")
+		embeddingClient, err := embedding.NewEmbeddingClient(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to create embedding client: %w", err)
+		}
 
 		// Create hybrid search tool configuration
 		hybridSearchConfig := &HybridSearchConfig{

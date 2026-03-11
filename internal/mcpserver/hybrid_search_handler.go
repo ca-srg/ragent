@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
@@ -26,7 +25,7 @@ type HybridSearchHandler struct {
 }
 
 // NewHybridSearchHandler creates a new SDK-compatible hybrid search handler
-func NewHybridSearchHandler(osClient *opensearch.Client, embeddingClient *bedrock.BedrockClient, config *HybridSearchConfig, slackService *slacksearch.SlackSearchService) *HybridSearchHandler {
+func NewHybridSearchHandler(osClient *opensearch.Client, embeddingClient opensearch.EmbeddingClient, config *HybridSearchConfig, slackService *slacksearch.SlackSearchService) *HybridSearchHandler {
 	adapter := NewHybridSearchToolAdapter(osClient, embeddingClient, config, slackService)
 
 	return &HybridSearchHandler{

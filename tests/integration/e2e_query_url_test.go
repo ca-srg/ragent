@@ -136,7 +136,6 @@ func TestQueryCommandURLAwareSearch(t *testing.T) {
 	for _, tc := range tcases {
 		t.Run(tc.name, func(t *testing.T) {
 			stubSearch := newStubSearchClient()
-			stubEmbedding := &stubEmbeddingClient{vector: []float64{0.1, 0.2, 0.3}}
 			if tc.configureStub != nil {
 				tc.configureStub(stubSearch)
 			}
@@ -149,9 +148,6 @@ func TestQueryCommandURLAwareSearch(t *testing.T) {
 					S3VectorRegion:     "us-west-2",
 				}, nil),
 				LoadBedrockAWSConfig: cmd.DefaultBedrockAWSConfigOverride(aws.Config{Region: "us-west-2"}, nil),
-				NewEmbeddingClient: func(cfg aws.Config, modelID string) opensearch.EmbeddingClient {
-					return stubEmbedding
-				},
 				NewOpenSearchClient: func(cfg *opensearch.Config) (cmd.QuerySearchClient, error) {
 					return stubSearch, nil
 				},

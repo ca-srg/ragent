@@ -65,7 +65,7 @@ func (f *IndexerFactory) CreateOpenSearchIndexer(indexName string, dimension int
 
 	// Set default dimension if not provided
 	if dimension <= 0 {
-		dimension = 1024 // Default for Amazon Titan Text Embedding v2
+		dimension = 768 // Default fallback (use GetModelInfo() at call site for accuracy)
 	}
 
 	// Create OpenSearch indexer
@@ -206,8 +206,10 @@ func (sf *ServiceFactory) CreateServiceConfig(
 			return nil, fmt.Errorf("OpenSearch configuration validation failed: %w", err)
 		}
 
-		// Default dimension for embeddings (can be overridden)
-		dimension := 1024 // Amazon Titan Text Embedding v2
+		_, dimension, err := embeddingClient.GetModelInfo()
+		if err != nil || dimension <= 0 {
+			dimension = 768
+		}
 
 		indexer, err := sf.indexerFactory.CreateOpenSearchIndexer(opensearchIndexName, dimension)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/search"
@@ -34,7 +35,7 @@ func TestGenerateChatResponseIncludesSlackContext(t *testing.T) {
 		},
 	}
 
-	queryimpl.NewHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient *bedrock.BedrockClient) (queryimpl.HybridSearchInitializer, error) {
+	queryimpl.NewHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient embedding.EmbeddingClient) (queryimpl.HybridSearchInitializer, error) {
 		stubService.config = cfg
 		return stubService, nil
 	}
@@ -126,7 +127,7 @@ func TestGenerateChatResponseWithoutSlack(t *testing.T) {
 		},
 	}
 
-	queryimpl.NewHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient *bedrock.BedrockClient) (queryimpl.HybridSearchInitializer, error) {
+	queryimpl.NewHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient embedding.EmbeddingClient) (queryimpl.HybridSearchInitializer, error) {
 		return stubService, nil
 	}
 

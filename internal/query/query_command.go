@@ -163,7 +163,7 @@ func runSlackOnlySearch(opts QueryOptions) error {
 		record.RunConfig = evalexport.RunConfig{
 			SearchMode:         "slack_only",
 			ChatModel:          cfg.ChatModel,
-			EmbeddingModel:     "amazon.titan-embed-text-v2:0",
+			EmbeddingModel:     cfg.EmbeddingModel,
 			SlackSearchEnabled: true,
 		}
 		record.References = map[string]string{}
@@ -193,7 +193,7 @@ func runHybridSearch(ctx context.Context, cfg *appconfig.Config, awsCfg aws.Conf
 	}
 
 	if opts.ExportEval {
-		record := buildEvalRecordFromHybridResult(opts, cfg, docResult)
+		record := buildEvalRecordFromHybridResult(opts, cfg, docResult, cfg.EmbeddingModel)
 		if writer, err := evalexport.NewWriter(opts.ExportEvalPath); err != nil {
 			log.Printf("Warning: failed to create eval export writer: %v", err)
 		} else if err := writer.WriteRecord(record); err != nil {
@@ -220,7 +220,7 @@ func runOpenSearchOnly(ctx context.Context, cfg *appconfig.Config, embeddingClie
 	}
 
 	if opts.ExportEval {
-		record := buildEvalRecordFromHybridResult(opts, cfg, osResult)
+		record := buildEvalRecordFromHybridResult(opts, cfg, osResult, cfg.EmbeddingModel)
 		if writer, werr := evalexport.NewWriter(opts.ExportEvalPath); werr != nil {
 			log.Printf("Warning: failed to create eval export writer: %v", werr)
 		} else if werr := writer.WriteRecord(record); werr != nil {
@@ -750,7 +750,7 @@ func defaultFetchSlackURLContext(
 }
 
 // buildEvalRecordFromHybridResult constructs an EvalRecord from a hybrid search result.
-func buildEvalRecordFromHybridResult(opts QueryOptions, cfg *appconfig.Config, result *opensearch.HybridSearchResult) *evalexport.EvalRecord {
+func buildEvalRecordFromHybridResult(opts QueryOptions, cfg *appconfig.Config, result *opensearch.HybridSearchResult, embModelName string) *evalexport.EvalRecord {
 	record := evalexport.NewEvalRecord("query", opts.QueryText)
 
 	record.RunConfig = evalexport.RunConfig{
@@ -762,7 +762,7 @@ func buildEvalRecordFromHybridResult(opts QueryOptions, cfg *appconfig.Config, r
 		IndexName:          getIndexName(cfg, opts),
 		UseJapaneseNLP:     opts.UseJapaneseNLP,
 		ChatModel:          cfg.ChatModel,
-		EmbeddingModel:     "amazon.titan-embed-text-v2:0",
+		EmbeddingModel:     embModelName,
 		SlackSearchEnabled: cfg.SlackSearchEnabled,
 	}
 

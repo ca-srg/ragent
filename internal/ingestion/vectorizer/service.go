@@ -532,7 +532,8 @@ func (vs *VectorizerService) dryRunProcessing(files []*FileInfo) (*ProcessingRes
 		// Simulate processing actions
 		documentID := vs.metadataExtractor.GenerateKey(metadata)
 		log.Printf("  Document ID: %s", documentID)
-		log.Printf("  Would generate embedding vector (1024 dimensions)")
+		_, dim, _ := vs.embeddingClient.GetModelInfo()
+		log.Printf("  Would generate embedding vector (%d dimensions)", dim)
 		log.Printf("  Would store to S3 Vector with metadata")
 
 		if vs.enableOpenSearch && vs.opensearchIndexer != nil {
@@ -688,13 +689,14 @@ func (vs *VectorizerService) ensureOpenSearchIndex(ctx context.Context) error {
 
 	if !exists {
 		log.Printf("Creating OpenSearch index: %s", indexName)
-		// Create index with Japanese-optimized mappings
+		_, dimension, dimErr := vs.embeddingClient.GetModelInfo()
+		if dimErr != nil || dimension <= 0 {
+			dimension = 768
+		}
 		if osIndexer, ok := vs.opensearchIndexer.(*OpenSearchIndexerImpl); ok {
-			// Use the Japanese-optimized index creation
-			err = osIndexer.CreateVectorIndexWithJapanese(ctx, indexName, 1024)
+			err = osIndexer.CreateVectorIndexWithJapanese(ctx, indexName, dimension)
 		} else {
-			// Fallback to standard index creation
-			err = vs.opensearchIndexer.CreateIndex(ctx, indexName, 1024)
+			err = vs.opensearchIndexer.CreateIndex(ctx, indexName, dimension)
 		}
 
 		if err != nil {

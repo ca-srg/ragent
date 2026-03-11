@@ -185,6 +185,8 @@ func startChatLoop(chatClient ChatResponder, embeddingClient embedding.Embedding
 				TotalMs: turnMs,
 				LLMMs:   result.LLMMs,
 			}
+			var chatEmbModelName string
+			chatEmbModelName, _, _ = embeddingClient.GetModelInfo()
 			record.RunConfig = evalexport.RunConfig{
 				SearchMode:         "hybrid",
 				BM25Weight:         opts.BM25Weight,
@@ -194,7 +196,7 @@ func startChatLoop(chatClient ChatResponder, embeddingClient embedding.Embedding
 				IndexName:          getIndexNameForChat(cfg, "hybrid"),
 				UseJapaneseNLP:     opts.UseJapaneseNLP,
 				ChatModel:          cfg.ChatModel,
-				EmbeddingModel:     "amazon.titan-embed-text-v2:0",
+				EmbeddingModel:     chatEmbModelName,
 				SlackSearchEnabled: cfg.SlackSearchEnabled,
 			}
 			if werr := evalWriter.WriteRecord(record); werr != nil {

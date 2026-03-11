@@ -266,11 +266,17 @@ func (s *Server) initializeVectorizer(ctx context.Context) error {
 	// Create metadata extractor
 	metadataExtractor := metadata.NewMetadataExtractor()
 
-	// Create OpenSearch indexer (optional)
 	var osIndexer vectorizer.OpenSearchIndexer
 	if s.appConfig.OpenSearchEndpoint != "" {
 		factory := vectorizer.NewIndexerFactory(s.appConfig)
-		osIndexer, err = factory.CreateOpenSearchIndexer(s.appConfig.OpenSearchIndex, 1024)
+		var webDimension int = 768
+		if embeddingClient != nil {
+			_, d, dErr := embeddingClient.GetModelInfo()
+			if dErr == nil && d > 0 {
+				webDimension = d
+			}
+		}
+		osIndexer, err = factory.CreateOpenSearchIndexer(s.appConfig.OpenSearchIndex, webDimension)
 		if err != nil {
 			s.logger.Printf("Warning: failed to create OpenSearch indexer: %v", err)
 		}

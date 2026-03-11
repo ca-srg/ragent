@@ -229,7 +229,15 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 			if serviceFactory != nil {
 				indexerFactory := vectorizer.NewIndexerFactory(cfg)
 				if indexerFactory.IsOpenSearchEnabled() {
-					indexer, err := indexerFactory.CreateOpenSearchIndexer(openSearchIndexName, 1024)
+					embeddingClient, embErr := embedding.NewEmbeddingClient(cfg)
+					embDimension := 768
+					if embErr == nil {
+						_, d, dErr := embeddingClient.GetModelInfo()
+						if dErr == nil && d > 0 {
+							embDimension = d
+						}
+					}
+					indexer, err := indexerFactory.CreateOpenSearchIndexer(openSearchIndexName, embDimension)
 					if err != nil {
 						log.Printf("Warning: Failed to create OpenSearch indexer for deletion: %v", err)
 					} else if indexer != nil {
@@ -238,7 +246,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 						} else {
 							log.Printf("Successfully deleted OpenSearch index: %s", openSearchIndexName)
 							log.Printf("Recreating OpenSearch index: %s", openSearchIndexName)
-							if err := indexer.CreateIndex(deleteCtx, openSearchIndexName, 1024); err != nil {
+							if err := indexer.CreateIndex(deleteCtx, openSearchIndexName, embDimension); err != nil {
 								log.Printf("Warning: Failed to recreate OpenSearch index: %v", err)
 							} else {
 								log.Printf("Successfully recreated OpenSearch index: %s", openSearchIndexName)

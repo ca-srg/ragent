@@ -8,6 +8,7 @@ import (
 
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	"github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 )
 
@@ -47,8 +48,16 @@ func RunRecreateIndex() error {
 		indexName = "kiberag-vectors"
 	}
 
-	// Create indexer
-	indexer := vectorizer.NewOpenSearchIndexer(osClient, indexName, 1024)
+	embeddingClient, embErr := embedding.NewEmbeddingClient(cfg)
+	embDimension := 768
+	if embErr == nil {
+		_, d, dErr := embeddingClient.GetModelInfo()
+		if dErr == nil && d > 0 {
+			embDimension = d
+		}
+	}
+
+	indexer := vectorizer.NewOpenSearchIndexer(osClient, indexName, embDimension)
 
 	// Check if index exists
 	exists, err := indexer.IndexExists(ctx, indexName)
@@ -95,12 +104,12 @@ func RunRecreateIndex() error {
 	// Create new index with correct mapping
 	log.Printf("Creating new index with proper mapping: %s", indexName)
 	// Use Japanese-optimized index creation with kuromoji analyzer for better BM25 search
-	err = indexer.CreateVectorIndexWithJapanese(ctx, indexName, 1024)
+	err = indexer.CreateVectorIndexWithJapanese(ctx, indexName, embDimension)
 	if err != nil {
 		return fmt.Errorf("failed to create index: %w", err)
 	}
 
-	log.Printf("Successfully created index: %s with 1024-dimensional embedding field", indexName)
+	log.Printf("Successfully created index: %s with %d-dimensional embedding field", indexName, embDimension)
 
 	// Verify the index was created
 	exists, err = indexer.IndexExists(ctx, indexName)
