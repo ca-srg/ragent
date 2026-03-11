@@ -26,6 +26,8 @@ var (
 	timeout        int
 	queryOnlySlack bool
 	slackChannels  []string
+	exportEval     bool
+	exportEvalPath string
 )
 
 var queryCmd = &cobra.Command{
@@ -65,6 +67,8 @@ Examples:
 			Timeout:        timeout,
 			OnlySlack:      queryOnlySlack,
 			SlackChannels:  slackChannels,
+			ExportEval:     exportEval,
+			ExportEvalPath: exportEvalPath,
 		})
 	},
 }
@@ -85,6 +89,8 @@ func init() {
 	queryCmd.Flags().IntVar(&timeout, "timeout", 30, "Request timeout in seconds")
 	queryCmd.Flags().BoolVar(&queryOnlySlack, "only-slack", false, "Search only Slack conversations (skip OpenSearch)")
 	queryCmd.Flags().StringSliceVar(&slackChannels, "slack-channels", nil, "Limit Slack search to specific channel names (omit leading #)")
+	queryCmd.Flags().BoolVar(&exportEval, "export-eval", false, "Enable evaluation data export")
+	queryCmd.Flags().StringVar(&exportEvalPath, "export-eval-path", "./evaluation/exports/", "Output directory for JSONL evaluation data")
 
 	if err := queryCmd.MarkFlagRequired("query"); err != nil {
 		log.Fatalf("Failed to mark query flag as required: %v", err)

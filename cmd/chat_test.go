@@ -76,10 +76,10 @@ func TestGenerateChatResponseIncludesSlackContext(t *testing.T) {
 
 	awsCfg := aws.Config{Region: "us-west-2"}
 
-	var resp string
+	var result *queryimpl.ChatResult
 	output := captureOutput(t, func() {
 		var err error
-		resp, err = queryimpl.GenerateChatResponse(
+		result, err = queryimpl.GenerateChatResponse(
 			"How do we deploy?",
 			nil,
 			chatClient,
@@ -96,9 +96,10 @@ func TestGenerateChatResponseIncludesSlackContext(t *testing.T) {
 	assert.Contains(t, output, "Refining Slack search (iteration 1/2)...")
 	assert.Contains(t, output, "Slack search completed in 2 iteration(s).")
 	assert.Contains(t, output, "=== Slack Conversations ===")
-	assert.True(t, strings.HasPrefix(resp, "All good"))
-	assert.Contains(t, resp, "## Slack Conversations")
-	assert.Contains(t, resp, "https://slack.example.com/archives/C001/p1700000000000")
+	require.NotNil(t, result)
+	assert.True(t, strings.HasPrefix(result.Response, "All good"))
+	assert.Contains(t, result.Response, "## Slack Conversations")
+	assert.Contains(t, result.Response, "https://slack.example.com/archives/C001/p1700000000000")
 
 	require.Len(t, chatClient.messages, 1)
 	lastMessage := chatClient.messages[0][len(chatClient.messages[0])-1]
@@ -138,10 +139,10 @@ func TestGenerateChatResponseWithoutSlack(t *testing.T) {
 	cfg := &appconfig.Config{SlackSearchEnabled: false}
 	awsCfg := aws.Config{Region: "us-west-2"}
 
-	var resp string
+	var result *queryimpl.ChatResult
 	output := captureOutput(t, func() {
 		var err error
-		resp, err = queryimpl.GenerateChatResponse(
+		result, err = queryimpl.GenerateChatResponse(
 			"Status?",
 			nil,
 			chatClient,
@@ -156,7 +157,8 @@ func TestGenerateChatResponseWithoutSlack(t *testing.T) {
 
 	assert.Contains(t, output, "Searching documents...")
 	assert.NotContains(t, output, "Slack search completed")
-	assert.Equal(t, "Done", resp)
+	require.NotNil(t, result)
+	assert.Equal(t, "Done", result.Response)
 	require.Len(t, chatClient.messages, 1)
 	lastMessage := chatClient.messages[0][len(chatClient.messages[0])-1]
 	assert.NotContains(t, lastMessage.Content, "Slack Conversations")

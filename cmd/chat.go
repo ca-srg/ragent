@@ -14,6 +14,8 @@ var (
 	chatVectorWeight   float64
 	chatUseJapaneseNLP bool
 	chatOnlySlack      bool
+	chatExportEval     bool
+	chatExportEvalPath string
 )
 
 var chatCmd = &cobra.Command{
@@ -40,6 +42,8 @@ Examples:
 			VectorWeight:   chatVectorWeight,
 			UseJapaneseNLP: chatUseJapaneseNLP,
 			OnlySlack:      chatOnlySlack,
+			ExportEval:     chatExportEval,
+			ExportEvalPath: chatExportEvalPath,
 		})
 	},
 }
@@ -52,4 +56,6 @@ func init() {
 	chatCmd.Flags().Float64VarP(&chatVectorWeight, "vector-weight", "v", 0.5, "Weight for vector scoring in hybrid search (0-1)")
 	chatCmd.Flags().BoolVar(&chatUseJapaneseNLP, "use-japanese-nlp", true, "Use Japanese NLP optimization for OpenSearch")
 	chatCmd.Flags().BoolVar(&chatOnlySlack, "only-slack", false, "Search only Slack conversations (skip OpenSearch)")
+	chatCmd.Flags().BoolVar(&chatExportEval, "export-eval", false, "Enable evaluation data export")
+	chatCmd.Flags().StringVar(&chatExportEvalPath, "export-eval-path", "./evaluation/exports/", "Output directory for JSONL evaluation data")
 }

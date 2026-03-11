@@ -17,6 +17,7 @@ import (
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
@@ -98,6 +99,8 @@ type QueryOptions struct {
 	Timeout        int
 	OnlySlack      bool
 	SlackChannels  []string
+	ExportEval     bool
+	ExportEvalPath string
 }
 
 // RunQuery is the exported entry point called from cmd/query.go.
@@ -155,6 +158,22 @@ func runSlackOnlySearch(opts QueryOptions) error {
 		return fmt.Errorf("slack search failed: %w", err)
 	}
 
+	if opts.ExportEval {
+		record := evalexport.NewEvalRecord("query", opts.QueryText)
+		record.RunConfig = evalexport.RunConfig{
+			SearchMode:         "slack_only",
+			ChatModel:          cfg.ChatModel,
+			EmbeddingModel:     "amazon.titan-embed-text-v2:0",
+			SlackSearchEnabled: true,
+		}
+		record.References = map[string]string{}
+		if writer, werr := evalexport.NewWriter(opts.ExportEvalPath); werr != nil {
+			log.Printf("Warning: failed to create eval export writer: %v", werr)
+		} else if werr := writer.WriteRecord(record); werr != nil {
+			log.Printf("Warning: failed to export eval record: %v", werr)
+		}
+	}
+
 	return outputSlackOnlyResults(result, opts.QueryText, opts.OutputJSON)
 }
 
@@ -171,6 +190,15 @@ func runHybridSearch(ctx context.Context, cfg *appconfig.Config, awsCfg aws.Conf
 	docResult, docErr := attemptOpenSearchHybrid(ctx, cfg, embeddingClient, opts)
 	if docErr != nil {
 		return fmt.Errorf("hybrid search failed: %w", docErr)
+	}
+
+	if opts.ExportEval {
+		record := buildEvalRecordFromHybridResult(opts, cfg, docResult)
+		if writer, err := evalexport.NewWriter(opts.ExportEvalPath); err != nil {
+			log.Printf("Warning: failed to create eval export writer: %v", err)
+		} else if err := writer.WriteRecord(record); err != nil {
+			log.Printf("Warning: failed to export eval record: %v", err)
+		}
 	}
 
 	var slackResult *slacksearch.SlackSearchResult
@@ -190,6 +218,16 @@ func runOpenSearchOnly(ctx context.Context, cfg *appconfig.Config, embeddingClie
 	if err != nil {
 		return fmt.Errorf("OpenSearch search failed: %w", err)
 	}
+
+	if opts.ExportEval {
+		record := buildEvalRecordFromHybridResult(opts, cfg, osResult)
+		if writer, werr := evalexport.NewWriter(opts.ExportEvalPath); werr != nil {
+			log.Printf("Warning: failed to create eval export writer: %v", werr)
+		} else if werr := writer.WriteRecord(record); werr != nil {
+			log.Printf("Warning: failed to export eval record: %v", werr)
+		}
+	}
+
 	return OutputHybridResults(osResult, "opensearch", opts)
 }
 
@@ -709,6 +747,79 @@ func defaultFetchSlackURLContext(
 	}
 
 	return response.EnrichedMessages, nil
+}
+
+// buildEvalRecordFromHybridResult constructs an EvalRecord from a hybrid search result.
+func buildEvalRecordFromHybridResult(opts QueryOptions, cfg *appconfig.Config, result *opensearch.HybridSearchResult) *evalexport.EvalRecord {
+	record := evalexport.NewEvalRecord("query", opts.QueryText)
+
+	record.RunConfig = evalexport.RunConfig{
+		SearchMode:         opts.SearchMode,
+		BM25Weight:         opts.BM25Weight,
+		VectorWeight:       opts.VectorWeight,
+		FusionMethod:       opts.FusionMethod,
+		TopK:               opts.TopK,
+		IndexName:          getIndexName(cfg, opts),
+		UseJapaneseNLP:     opts.UseJapaneseNLP,
+		ChatModel:          cfg.ChatModel,
+		EmbeddingModel:     "amazon.titan-embed-text-v2:0",
+		SlackSearchEnabled: cfg.SlackSearchEnabled,
+	}
+
+	record.Timing = evalexport.Timing{
+		TotalMs:     result.ExecutionTime.Milliseconds(),
+		EmbeddingMs: result.EmbeddingTime.Milliseconds(),
+		BM25Ms:      result.BM25Time.Milliseconds(),
+		VectorMs:    result.VectorTime.Milliseconds(),
+		FusionMs:    result.FusionTime.Milliseconds(),
+	}
+
+	if result.FusionResult == nil {
+		return record
+	}
+
+	docs := make([]evalexport.RetrievedDoc, 0, len(result.FusionResult.Documents))
+	for _, doc := range result.FusionResult.Documents {
+		rdoc := evalexport.RetrievedDoc{
+			DocID:       doc.ID,
+			Rank:        doc.Rank,
+			FusedScore:  doc.FusedScore,
+			BM25Score:   doc.BM25Score,
+			VectorScore: doc.VectorScore,
+			SearchType:  doc.SearchType,
+		}
+
+		if doc.Source != nil {
+			var src map[string]interface{}
+			if err := json.Unmarshal(doc.Source, &src); err == nil {
+				if v, ok := src["title"].(string); ok {
+					rdoc.Title = v
+				}
+				if v, ok := src["file_path"].(string); ok {
+					rdoc.SourceFile = v
+				}
+				if v, ok := src["content"].(string); ok {
+					rdoc.Text = v
+				}
+			}
+		}
+
+		docs = append(docs, rdoc)
+	}
+	record.RetrievedDocs = docs
+
+	contexts := make([]string, 0, len(docs))
+	for _, d := range docs {
+		if d.Text != "" {
+			contexts = append(contexts, d.Text)
+		}
+	}
+	record.RetrievedContexts = contexts
+
+	// References は query では空 map (SearchResponse から取得できないため)
+	record.References = map[string]string{}
+
+	return record
 }
 
 // sanitizeChannels strips leading '#' from channel names.

@@ -14,6 +14,7 @@ import (
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/search"
@@ -46,6 +47,16 @@ type ChatOptions struct {
 	VectorWeight   float64
 	UseJapaneseNLP bool
 	OnlySlack      bool
+	ExportEval     bool
+	ExportEvalPath string
+}
+
+// ChatResult holds the result of a single GenerateChatResponse call.
+type ChatResult struct {
+	Response     string
+	ContextParts []string
+	References   map[string]string
+	LLMMs        int64
 }
 
 // RunChat is the exported entry point called from cmd/chat.go.
@@ -114,6 +125,15 @@ func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockCli
 	// Note: System prompt will be added to the first user message context instead of using "system" role
 	// because Bedrock Claude API only supports "user" and "assistant" roles
 
+	var evalWriter *evalexport.Writer
+	if opts.ExportEval {
+		var werr error
+		evalWriter, werr = evalexport.NewWriter(opts.ExportEvalPath)
+		if werr != nil {
+			log.Printf("Warning: failed to create eval export writer: %v", werr)
+		}
+	}
+
 	for {
 		fmt.Print("You: ")
 		if !scanner.Scan() {
@@ -137,7 +157,9 @@ func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockCli
 			continue
 		}
 
-		response, err := GenerateChatResponse(userInput, conversationHistory, chatClient, embeddingClient, cfg, awsCfg, cfg.SlackSearchEnabled, opts)
+		turnStart := time.Now()
+		result, err := GenerateChatResponse(userInput, conversationHistory, chatClient, embeddingClient, cfg, awsCfg, cfg.SlackSearchEnabled, opts)
+		turnMs := time.Since(turnStart).Milliseconds()
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
@@ -145,10 +167,36 @@ func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockCli
 
 		conversationHistory = append(conversationHistory,
 			bedrock.ChatMessage{Role: "user", Content: userInput},
-			bedrock.ChatMessage{Role: "assistant", Content: response},
+			bedrock.ChatMessage{Role: "assistant", Content: result.Response},
 		)
 
-		fmt.Printf("Assistant: %s\n\n", response)
+		fmt.Printf("Assistant: %s\n\n", result.Response)
+
+		if evalWriter != nil {
+			record := evalexport.NewEvalRecord("chat", userInput)
+			record.Response = result.Response
+			record.RetrievedContexts = result.ContextParts
+			record.References = result.References
+			record.Timing = evalexport.Timing{
+				TotalMs: turnMs,
+				LLMMs:   result.LLMMs,
+			}
+			record.RunConfig = evalexport.RunConfig{
+				SearchMode:         "hybrid",
+				BM25Weight:         opts.BM25Weight,
+				VectorWeight:       opts.VectorWeight,
+				FusionMethod:       "weighted_sum",
+				TopK:               opts.ContextSize,
+				IndexName:          getIndexNameForChat(cfg, "hybrid"),
+				UseJapaneseNLP:     opts.UseJapaneseNLP,
+				ChatModel:          cfg.ChatModel,
+				EmbeddingModel:     "amazon.titan-embed-text-v2:0",
+				SlackSearchEnabled: cfg.SlackSearchEnabled,
+			}
+			if werr := evalWriter.WriteRecord(record); werr != nil {
+				log.Printf("Warning: failed to export eval record: %v", werr)
+			}
+		}
 	}
 
 	return scanner.Err()
@@ -156,7 +204,7 @@ func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockCli
 
 // GenerateChatResponse generates a chat response using hybrid search for context.
 // Exported for tests.
-func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient ChatResponder, embeddingClient *bedrock.BedrockClient, cfg *appconfig.Config, awsCfg aws.Config, slackEnabled bool, opts ChatOptions) (string, error) {
+func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient ChatResponder, embeddingClient *bedrock.BedrockClient, cfg *appconfig.Config, awsCfg aws.Config, slackEnabled bool, opts ChatOptions) (*ChatResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -209,11 +257,11 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 		log.Printf("Searching for relevant context using hybrid mode...")
 		searchService, err := NewHybridSearchServiceFunc(cfg, embeddingClient)
 		if err != nil {
-			return "", fmt.Errorf("failed to create search service: %w", err)
+			return nil, fmt.Errorf("failed to create search service: %w", err)
 		}
 
 		if err := searchService.Initialize(ctx); err != nil {
-			return "", fmt.Errorf("failed to initialize search service: %w", err)
+			return nil, fmt.Errorf("failed to initialize search service: %w", err)
 		}
 
 		searchRequest := &search.SearchRequest{
@@ -228,7 +276,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 
 		searchResponse, err := searchService.Search(ctx, searchRequest)
 		if err != nil {
-			return "", fmt.Errorf("failed to search for context: %w", err)
+			return nil, fmt.Errorf("failed to search for context: %w", err)
 		}
 
 		contextParts = searchResponse.ContextParts
@@ -291,9 +339,11 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 	})
 
 	log.Printf("Generating response...")
+	llmStart := time.Now()
 	response, err := chatClient.GenerateChatResponse(ctx, messages)
+	llmMs := time.Since(llmStart).Milliseconds()
 	if err != nil {
-		return "", fmt.Errorf("failed to generate chat response: %w", err)
+		return nil, fmt.Errorf("failed to generate chat response: %w", err)
 	}
 
 	// Append references and Slack context for the user-facing answer
@@ -325,7 +375,12 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 		response = builder.String()
 	}
 
-	return response, nil
+	return &ChatResult{
+		Response:     response,
+		ContextParts: contextParts,
+		References:   references,
+		LLMMs:        llmMs,
+	}, nil
 }
 
 // printChatHelp prints available chat commands.

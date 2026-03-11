@@ -396,7 +396,7 @@ func TestMCPServer_ToolCall_InvalidRequests(t *testing.T) {
 		{
 			name:              "non-existent tool",
 			params:            mcpserver.MCPToolCallParams{Name: "non_existent_tool", Arguments: map[string]interface{}{"query": "test"}},
-			expectedErrorCode: mcpserver.MCPErrorInternalError,
+			expectedErrorCode: mcpserver.MCPErrorMethodNotFound,
 		},
 		{
 			name:              "invalid parameters format",
