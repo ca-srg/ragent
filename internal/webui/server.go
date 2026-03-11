@@ -269,7 +269,7 @@ func (s *Server) initializeVectorizer(ctx context.Context) error {
 	var osIndexer vectorizer.OpenSearchIndexer
 	if s.appConfig.OpenSearchEndpoint != "" {
 		factory := vectorizer.NewIndexerFactory(s.appConfig)
-		var webDimension int = 768
+		webDimension := 768
 		if embeddingClient != nil {
 			_, d, dErr := embeddingClient.GetModelInfo()
 			if dErr == nil && d > 0 {

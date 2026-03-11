@@ -19,14 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubEmbeddingClient struct {
-	vector []float64
-}
-
-func (s *stubEmbeddingClient) GenerateEmbedding(context.Context, string) ([]float64, error) {
-	return append([]float64(nil), s.vector...), nil
-}
-
 type stubSearchClient struct {
 	mu             sync.Mutex
 	termResponses  map[string]*opensearch.TermQueryResponse

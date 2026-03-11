@@ -33,7 +33,7 @@ func (w *Writer) WriteRecord(record *EvalRecord) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", filePath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	data, err := json.Marshal(record)
 	if err != nil {
