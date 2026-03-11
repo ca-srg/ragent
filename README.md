@@ -843,7 +843,11 @@ OCR_PROVIDER=bedrock                                    # OCR provider ("bedrock
 OCR_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0    # Model for OCR (Bedrock model ID or Gemini model name)
 OCR_TIMEOUT=120s                                        # OCR request timeout (default: 120s)
 
-# Gemini Configuration (OCR_PROVIDER=gemini)
+# Embedding Configuration
+EMBEDDING_PROVIDER=bedrock                              # Embedding provider ("bedrock" [default] or "gemini")
+EMBEDDING_MODEL=                                        # Embedding model ID (optional; defaults to provider's default)
+
+# Gemini Configuration (OCR_PROVIDER=gemini and/or EMBEDDING_PROVIDER=gemini)
 # Option 1: API key authentication
 GEMINI_API_KEY=your_gemini_api_key                      # Google AI Studio API key
 # Option 2: Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS)
@@ -854,6 +858,24 @@ GEMINI_GCP_LOCATION=us-central1                         # GCP region for Vertex 
 SECRET_MANAGER_SECRET_ID=ragent/app              # Secret ID in AWS Secrets Manager (omit to disable)
 SECRET_MANAGER_REGION=us-east-1                  # AWS region for Secrets Manager (default: us-east-1)
 ```
+
+### Gemini Embedding Configuration
+
+To use Gemini for embeddings instead of Amazon Bedrock, set `EMBEDDING_PROVIDER=gemini`. Two authentication methods are supported:
+
+```bash
+# Use Gemini for embeddings (with API Key)
+export EMBEDDING_PROVIDER=gemini
+export EMBEDDING_MODEL=text-embedding-004
+export GEMINI_API_KEY=your-api-key
+
+# Use Gemini for embeddings (with Vertex AI)
+export EMBEDDING_PROVIDER=gemini
+export GEMINI_GCP_PROJECT=your-project
+export GEMINI_GCP_LOCATION=us-central1
+```
+
+When `EMBEDDING_MODEL` is omitted, Gemini defaults to `text-embedding-004` (768 dimensions). Bedrock defaults to `amazon.titan-embed-text-v2:0` (1024 dimensions).
 
 Slack search requires `SLACK_SEARCH_ENABLED=true`, a valid `SLACK_BOT_TOKEN`, **and** a user token `SLACK_USER_TOKEN` that includes scopes such as `search:read`, `channels:history`, `groups:history`, and other conversation history scopes relevant to the channels you query. The search-specific knobs let you tune throughput and cost per workspace without touching the core document pipeline.
 
