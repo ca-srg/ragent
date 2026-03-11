@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/spf13/cobra"
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
@@ -22,6 +23,7 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/spreadsheet"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
 )
@@ -765,13 +767,21 @@ func createVectorizerService(cfg *appconfig.Config) (*vectorizer.VectorizerServi
 
 // createVectorizerServiceWithCSVConfig creates a vectorizer service with CSV configuration
 func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Config) (*vectorizer.VectorizerService, error) {
-	awsCfg, err := bedrock.BuildBedrockAWSConfig(context.TODO(), cfg.BedrockRegion, cfg.BedrockBearerToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+	var err error
+	// AWS config は OCR provider が bedrock の場合に必要
+	needsAWS := cfg.OCRProvider == "bedrock" || cfg.OCRProvider == ""
+	var awsCfg aws.Config
+	if needsAWS {
+		awsCfg, err = bedrock.BuildBedrockAWSConfig(context.TODO(), cfg.BedrockRegion, cfg.BedrockBearerToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build AWS config: %w", err)
+		}
 	}
 
-	// Create embedding client using Bedrock
-	embeddingClient := bedrock.NewBedrockClient(awsCfg, "amazon.titan-embed-text-v2:0")
+	embeddingClient, err := embedding.NewEmbeddingClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create embedding client: %w", err)
+	}
 
 	// Create vector store client via factory
 	cfg.S3VectorRegion = resolveS3VectorRegion(cfg)
@@ -1157,13 +1167,10 @@ func runSpreadsheetDryRun(ctx context.Context, fetcher *spreadsheet.Fetcher) err
 
 // createVectorizerServiceForSpreadsheet creates a vectorizer service for spreadsheet processing
 func createVectorizerServiceForSpreadsheet(cfg *appconfig.Config) (*vectorizer.VectorizerService, error) {
-	awsCfg, err := bedrock.BuildBedrockAWSConfig(context.TODO(), cfg.BedrockRegion, cfg.BedrockBearerToken)
+	embeddingClient, err := embedding.NewEmbeddingClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS configuration: %w", err)
+		return nil, fmt.Errorf("failed to create embedding client: %w", err)
 	}
-
-	// Create embedding client using Bedrock
-	embeddingClient := bedrock.NewBedrockClient(awsCfg, "amazon.titan-embed-text-v2:0")
 
 	// Create vector store client via factory
 	cfg.S3VectorRegion = resolveS3VectorRegion(cfg)
