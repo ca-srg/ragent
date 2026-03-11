@@ -24,7 +24,7 @@ import (
 // HybridSearchService provides reusable hybrid search functionality
 type HybridSearchService struct {
 	config          *appconfig.Config
-	embeddingClient *bedrock.BedrockClient
+	embeddingClient opensearch.EmbeddingClient
 	osClient        *opensearch.Client
 	hybridEngine    *opensearch.HybridSearchEngine
 	logger          *log.Logger
@@ -64,7 +64,7 @@ type SearchResponse struct {
 // NewHybridSearchService creates a new hybrid search service
 func NewHybridSearchService(
 	config *appconfig.Config,
-	embeddingClient *bedrock.BedrockClient,
+	embeddingClient opensearch.EmbeddingClient,
 	slackClient *slack.Client,
 	slackBedrockClient *bedrock.BedrockClient,
 ) (*HybridSearchService, error) {

@@ -14,7 +14,6 @@ type QueryDependencyOverrides struct {
 	LoadConfig           queryimpl.AppConfigLoader
 	LoadAWSConfig        queryimpl.AWSConfigLoader
 	LoadBedrockAWSConfig queryimpl.BedrockAWSConfigBuilder
-	NewEmbeddingClient   queryimpl.BedrockClientFactory
 	NewOpenSearchClient  queryimpl.OpenSearchClientFactory
 	NewHybridEngine      queryimpl.HybridEngineFactory
 }
@@ -23,7 +22,6 @@ func OverrideQueryDependencies(overrides QueryDependencyOverrides) func() {
 	prevLoadConfig := queryimpl.LoadAppConfig
 	prevLoadAWS := queryimpl.LoadAWSConfig
 	prevLoadBedrockAWS := queryimpl.LoadBedrockAWSConfig
-	prevEmbedding := queryimpl.NewEmbeddingClient
 	prevOpenSearch := queryimpl.NewOpenSearchClient
 	prevHybrid := queryimpl.NewHybridEngine
 
@@ -36,9 +34,6 @@ func OverrideQueryDependencies(overrides QueryDependencyOverrides) func() {
 	if overrides.LoadBedrockAWSConfig != nil {
 		queryimpl.LoadBedrockAWSConfig = overrides.LoadBedrockAWSConfig
 	}
-	if overrides.NewEmbeddingClient != nil {
-		queryimpl.NewEmbeddingClient = overrides.NewEmbeddingClient
-	}
 	if overrides.NewOpenSearchClient != nil {
 		queryimpl.NewOpenSearchClient = overrides.NewOpenSearchClient
 	}
@@ -50,7 +45,6 @@ func OverrideQueryDependencies(overrides QueryDependencyOverrides) func() {
 		queryimpl.LoadAppConfig = prevLoadConfig
 		queryimpl.LoadAWSConfig = prevLoadAWS
 		queryimpl.LoadBedrockAWSConfig = prevLoadBedrockAWS
-		queryimpl.NewEmbeddingClient = prevEmbedding
 		queryimpl.NewOpenSearchClient = prevOpenSearch
 		queryimpl.NewHybridEngine = prevHybrid
 	}
@@ -73,10 +67,6 @@ func DefaultBedrockAWSConfigOverride(cfg aws.Config, err error) queryimpl.Bedroc
 	return func(ctx context.Context, region, bearerToken string) (aws.Config, error) {
 		return cfg, err
 	}
-}
-
-func EmbeddingClientOverride(factory queryimpl.BedrockClientFactory) queryimpl.BedrockClientFactory {
-	return factory
 }
 
 func OpenSearchClientOverride(factory queryimpl.OpenSearchClientFactory) queryimpl.OpenSearchClientFactory {
