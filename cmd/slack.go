@@ -16,8 +16,10 @@ import (
 )
 
 var (
-	slackContextSize int
-	slackOnlyMode    bool
+	slackContextSize    int
+	slackOnlyMode       bool
+	slackExportEval     bool
+	slackExportEvalPath string
 )
 
 var slackCmd = &cobra.Command{
@@ -27,6 +29,8 @@ var slackCmd = &cobra.Command{
 		return slackbot.RunSlackBot(context.Background(), slackbot.SlackBotOptions{
 			ContextSize:       slackContextSize,
 			OnlySlack:         slackOnlyMode,
+			ExportEval:        slackExportEval,
+			ExportEvalPath:    slackExportEvalPath,
 			BuildConvSearcher: buildSlackConvSearcher,
 		})
 	},
@@ -36,6 +40,8 @@ func init() {
 	// add flags
 	slackCmd.Flags().IntVarP(&slackContextSize, "context-size", "c", 0, "Number of context documents to retrieve (overrides config)")
 	slackCmd.Flags().BoolVar(&slackOnlyMode, "only-slack", false, "Search only Slack conversations (skip OpenSearch)")
+	slackCmd.Flags().BoolVar(&slackExportEval, "export-eval", false, "Enable evaluation data export")
+	slackCmd.Flags().StringVar(&slackExportEvalPath, "export-eval-path", "./evaluation/exports/", "Output directory for JSONL evaluation data")
 
 	// attach command
 	rootCmd.AddCommand(slackCmd)
