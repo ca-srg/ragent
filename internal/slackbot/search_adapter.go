@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/slack-go/slack"
@@ -111,7 +112,16 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 			ChatModel: h.cfg.ChatModel,
 		}
 	}
-	embedClient := bedrock.GetSharedBedrockClient(awsCfg, "amazon.titan-embed-text-v2:0")
+	embedClient, err := embedding.NewEmbeddingClient(h.cfg)
+	if err != nil {
+		log.Printf("failed to create embedding client: %v", err)
+		return &SearchResult{
+			Items:     nil,
+			Total:     0,
+			Elapsed:   time.Since(start),
+			ChatModel: h.cfg.ChatModel,
+		}
+	}
 	chatClient := bedrock.GetSharedBedrockClient(awsCfg, h.cfg.ChatModel)
 
 	// OpenSearch client

@@ -15,7 +15,7 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/scanner"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
-	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
 )
 
@@ -251,14 +251,11 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 
 // initializeVectorizer initializes the vectorizer service
 func (s *Server) initializeVectorizer(ctx context.Context) error {
-	// Load AWS config
-	awsCfg, err := bedrock.BuildBedrockAWSConfig(ctx, s.appConfig.BedrockRegion, s.appConfig.BedrockBearerToken)
-	if err != nil {
-		return fmt.Errorf("failed to load Bedrock AWS config: %w", err)
-	}
-
 	// Create embedding client
-	embeddingClient := bedrock.NewBedrockClient(awsCfg, "")
+	embeddingClient, err := embedding.NewEmbeddingClient(s.appConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create embedding client: %w", err)
+	}
 
 	sf := vectorizer.NewServiceFactory(s.appConfig)
 	vectorStoreClient, err := sf.CreateVectorStore()
