@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 )
 
 // SlackOnlySearchAdapter uses only Slack search without OpenSearch
@@ -19,8 +20,8 @@ type SlackOnlySearchAdapter struct {
 	maxResults  int
 	slackSearch slackConvSearcher
 	chatClient  *bedrock.BedrockClient
-
-	awsCfg *aws.Config
+	awsCfg      *aws.Config
+	evalWriter  *evalexport.Writer
 }
 
 // NewSlackOnlySearchAdapter creates a new Slack-only search adapter
@@ -42,6 +43,10 @@ func NewSlackOnlySearchAdapter(
 		chatClient:  chatClient,
 		awsCfg:      awsCfg,
 	}
+}
+
+func (s *SlackOnlySearchAdapter) SetEvalWriter(w *evalexport.Writer) {
+	s.evalWriter = w
 }
 
 // Search implements SearchAdapter interface using only Slack search
@@ -78,6 +83,23 @@ func (s *SlackOnlySearchAdapter) Search(ctx context.Context, query string, opts 
 	total := 0
 	if slackResult != nil {
 		total = slackResult.TotalMatches
+	}
+
+	if s.evalWriter != nil {
+		record := evalexport.NewEvalRecord("slack-bot", query)
+		record.Response = generatedResponse
+		record.RunConfig = evalexport.RunConfig{
+			SearchMode:         "slack_only",
+			ChatModel:          s.cfg.ChatModel,
+			SlackSearchEnabled: true,
+		}
+		record.Timing = evalexport.Timing{
+			TotalMs: time.Since(start).Milliseconds(),
+		}
+		record.References = map[string]string{}
+		if werr := s.evalWriter.WriteRecord(record); werr != nil {
+			log.Printf("Warning: failed to export eval record: %v", werr)
+		}
 	}
 
 	return &SearchResult{

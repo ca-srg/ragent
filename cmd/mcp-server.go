@@ -38,6 +38,8 @@ var (
 	mcpBypassAuditLog   bool
 	mcpTrustedProxies   []string
 	mcpOnlySlack        bool
+	mcpExportEval       bool
+	mcpExportEvalPath   string
 )
 
 var mcpServerCmd = &cobra.Command{
@@ -76,6 +78,8 @@ Examples:
 			BypassAuditLog:    mcpBypassAuditLog,
 			TrustedProxies:    mcpTrustedProxies,
 			OnlySlack:         mcpOnlySlack,
+			ExportEval:        mcpExportEval,
+			ExportEvalPath:    mcpExportEvalPath,
 		})
 	},
 }
@@ -114,4 +118,6 @@ func init() {
 	mcpServerCmd.Flags().BoolVar(&mcpBypassAuditLog, "bypass-audit-log", true, "Enable audit logging for bypass authentication")
 	mcpServerCmd.Flags().StringSliceVar(&mcpTrustedProxies, "trusted-proxies", []string{}, "Comma-separated list of trusted proxy IPs for X-Forwarded-For processing")
 	mcpServerCmd.Flags().BoolVar(&mcpOnlySlack, "only-slack", false, "Run in Slack-only mode (skip OpenSearch, provide only slack_search tool)")
+	mcpServerCmd.Flags().BoolVar(&mcpExportEval, "export-eval", false, "Enable evaluation data export")
+	mcpServerCmd.Flags().StringVar(&mcpExportEvalPath, "export-eval-path", "./evaluation/exports/", "Output directory for JSONL evaluation data")
 }

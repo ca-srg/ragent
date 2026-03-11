@@ -1,0 +1,59 @@
+name: Auto-approve E2E Tests
+
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] No checkout; only uses metadata to call the deployments API.
+    workflows: ["E2E Tests"]
+    types: [requested]
+
+concurrency:
+  group: auto-approve-e2e-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false # An in-progress approval must not be cancelled.
+
+permissions: {}
+
+jobs:
+  auto-approve:
+    name: Auto-approve for maintainers
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      actions: write # Required to approve pending deployments.
+
+    steps:
+      - name: Auto-approve if actor is a maintainer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
+        run: |
+          # Check if the actor has write, maintain, or admin access.
+          PERMISSION=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" \
+            --jq '.permission' 2>/dev/null || echo "none")
+
+          if [[ "$PERMISSION" != "admin" && "$PERMISSION" != "write" && "$PERMISSION" != "maintain" ]]; then
+            echo "Actor $ACTOR has $PERMISSION access — requires manual approval."
+            exit 0
+          fi
+
+          echo "Actor $ACTOR has $PERMISSION access — auto-approving."
+
+          # Wait briefly for the pending deployment to be registered.
+          sleep 5
+
+          PENDING_ENV_IDS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
+            --jq '.[].environment.id')
+
+          if [[ -z "$PENDING_ENV_IDS" ]]; then
+            echo "No pending deployments to approve."
+            exit 0
+          fi
+
+          echo "$PENDING_ENV_IDS" | while read -r ENV_ID; do
+            echo "Approving environment $ENV_ID..."
+            gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
+              --method POST \
+              -F "environment_ids[]=$ENV_ID" \
+              -F "state=approved" \
+              -F "comment=Auto-approved: $ACTOR has $PERMISSION access."
+          done

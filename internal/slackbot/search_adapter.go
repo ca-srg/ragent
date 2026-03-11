@@ -15,6 +15,7 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/slack-go/slack"
 )
@@ -43,8 +44,9 @@ type HybridSearchAdapter struct {
 	slackSearch slackConvSearcher
 	slackClient *slack.Client
 
-	awsCfgMu sync.RWMutex
-	awsCfg   *aws.Config
+	awsCfgMu   sync.RWMutex
+	awsCfg     *aws.Config
+	evalWriter *evalexport.Writer
 }
 
 func NewHybridSearchAdapter(cfg *appconfig.Config, maxResults int, slackSearch slackConvSearcher, awsCfg *aws.Config) *HybridSearchAdapter {
@@ -62,6 +64,10 @@ func NewHybridSearchAdapter(cfg *appconfig.Config, maxResults int, slackSearch s
 // SetSlackClient sets the Slack client for URL message fetching
 func (h *HybridSearchAdapter) SetSlackClient(client *slack.Client) {
 	h.slackClient = client
+}
+
+func (h *HybridSearchAdapter) SetEvalWriter(w *evalexport.Writer) {
+	h.evalWriter = w
 }
 
 func (h *HybridSearchAdapter) awsConfig(ctx context.Context) (aws.Config, error) {
@@ -287,7 +293,59 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		total += slackResult.TotalMatches
 	}
 
-	// Return the generated response as a single item
+	if h.evalWriter != nil {
+		record := evalexport.NewEvalRecord("slack-bot", query)
+		record.Response = generatedResponse
+		record.RunConfig = evalexport.RunConfig{
+			SearchMode:         "hybrid",
+			BM25Weight:         0.5,
+			VectorWeight:       0.5,
+			FusionMethod:       "rrf",
+			TopK:               h.maxResults,
+			IndexName:          h.cfg.OpenSearchIndex,
+			UseJapaneseNLP:     true,
+			ChatModel:          h.cfg.ChatModel,
+			SlackSearchEnabled: h.slackSearch != nil,
+		}
+		record.Timing = evalexport.Timing{
+			TotalMs: time.Since(start).Milliseconds(),
+		}
+		if res != nil && res.FusionResult != nil {
+			docs := make([]evalexport.RetrievedDoc, 0, len(res.FusionResult.Documents))
+			for _, doc := range res.FusionResult.Documents {
+				rdoc := evalexport.RetrievedDoc{
+					DocID:       doc.ID,
+					Rank:        doc.Rank,
+					FusedScore:  doc.FusedScore,
+					BM25Score:   doc.BM25Score,
+					VectorScore: doc.VectorScore,
+					SearchType:  doc.SearchType,
+				}
+				if doc.Source != nil {
+					var src map[string]interface{}
+					if err := json.Unmarshal(doc.Source, &src); err == nil {
+						if v, ok := src["title"].(string); ok {
+							rdoc.Title = v
+						}
+						if v, ok := src["file_path"].(string); ok {
+							rdoc.SourceFile = v
+						}
+						if v, ok := src["content"].(string); ok {
+							rdoc.Text = v
+						}
+					}
+				}
+				docs = append(docs, rdoc)
+			}
+			record.RetrievedDocs = docs
+		}
+		record.RetrievedContexts = contextParts
+		record.References = references
+		if werr := h.evalWriter.WriteRecord(record); werr != nil {
+			log.Printf("Warning: failed to export eval record: %v", werr)
+		}
+	}
+
 	return &SearchResult{
 		GeneratedResponse: generatedResponse,
 		Total:             total,

@@ -12,6 +12,7 @@ import (
 
 	appcfg "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/observability"
 )
@@ -22,6 +23,8 @@ import (
 type SlackBotOptions struct {
 	ContextSize       int
 	OnlySlack         bool
+	ExportEval        bool
+	ExportEvalPath    string
 	BuildConvSearcher func(cfg *appcfg.Config, client *slack.Client, logger *log.Logger) SlackConversationSearcher
 }
 
@@ -124,6 +127,21 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 		hybridAdapter.SetSlackClient(client) // Enable Slack URL message fetching
 		adapter = hybridAdapter
 	}
+
+	if opts.ExportEval {
+		evalWriter, werr := evalexport.NewWriter(opts.ExportEvalPath)
+		if werr != nil {
+			logger.Printf("Warning: failed to create eval export writer: %v", werr)
+		} else {
+			if hybridAdapter, ok := adapter.(*HybridSearchAdapter); ok {
+				hybridAdapter.SetEvalWriter(evalWriter)
+			}
+			if slackOnlyAdapter, ok := adapter.(*SlackOnlySearchAdapter); ok {
+				slackOnlyAdapter.SetEvalWriter(evalWriter)
+			}
+		}
+	}
+
 	threadBuilder := NewThreadContextBuilder(client, scfg, logger)
 	processor := NewProcessor(&MentionDetector{}, &QueryExtractor{}, adapter, &Formatter{}, threadBuilder)
 

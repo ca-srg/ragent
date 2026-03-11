@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -27,6 +28,7 @@ type HybridSearchToolAdapter struct {
 	defaultConfig   *HybridSearchConfig
 	logger          *log.Logger
 	slackService    *slacksearch.SlackSearchService
+	evalWriter      *evalexport.Writer
 }
 
 // HybridSearchConfig contains configuration for hybrid search
@@ -277,6 +279,64 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 
 	// Convert to MCP format
 	mcpResponse := hsta.convertToMCPResponse(searchRequest, result, slackResult, slackURLMessages)
+
+	if hsta.evalWriter != nil {
+		record := evalexport.NewEvalRecord("mcp-server", searchRequest.Query)
+		record.RunConfig = evalexport.RunConfig{
+			SearchMode:         searchRequest.SearchMode,
+			BM25Weight:         searchRequest.BM25Weight,
+			VectorWeight:       searchRequest.VectorWeight,
+			FusionMethod:       hsta.defaultConfig.DefaultFusionMethod,
+			TopK:               searchRequest.TopK,
+			IndexName:          hsta.defaultConfig.DefaultIndexName,
+			UseJapaneseNLP:     hsta.defaultConfig.DefaultUseJapaneseNLP,
+			SlackSearchEnabled: searchRequest.EnableSlackSearch,
+		}
+		record.Timing = evalexport.Timing{
+			TotalMs:     result.ExecutionTime.Milliseconds(),
+			EmbeddingMs: result.EmbeddingTime.Milliseconds(),
+			BM25Ms:      result.BM25Time.Milliseconds(),
+			VectorMs:    result.VectorTime.Milliseconds(),
+			FusionMs:    result.FusionTime.Milliseconds(),
+		}
+		if result.FusionResult != nil {
+			docs := make([]evalexport.RetrievedDoc, 0, len(result.FusionResult.Documents))
+			contexts := make([]string, 0, len(result.FusionResult.Documents))
+			for _, doc := range result.FusionResult.Documents {
+				rdoc := evalexport.RetrievedDoc{
+					DocID:       doc.ID,
+					Rank:        doc.Rank,
+					FusedScore:  doc.FusedScore,
+					BM25Score:   doc.BM25Score,
+					VectorScore: doc.VectorScore,
+					SearchType:  doc.SearchType,
+				}
+				if doc.Source != nil {
+					var src map[string]interface{}
+					if err := json.Unmarshal(doc.Source, &src); err == nil {
+						if v, ok := src["title"].(string); ok {
+							rdoc.Title = v
+						}
+						if v, ok := src["file_path"].(string); ok {
+							rdoc.SourceFile = v
+						}
+						if v, ok := src["content"].(string); ok {
+							rdoc.Text = v
+							contexts = append(contexts, v)
+						}
+					}
+				}
+				docs = append(docs, rdoc)
+			}
+			record.RetrievedDocs = docs
+			record.RetrievedContexts = contexts
+		}
+		record.References = map[string]string{}
+		if werr := hsta.evalWriter.WriteRecord(record); werr != nil {
+			hsta.logger.Printf("Warning: failed to export eval record: %v", werr)
+		}
+	}
+
 	responseJSON, err := json.MarshalIndent(mcpResponse, "", "  ")
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to serialize response: %v", err)
@@ -603,6 +663,10 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *HybridSearchR
 // SetDefaultConfig updates the default configuration
 func (hsta *HybridSearchToolAdapter) SetDefaultConfig(config *HybridSearchConfig) {
 	hsta.defaultConfig = config
+}
+
+func (hsta *HybridSearchToolAdapter) SetEvalWriter(w *evalexport.Writer) {
+	hsta.evalWriter = w
 }
 
 // GetDefaultConfig returns the current default configuration
