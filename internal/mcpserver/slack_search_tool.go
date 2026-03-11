@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/google/jsonschema-go/jsonschema"
 )
@@ -19,6 +20,7 @@ type SlackSearchToolAdapter struct {
 	slackService  *slacksearch.SlackSearchService
 	defaultConfig *SlackSearchConfig
 	logger        *log.Logger
+	evalWriter    *evalexport.Writer
 }
 
 // SlackSearchConfig contains configuration for slack-only search
@@ -151,6 +153,22 @@ func (sta *SlackSearchToolAdapter) HandleToolCallWithProgress(ctx context.Contex
 
 	// Convert to MCP response
 	response := sta.convertToMCPResponse(request, result, time.Since(startTime))
+
+	if sta.evalWriter != nil {
+		record := evalexport.NewEvalRecord("mcp-server", request.Query)
+		record.RunConfig = evalexport.RunConfig{
+			SearchMode:         "slack_only",
+			SlackSearchEnabled: true,
+		}
+		record.Timing = evalexport.Timing{
+			TotalMs: time.Since(startTime).Milliseconds(),
+		}
+		record.References = map[string]string{}
+		if werr := sta.evalWriter.WriteRecord(record); werr != nil {
+			sta.logger.Printf("Warning: failed to export eval record: %v", werr)
+		}
+	}
+
 	responseJSON, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
 		return CreateToolCallErrorResult(fmt.Sprintf("Failed to serialize response: %v", err)), err
@@ -255,6 +273,11 @@ func (sta *SlackSearchToolAdapter) convertToMCPResponse(request *SlackSearchRequ
 	}
 
 	return response
+}
+
+// SetEvalWriter sets the evaluation data writer for this adapter.
+func (sta *SlackSearchToolAdapter) SetEvalWriter(w *evalexport.Writer) {
+	sta.evalWriter = w
 }
 
 // SetDefaultConfig updates the default configuration

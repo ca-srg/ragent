@@ -20,6 +20,7 @@ import (
 	appcfg "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/observability"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
@@ -50,6 +51,8 @@ type MCPServerOptions struct {
 	BypassAuditLog    bool
 	TrustedProxies    []string
 	OnlySlack         bool
+	ExportEval        bool
+	ExportEvalPath    string
 }
 
 // RunMCPServer is the entry point for the mcp-server command.
@@ -357,6 +360,15 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		}
 	}
 
+	var evalWriter *evalexport.Writer
+	if opts.ExportEval {
+		var werr error
+		evalWriter, werr = evalexport.NewWriter(opts.ExportEvalPath)
+		if werr != nil {
+			logger.Printf("Warning: failed to create eval export writer: %v", werr)
+		}
+	}
+
 	var registeredTools []string
 
 	// In --only-slack mode, register only slack_search tool
@@ -369,6 +381,7 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 
 		// Create Slack search handler
 		slackSearchHandler := NewSlackSearchHandler(slackService, slackSearchConfig)
+		slackSearchHandler.GetAdapter().SetEvalWriter(evalWriter)
 		slackToolHandlerFunc := slackSearchHandler.HandleSDKToolCall
 
 		// Determine tool name
@@ -437,6 +450,7 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 
 		// Create hybrid search tool handler for SDK integration
 		hybridSearchHandler := NewHybridSearchHandler(osClient, embeddingClient, hybridSearchConfig, slackService)
+		hybridSearchHandler.GetAdapter().SetEvalWriter(evalWriter)
 
 		// Create function wrapper to match mcp.ToolHandler signature
 		toolHandlerFunc := hybridSearchHandler.HandleSDKToolCall
