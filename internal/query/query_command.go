@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
@@ -33,7 +34,6 @@ type QuerySearchClient interface {
 type AppConfigLoader func() (*appconfig.Config, error)
 type AWSConfigLoader func(ctx context.Context, optFns ...func(*awssdkconfig.LoadOptions) error) (aws.Config, error)
 type BedrockAWSConfigBuilder func(ctx context.Context, region, bearerToken string) (aws.Config, error)
-type BedrockClientFactory func(aws.Config, string) opensearch.EmbeddingClient
 type OpenSearchClientFactory func(*opensearch.Config) (QuerySearchClient, error)
 type HybridEngineFactory func(opensearch.SearchClient, opensearch.EmbeddingClient) *opensearch.HybridSearchEngine
 
@@ -70,10 +70,7 @@ var (
 	LoadAppConfig        AppConfigLoader         = appconfig.Load
 	LoadAWSConfig        AWSConfigLoader         = awssdkconfig.LoadDefaultConfig
 	LoadBedrockAWSConfig BedrockAWSConfigBuilder = bedrock.BuildBedrockAWSConfig
-	NewEmbeddingClient   BedrockClientFactory    = func(cfg aws.Config, modelID string) opensearch.EmbeddingClient {
-		return bedrock.NewBedrockClient(cfg, modelID)
-	}
-	NewOpenSearchClient OpenSearchClientFactory = func(cfg *opensearch.Config) (QuerySearchClient, error) {
+	NewOpenSearchClient  OpenSearchClientFactory = func(cfg *opensearch.Config) (QuerySearchClient, error) {
 		return opensearch.NewClient(cfg)
 	}
 	NewHybridEngine HybridEngineFactory = opensearch.NewHybridSearchEngine
@@ -127,7 +124,10 @@ func RunQuery(cmd *cobra.Command, opts QueryOptions) error {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
 	}
 
-	embeddingClient := NewEmbeddingClient(bedrockConfig, "amazon.titan-embed-text-v2:0")
+	embeddingClient, err := embedding.NewEmbeddingClient(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create embedding client: %w", err)
+	}
 
 	switch opts.SearchMode {
 	case "hybrid":

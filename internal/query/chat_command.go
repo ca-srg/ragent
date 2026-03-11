@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
@@ -34,7 +35,7 @@ type HybridSearchInitializer interface {
 
 // NewHybridSearchServiceFunc is the factory for creating hybrid search services.
 // Injectable for tests.
-var NewHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient *bedrock.BedrockClient) (HybridSearchInitializer, error) {
+var NewHybridSearchServiceFunc = func(cfg *appconfig.Config, embeddingClient embedding.EmbeddingClient) (HybridSearchInitializer, error) {
 	return search.NewHybridSearchService(cfg, embeddingClient, nil, nil)
 }
 
@@ -84,7 +85,10 @@ func RunChat(cmd *cobra.Command, opts ChatOptions) error {
 	}
 
 	chatClient := bedrock.NewBedrockClient(bedrockConfig, cfg.ChatModel)
-	embeddingClient := bedrock.NewBedrockClient(bedrockConfig, "amazon.titan-embed-text-v2:0")
+	embeddingClient, err := embedding.NewEmbeddingClient(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create embedding client: %w", err)
+	}
 
 	log.Println("Validating service connections...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -118,7 +122,7 @@ func RunChat(cmd *cobra.Command, opts ChatOptions) error {
 	return startChatLoop(chatClient, embeddingClient, cfg, bedrockConfig, opts)
 }
 
-func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockClient, cfg *appconfig.Config, awsCfg aws.Config, opts ChatOptions) error {
+func startChatLoop(chatClient ChatResponder, embeddingClient embedding.EmbeddingClient, cfg *appconfig.Config, awsCfg aws.Config, opts ChatOptions) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	var conversationHistory []bedrock.ChatMessage
 
@@ -204,7 +208,7 @@ func startChatLoop(chatClient ChatResponder, embeddingClient *bedrock.BedrockCli
 
 // GenerateChatResponse generates a chat response using hybrid search for context.
 // Exported for tests.
-func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient ChatResponder, embeddingClient *bedrock.BedrockClient, cfg *appconfig.Config, awsCfg aws.Config, slackEnabled bool, opts ChatOptions) (*ChatResult, error) {
+func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatClient ChatResponder, embeddingClient embedding.EmbeddingClient, cfg *appconfig.Config, awsCfg aws.Config, slackEnabled bool, opts ChatOptions) (*ChatResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -393,7 +397,7 @@ func printChatHelp() {
 }
 
 // validateOpenSearch performs a quick connectivity check.
-func validateOpenSearch(ctx context.Context, cfg *appconfig.Config, embeddingClient *bedrock.BedrockClient) error {
+func validateOpenSearch(ctx context.Context, cfg *appconfig.Config, embeddingClient embedding.EmbeddingClient) error {
 	osConfig, err := opensearch.NewConfigFromTypes(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create OpenSearch config: %w", err)
