@@ -153,6 +153,7 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 	}
 
 	engine := opensearch.NewHybridSearchEngine(osClient, embedClient)
+	NotifyProgress(ctx, "ドキュメントを検索中...")
 	res, err := engine.Search(ctx, &opensearch.HybridQuery{
 		Query:          query,
 		IndexName:      h.cfg.OpenSearchIndex,
@@ -217,6 +218,7 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 	// Execute Slack search BEFORE LLM call to include Slack context in prompt
 	var slackResult *SlackConversationResult
 	if h.slackSearch != nil {
+		NotifyProgress(ctx, "Slackの会話を検索中...")
 		var err error
 		slackResult, err = h.slackSearch.SearchConversations(ctx, query, opts)
 		if err != nil {
@@ -248,6 +250,7 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		}
 
 		// Generate response
+		NotifyProgress(ctx, "回答を生成中...")
 		response, err := chatClient.GenerateChatResponse(ctx, messages)
 		if err != nil {
 			log.Printf("chat generation error: %v", err)

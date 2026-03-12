@@ -156,6 +156,14 @@ func (b *SocketBot) processMessage(ctx context.Context, msg *slack.MessageEvent)
 		b.logger.Printf("rate_limit_exceeded user=%s channel=%s", msg.User, msg.Channel)
 		return
 	}
+
+	threadTS := msg.ThreadTimestamp
+	if threadTS == "" {
+		threadTS = msg.Timestamp
+	}
+	notifier := NewSlackProgressNotifier(b.client, msg.Channel, threadTS)
+	ctx = ContextWithProgressNotifier(ctx, notifier)
+
 	b.metrics.RecordRequest()
 	start := time.Now()
 	reply := b.processor.ProcessMessage(ctx, b.botUserID, msg)
@@ -163,11 +171,6 @@ func (b *SocketBot) processMessage(ctx context.Context, msg *slack.MessageEvent)
 		return
 	}
 	for _, opt := range reply.MsgOptions {
-		// Always reply in thread. Use ThreadTimestamp if exists, otherwise use Timestamp to start a new thread
-		threadTS := msg.ThreadTimestamp
-		if threadTS == "" {
-			threadTS = msg.Timestamp
-		}
 		opt = slack.MsgOptionCompose(opt, slack.MsgOptionTS(threadTS))
 		if _, _, err := b.client.PostMessage(reply.Channel, opt); err != nil {
 			b.metrics.RecordError()

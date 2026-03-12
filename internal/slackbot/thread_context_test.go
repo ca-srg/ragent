@@ -159,6 +159,9 @@ func (m *mockSlackClient) NewRTM(options ...slack.RTMOption) *slack.RTM { return
 func (m *mockSlackClient) PostMessage(channelID string, options ...slack.MsgOption) (string, string, error) {
 	return "", "", nil
 }
+func (m *mockSlackClient) SetAssistantThreadsStatusContext(ctx context.Context, params slack.AssistantThreadsSetStatusParameters) error {
+	return nil
+}
 func (m *mockSlackClient) GetConversationReplies(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error) {
 	if m.repliesFunc != nil {
 		return m.repliesFunc(params)
