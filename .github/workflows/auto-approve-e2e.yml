@@ -38,22 +38,28 @@ jobs:
 
           echo "Actor $ACTOR has $PERMISSION access — auto-approving."
 
-          # Wait briefly for the pending deployment to be registered.
-          sleep 5
+          # Poll until approvable pending deployments appear (up to 90 s).
+          ENV_IDS_JSON="[]"
+          for attempt in $(seq 1 18); do
+            ENV_IDS_JSON=$(gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
+              --jq '[.[] | select(.current_user_can_approve) | .environment.id] | unique')
 
-          PENDING_ENV_IDS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
-            --jq '.[].environment.id')
+            if [[ "$ENV_IDS_JSON" != "[]" ]]; then
+              break
+            fi
+            echo "Waiting for approvable pending deployments… (attempt $attempt/18)"
+            sleep 5
+          done
 
-          if [[ -z "$PENDING_ENV_IDS" ]]; then
-            echo "No pending deployments to approve."
+          if [[ "$ENV_IDS_JSON" == "[]" ]]; then
+            echo "No approvable pending deployments after 90 s — skipping."
             exit 0
           fi
 
-          echo "$PENDING_ENV_IDS" | while read -r ENV_ID; do
-            echo "Approving environment $ENV_ID..."
-            gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
-              --method POST \
-              -F "environment_ids[]=$ENV_ID" \
-              -F "state=approved" \
-              -F "comment=Auto-approved: $ACTOR has $PERMISSION access."
-          done
+          echo "Approving environments: $ENV_IDS_JSON"
+          jq -n \
+            --argjson ids "$ENV_IDS_JSON" \
+            --arg comment "Auto-approved: $ACTOR has $PERMISSION access." \
+            '{environment_ids: $ids, state: "approved", comment: $comment}' |
+          gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
+            --method POST --input -
