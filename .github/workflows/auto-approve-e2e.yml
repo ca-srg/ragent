@@ -38,28 +38,31 @@ jobs:
 
           echo "Actor $ACTOR has $PERMISSION access — auto-approving."
 
-          # Poll until approvable pending deployments appear (up to 90 s).
-          ENV_IDS_JSON="[]"
-          for attempt in $(seq 1 18); do
+          for attempt in $(seq 1 36); do
             ENV_IDS_JSON=$(gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
               --jq '[.[] | select(.current_user_can_approve) | .environment.id] | unique')
 
-            if [[ "$ENV_IDS_JSON" != "[]" ]]; then
-              break
+            if [[ "$ENV_IDS_JSON" == "[]" ]]; then
+              echo "No approvable pending deployments yet (attempt $attempt/36)"
+              sleep 5
+              continue
             fi
-            echo "Waiting for approvable pending deployments… (attempt $attempt/18)"
+
+            echo "Approving environments: $ENV_IDS_JSON (attempt $attempt/36)"
+            BODY=$(jq -n \
+              --argjson ids "$ENV_IDS_JSON" \
+              --arg comment "Auto-approved: $ACTOR has $PERMISSION access." \
+              '{environment_ids: $ids, state: "approved", comment: $comment}')
+
+            if echo "$BODY" | gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
+              --method POST --input - 2>/dev/null; then
+              echo "Approved successfully."
+              exit 0
+            fi
+
+            echo "POST failed — retrying in 5 s…"
             sleep 5
           done
 
-          if [[ "$ENV_IDS_JSON" == "[]" ]]; then
-            echo "No approvable pending deployments after 90 s — skipping."
-            exit 0
-          fi
-
-          echo "Approving environments: $ENV_IDS_JSON"
-          jq -n \
-            --argjson ids "$ENV_IDS_JSON" \
-            --arg comment "Auto-approved: $ACTOR has $PERMISSION access." \
-            '{environment_ids: $ids, state: "approved", comment: $comment}' |
-          gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
-            --method POST --input -
+          echo "::warning::Failed to approve pending deployments after 3 min."
+          exit 1
