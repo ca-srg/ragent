@@ -52,6 +52,9 @@ func (f *fakeClient) PostMessage(channelID string, options ...slack.MsgOption) (
 func (f *fakeClient) GetConversationReplies(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error) {
 	return nil, false, "", nil
 }
+func (f *fakeClient) SetAssistantThreadsStatusContext(ctx context.Context, params slack.AssistantThreadsSetStatusParameters) error {
+	return nil
+}
 
 // fakeSearch satisfies SearchAdapter
 type fakeSearch struct{}
