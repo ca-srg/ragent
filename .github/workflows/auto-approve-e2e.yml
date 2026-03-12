@@ -38,22 +38,31 @@ jobs:
 
           echo "Actor $ACTOR has $PERMISSION access — auto-approving."
 
-          # Wait briefly for the pending deployment to be registered.
-          sleep 5
+          for attempt in $(seq 1 36); do
+            ENV_IDS_JSON=$(gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
+              --jq '[.[] | select(.current_user_can_approve) | .environment.id] | unique')
 
-          PENDING_ENV_IDS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
-            --jq '.[].environment.id')
+            if [[ "$ENV_IDS_JSON" == "[]" ]]; then
+              echo "No approvable pending deployments yet (attempt $attempt/36)"
+              sleep 5
+              continue
+            fi
 
-          if [[ -z "$PENDING_ENV_IDS" ]]; then
-            echo "No pending deployments to approve."
-            exit 0
-          fi
+            echo "Approving environments: $ENV_IDS_JSON (attempt $attempt/36)"
+            BODY=$(jq -n \
+              --argjson ids "$ENV_IDS_JSON" \
+              --arg comment "Auto-approved: $ACTOR has $PERMISSION access." \
+              '{environment_ids: $ids, state: "approved", comment: $comment}')
 
-          echo "$PENDING_ENV_IDS" | while read -r ENV_ID; do
-            echo "Approving environment $ENV_ID..."
-            gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
-              --method POST \
-              -F "environment_ids[]=$ENV_ID" \
-              -F "state=approved" \
-              -F "comment=Auto-approved: $ACTOR has $PERMISSION access."
+            if echo "$BODY" | gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
+              --method POST --input - 2>/dev/null; then
+              echo "Approved successfully."
+              exit 0
+            fi
+
+            echo "POST failed — retrying in 5 s…"
+            sleep 5
           done
+
+          echo "::warning::Failed to approve pending deployments after 3 min."
+          exit 1

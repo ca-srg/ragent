@@ -110,6 +110,8 @@ func (p *Processor) ProcessMessage(ctx context.Context, botUserID string, msg *s
 		return &Reply{Channel: msg.Channel, MsgOptions: []slack.MsgOption{opts}}
 	}
 
+	NotifyProgress(ctx, "質問を処理しています...")
+
 	searchQuery := query
 	if p.threadBuilder != nil {
 		enhancedQuery, err := p.threadBuilder.Build(ctx, msg.Channel, msg.ThreadTimestamp, query)

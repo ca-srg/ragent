@@ -27,6 +27,7 @@ type SlackClient interface {
 	NewRTM(options ...slack.RTMOption) *slack.RTM
 	PostMessage(channelID string, options ...slack.MsgOption) (string, string, error)
 	GetConversationReplies(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error)
+	SetAssistantThreadsStatusContext(ctx context.Context, params slack.AssistantThreadsSetStatusParameters) error
 }
 
 // Bot encapsulates RTM handling and message processing
@@ -133,6 +134,12 @@ func (b *Bot) handleEvent(ctx context.Context, ev slack.RTMEvent) {
 		}
 		// typing indicator as progress
 		b.rtm.Typing(data.Channel)
+		threadTS := data.ThreadTimestamp
+		if threadTS == "" {
+			threadTS = data.Timestamp
+		}
+		notifier := NewSlackProgressNotifier(b.client, data.Channel, threadTS)
+		ctx = ContextWithProgressNotifier(ctx, notifier)
 		// process
 		b.metrics.RecordRequest()
 		start := time.Now()

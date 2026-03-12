@@ -56,6 +56,7 @@ func (s *SlackOnlySearchAdapter) Search(ctx context.Context, query string, opts 
 	// Execute Slack search
 	var slackResult *SlackConversationResult
 	if s.slackSearch != nil {
+		NotifyProgress(ctx, "Slackの会話を検索中...")
 		var err error
 		slackResult, err = s.slackSearch.SearchConversations(ctx, query, opts)
 		if err != nil {
@@ -75,6 +76,7 @@ func (s *SlackOnlySearchAdapter) Search(ctx context.Context, query string, opts 
 	// Generate chat response using LLM
 	var generatedResponse string
 	if len(contextParts) > 0 {
+		NotifyProgress(ctx, "回答を生成中...")
 		generatedResponse = s.generateResponse(ctx, query, contextParts)
 	} else {
 		generatedResponse = "Slackから関連する情報が見つかりませんでした。"
