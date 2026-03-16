@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
+	"github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/ca-srg/ragent/internal/pkg/sqlitevec"
 )
 

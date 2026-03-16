@@ -10,12 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
-	"github.com/ca-srg/ragent/internal/ingestion/metadata"
-	"github.com/ca-srg/ragent/internal/ingestion/scanner"
-	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
-	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
-	"github.com/ca-srg/ragent/internal/pkg/embedding"
+	domain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
 )
 
@@ -28,6 +23,7 @@ type ServerConfig struct {
 	IdleTimeout     time.Duration
 	ShutdownTimeout time.Duration
 	Directory       string // Source directory for vectorization
+	BasePath        string // URL prefix when embedded (e.g., "/dashboard"); empty for standalone
 }
 
 // DefaultServerConfig returns the default server configuration
@@ -46,14 +42,13 @@ func DefaultServerConfig() *ServerConfig {
 // Server represents the web UI server
 type Server struct {
 	config       *ServerConfig
-	appConfig    *appconfig.Config
 	httpServer   *http.Server
 	templates    *TemplateManager
 	state        *VectorizeState
 	sseManager   *SSEManager
 	scheduler    *Scheduler
-	vectorizer   *vectorizer.VectorizerService
-	fileScanner  *scanner.FileScanner
+	vectorizer   domain.Vectorizer
+	fileScanner  domain.FileScanner
 	ipcClient    *ipc.Client
 	logger       *log.Logger
 	mu           sync.RWMutex
@@ -62,18 +57,21 @@ type Server struct {
 }
 
 // NewServer creates a new web UI server
-func NewServer(serverConfig *ServerConfig, logger *log.Logger) (*Server, error) {
+func NewServer(serverConfig *ServerConfig, deps *Dependencies, logger *log.Logger) (*Server, error) {
 	if serverConfig == nil {
 		serverConfig = DefaultServerConfig()
 	}
+	if deps == nil {
+		return nil, fmt.Errorf("dependencies are required")
+	}
+	if deps.FileScanner == nil {
+		return nil, fmt.Errorf("file scanner dependency is required")
+	}
+	if deps.Vectorizer == nil {
+		return nil, fmt.Errorf("vectorizer dependency is required")
+	}
 	if logger == nil {
 		logger = log.New(log.Writer(), "[webui] ", log.LstdFlags)
-	}
-
-	// Load application config
-	appCfg, err := appconfig.Load()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
 
 	// Create SSE manager
@@ -90,25 +88,22 @@ func NewServer(serverConfig *ServerConfig, logger *log.Logger) (*Server, error) 
 	scheduler := NewScheduler(state, 30*time.Minute, logger)
 
 	// Create template manager
-	templates, err := NewTemplateManager()
+	templates, err := NewTemplateManagerWithBasePath(serverConfig.BasePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize templates: %w", err)
 	}
-
-	// Create file scanner
-	fileScanner := scanner.NewFileScanner()
 
 	// Create IPC client for external process status
 	ipcClient := ipc.NewClient(ipc.ClientConfig{})
 
 	s := &Server{
 		config:      serverConfig,
-		appConfig:   appCfg,
 		templates:   templates,
 		state:       state,
 		sseManager:  sseManager,
 		scheduler:   scheduler,
-		fileScanner: fileScanner,
+		vectorizer:  deps.Vectorizer,
+		fileScanner: deps.FileScanner,
 		ipcClient:   ipcClient,
 		logger:      logger,
 	}
@@ -116,38 +111,52 @@ func NewServer(serverConfig *ServerConfig, logger *log.Logger) (*Server, error) 
 	return s, nil
 }
 
-// Run starts the server and blocks until context is cancelled
-func (s *Server) Run(ctx context.Context) error {
-	// Create cancellable context
+// Initialize prepares the server for handling requests (vectorizer, scheduler, SSE)
+// without starting an HTTP listener. Call this before Handler() when embedding.
+func (s *Server) Initialize(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancelFunc = cancel
-	defer cancel()
 
-	// Initialize vectorizer service
-	if err := s.initializeVectorizer(ctx); err != nil {
-		return fmt.Errorf("failed to initialize vectorizer: %w", err)
-	}
-
-	// Set scheduler run function
 	s.scheduler.SetRunFunc(func(runCtx context.Context) error {
 		return s.runVectorization(runCtx, false)
 	})
 
-	// Start SSE manager
 	s.sseManager.Start(ctx)
-	defer s.sseManager.Stop()
+	return nil
+}
 
-	// Setup HTTP server
+// Handler returns the HTTP handler for embedding in another server.
+// Call Initialize() before this method.
+func (s *Server) Handler() http.Handler {
 	mux := s.setupRoutes()
+	return s.loggingMiddleware(mux)
+}
+
+// Cleanup stops the SSE manager and scheduler. Call on shutdown when embedded.
+func (s *Server) Cleanup() {
+	s.sseManager.Stop()
+	s.scheduler.Stop()
+	if s.cancelFunc != nil {
+		s.cancelFunc()
+	}
+}
+
+// Run starts the server and blocks until context is cancelled
+func (s *Server) Run(ctx context.Context) error {
+	if err := s.Initialize(ctx); err != nil {
+		return err
+	}
+	defer s.Cleanup()
+
+	handler := s.Handler()
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", s.config.Host, s.config.Port),
-		Handler:      s.loggingMiddleware(mux),
+		Handler:      handler,
 		ReadTimeout:  s.config.ReadTimeout,
 		WriteTimeout: s.config.WriteTimeout,
 		IdleTimeout:  s.config.IdleTimeout,
 	}
 
-	// Start HTTP server in goroutine
 	errChan := make(chan error, 1)
 	go func() {
 		s.logger.Printf("Starting Web UI server at http://%s:%d", s.config.Host, s.config.Port)
@@ -157,7 +166,6 @@ func (s *Server) Run(ctx context.Context) error {
 		close(errChan)
 	}()
 
-	// Wait for shutdown signal or error
 	select {
 	case <-ctx.Done():
 		return s.shutdown()
@@ -249,61 +257,6 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// initializeVectorizer initializes the vectorizer service
-func (s *Server) initializeVectorizer(ctx context.Context) error {
-	// Create embedding client
-	embeddingClient, err := embedding.NewEmbeddingClient(s.appConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create embedding client: %w", err)
-	}
-
-	sf := vectorizer.NewServiceFactory(s.appConfig)
-	vectorStoreClient, err := sf.CreateVectorStore()
-	if err != nil {
-		return fmt.Errorf("failed to create vector store client: %w", err)
-	}
-
-	// Create metadata extractor
-	metadataExtractor := metadata.NewMetadataExtractor()
-
-	var osIndexer vectorizer.OpenSearchIndexer
-	if s.appConfig.OpenSearchEndpoint != "" {
-		factory := vectorizer.NewIndexerFactory(s.appConfig)
-		webDimension := 768
-		if embeddingClient != nil {
-			_, d, dErr := embeddingClient.GetModelInfo()
-			if dErr == nil && d > 0 {
-				webDimension = d
-			}
-		}
-		osIndexer, err = factory.CreateOpenSearchIndexer(s.appConfig.OpenSearchIndex, webDimension)
-		if err != nil {
-			s.logger.Printf("Warning: failed to create OpenSearch indexer: %v", err)
-		}
-	}
-
-	// Create vectorizer service config
-	serviceConfig := &vectorizer.ServiceConfig{
-		Config:              s.appConfig,
-		EmbeddingClient:     embeddingClient,
-		VectorStoreClient:   vectorStoreClient,
-		OpenSearchIndexer:   osIndexer,
-		MetadataExtractor:   metadataExtractor,
-		FileScanner:         s.fileScanner,
-		EnableOpenSearch:    osIndexer != nil,
-		OpenSearchIndexName: s.appConfig.OpenSearchIndex,
-	}
-
-	// Create vectorizer service
-	s.vectorizer, err = vectorizer.NewVectorizerService(serviceConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create vectorizer service: %w", err)
-	}
-
-	s.logger.Println("Vectorizer service initialized")
-	return nil
-}
-
 // runVectorization runs the vectorization process
 func (s *Server) runVectorization(ctx context.Context, dryRun bool) error {
 	s.mu.Lock()
@@ -329,8 +282,7 @@ func (s *Server) runVectorization(ctx context.Context, dryRun bool) error {
 	runID := s.state.StartRun(len(files), dryRun)
 	s.logger.Printf("Starting vectorization run %s with %d files (dry-run: %v)", runID, len(files), dryRun)
 
-	// Convert to ingestion.FileInfo
-	fileInfos := make([]*ingestion.FileInfo, len(files))
+	fileInfos := make([]*domain.FileInfo, len(files))
 	copy(fileInfos, files)
 
 	// Run vectorization

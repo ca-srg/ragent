@@ -28,6 +28,11 @@ type TimeRange struct {
 	End   *time.Time `json:"end,omitempty"`
 }
 
+type SearchOptions struct {
+	ChannelID       string
+	ThreadTimestamp string
+}
+
 // EnrichedMessage combines a Slack message with additional contextual data.
 type EnrichedMessage struct {
 	OriginalMessage  slack.Message   `json:"original_message"`

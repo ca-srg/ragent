@@ -18,8 +18,7 @@ import (
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
-	"github.com/ca-srg/ragent/internal/query"
+	"github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 const (
@@ -423,7 +422,7 @@ func (s *S3VectorService) GetBackendInfo(ctx context.Context) (map[string]interf
 }
 
 // QueryVectors performs a similarity search using a query vector
-func (s *S3VectorService) QueryVectors(ctx context.Context, queryVector []float64, topK int, filter map[string]interface{}) (*query.QueryVectorsResult, error) {
+func (s *S3VectorService) QueryVectors(ctx context.Context, queryVector []float64, topK int, filter map[string]interface{}) (*domain.QueryVectorsResult, error) {
 	if len(queryVector) == 0 {
 		return nil, fmt.Errorf("query vector cannot be empty")
 	}
@@ -464,14 +463,14 @@ func (s *S3VectorService) QueryVectors(ctx context.Context, queryVector []float6
 	}
 
 	// Convert API result to our result format
-	queryResult := &query.QueryVectorsResult{
-		Results:    make([]query.QueryResult, 0, len(result.Vectors)),
+	queryResult := &domain.QueryVectorsResult{
+		Results:    make([]domain.QueryResult, 0, len(result.Vectors)),
 		TotalCount: len(result.Vectors),
 		TopK:       topK,
 	}
 
 	for _, vector := range result.Vectors {
-		queryRes := query.QueryResult{}
+		queryRes := domain.QueryResult{}
 
 		if vector.Key != nil {
 			queryRes.Key = *vector.Key

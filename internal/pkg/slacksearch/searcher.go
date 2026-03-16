@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -32,7 +31,7 @@ type slackSearchClient interface {
 
 type Searcher struct {
 	client         slackSearchClient
-	rateLimiter    *slackbot.RateLimiter
+	rateLimiter    *RateLimiter
 	logger         *log.Logger
 	requestTimeout time.Duration
 
@@ -58,7 +57,7 @@ type SearchResponse struct {
 
 // NewSearcher constructs a new Searcher instance.
 // requestTimeout specifies the timeout for each Slack API call.
-func NewSearcher(client *slack.Client, rateLimiter *slackbot.RateLimiter, requestTimeout time.Duration) *Searcher {
+func NewSearcher(client *slack.Client, rateLimiter *RateLimiter, requestTimeout time.Duration) *Searcher {
 	logger := log.New(log.Default().Writer(), "slacksearch/searcher ", log.LstdFlags)
 	return &Searcher{
 		client:         client,

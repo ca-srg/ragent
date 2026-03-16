@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
-
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	domain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -97,11 +96,11 @@ func TestVectorizeStateCompleteRun(t *testing.T) {
 	state.StartRun(10, false)
 	state.UpdateProgress(10, 8, 2, "")
 
-	result := &ingestion.ProcessingResult{
+	result := &domain.ProcessingResult{
 		ProcessedFiles: 10,
 		SuccessCount:   8,
 		FailureCount:   2,
-		Errors: []ingestion.ProcessingError{
+		Errors: []domain.ProcessingError{
 			{
 				Timestamp: time.Now(),
 				FilePath:  "test/error.md",
@@ -132,7 +131,7 @@ func TestVectorizeStateCompleteRunNoRun(t *testing.T) {
 	state := NewVectorizeState(nil)
 
 	// Should not panic when no run is active
-	result := &ingestion.ProcessingResult{
+	result := &domain.ProcessingResult{
 		ProcessedFiles: 5,
 	}
 	state.CompleteRun(result)
@@ -235,7 +234,7 @@ func TestVectorizeStateHistoryMaxSize(t *testing.T) {
 	// Add more than maxHistorySize runs
 	for i := 0; i < 110; i++ {
 		state.StartRun(1, false)
-		state.CompleteRun(&ingestion.ProcessingResult{
+		state.CompleteRun(&domain.ProcessingResult{
 			ProcessedFiles: 1,
 			SuccessCount:   1,
 		})

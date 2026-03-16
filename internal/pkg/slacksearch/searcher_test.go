@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -27,7 +26,7 @@ func (m *mockSlackClient) SearchMessagesContext(ctx context.Context, query strin
 }
 
 func newTestSearcher(client slackSearchClient) *Searcher {
-	s := NewSearcher(nil, slackbot.NewRateLimiter(1000, 1000, 1000), 5*time.Second)
+	s := NewSearcher(nil, NewRateLimiter(1000, 1000, 1000), 5*time.Second)
 	s.client = client
 	s.logger.SetOutput(io.Discard)
 	return s

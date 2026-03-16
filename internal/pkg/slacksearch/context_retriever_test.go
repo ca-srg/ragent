@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -43,7 +42,7 @@ func (m *mockSlackConversationClient) GetPermalinkContext(ctx context.Context, p
 
 func newTestContextRetriever(client slackConversationClient, bedrockClient bedrockChatClient, cfg *SlackSearchConfig) *ContextRetriever {
 	slackClient := slack.New("dummy-token")
-	rateLimiter := slackbot.NewRateLimiter(1000, 1000, 1000)
+	rateLimiter := NewRateLimiter(1000, 1000, 1000)
 	cr, err := NewContextRetriever(slackClient, rateLimiter, &bedrock.BedrockClient{}, cfg, log.New(io.Discard, "", 0))
 	if err != nil {
 		panic(err)

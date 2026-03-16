@@ -3,13 +3,13 @@
 // ingestion.FileInfo, ingestion.ProcessingResult, etc. without breaking changes.
 package ingestion
 
-import "github.com/ca-srg/ragent/internal/ingestion/domain"
+import pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 
 // Type aliases re-exported from the domain package for backward compatibility.
 type (
-	DocumentMetadata = domain.DocumentMetadata
-	FileInfo         = domain.FileInfo
-	VectorData       = domain.VectorData
-	ProcessingResult = domain.ProcessingResult
-	ProcessingError  = domain.ProcessingError
+	DocumentMetadata = pkgdomain.DocumentMetadata
+	FileInfo         = pkgdomain.FileInfo
+	VectorData       = pkgdomain.VectorData
+	ProcessingResult = pkgdomain.ProcessingResult
+	ProcessingError  = pkgdomain.ProcessingError
 )

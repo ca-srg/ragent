@@ -8,7 +8,7 @@
     <section class="card status-card">
         <h2>ベクトル化ステータス</h2>
         <div id="status-display" 
-             hx-get="/partials/stats" 
+             hx-get="{{basePath}}/partials/stats" 
              hx-trigger="every 5s"
              hx-swap="innerHTML">
             {{template "stats.html" .State}}
@@ -19,14 +19,14 @@
     <section class="card control-panel">
         <h2>コントロール</h2>
         <div class="button-group">
-            <button hx-post="/api/vectorize/start"
+            <button hx-post="{{basePath}}/api/vectorize/start"
                     hx-swap="none"
                     hx-on::after-request="htmx.trigger('#status-display', 'refresh')"
                     {{if or (eq .State.Status "running") (eq .State.Status "waiting")}}disabled{{end}}
                     class="btn btn-primary">
                 ベクトル化開始
             </button>
-            <button hx-post="/api/vectorize/stop"
+            <button hx-post="{{basePath}}/api/vectorize/stop"
                     hx-swap="none"
                     {{if and (ne .State.Status "running") (ne .State.Status "waiting")}}disabled{{end}}
                     class="btn btn-danger">
@@ -38,7 +38,7 @@
         <div class="scheduler-controls">
             <h3>スケジューラー（フォローモード）</h3>
             <div class="scheduler-row">
-                <button hx-post="/api/scheduler/toggle"
+                <button hx-post="{{basePath}}/api/scheduler/toggle"
                         hx-target="#scheduler-status"
                         class="btn {{if .Scheduler.Enabled}}btn-danger{{else}}btn-primary{{end}}">
                     {{if .Scheduler.Enabled}}スケジューラー停止{{else}}スケジューラー開始{{end}}
@@ -59,7 +59,7 @@
                        name="interval" 
                        value="30m"
                        placeholder="30m, 1h など"
-                       hx-put="/api/scheduler/interval"
+                       hx-put="{{basePath}}/api/scheduler/interval"
                        hx-trigger="change"
                        hx-target="#scheduler-status">
             </div>
@@ -70,7 +70,7 @@
     <section class="card progress-card" id="progress-section">
         <h2>進捗</h2>
         <div id="progress-content"
-             hx-get="/partials/progress"
+             hx-get="{{basePath}}/partials/progress"
              hx-trigger="every 2s"
              hx-swap="innerHTML">
             {{template "progress.html" .State}}
@@ -81,7 +81,7 @@
     <section class="card errors-card">
         <h2>最近のエラー</h2>
         <div id="error-list"
-             hx-get="/partials/error-list"
+             hx-get="{{basePath}}/partials/error-list"
              hx-trigger="every 10s"
              hx-swap="innerHTML">
             {{template "error_list.html" .RecentErrors}}

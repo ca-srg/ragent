@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -21,7 +20,7 @@ const (
 // MessageFetcher retrieves Slack messages by URL.
 type MessageFetcher struct {
 	client      slackConversationClient
-	rateLimiter *slackbot.RateLimiter
+	rateLimiter *RateLimiter
 	apiTimeout  time.Duration
 	logger      *log.Logger
 }
@@ -40,7 +39,7 @@ type FetchResponse struct {
 }
 
 // NewMessageFetcher creates a new MessageFetcher instance.
-func NewMessageFetcher(client *slack.Client, rateLimiter *slackbot.RateLimiter, config *SlackSearchConfig, logger *log.Logger) *MessageFetcher {
+func NewMessageFetcher(client *slack.Client, rateLimiter *RateLimiter, config *SlackSearchConfig, logger *log.Logger) *MessageFetcher {
 	if logger == nil {
 		logger = log.Default()
 	}

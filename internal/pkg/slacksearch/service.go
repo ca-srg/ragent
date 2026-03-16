@@ -11,7 +11,6 @@ import (
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -104,8 +103,8 @@ func NewSlackSearchService(
 		userClient = slack.New(cfg.UserToken)
 	}
 
-	searchLimiter := slackbot.NewRateLimiter(20, 20, 20)
-	contextLimiter := slackbot.NewRateLimiter(60, 120, 200)
+	searchLimiter := NewRateLimiter(20, 20, 20)
+	contextLimiter := NewRateLimiter(60, 120, 200)
 
 	llmTimeout := time.Duration(cfg.LLMTimeoutSeconds) * time.Second
 	queryGenerator := NewQueryGenerator(bedrockClient, llmTimeout)

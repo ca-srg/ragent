@@ -34,6 +34,10 @@ type ServerWrapper struct {
 	unifiedAuthMiddleware *UnifiedAuthMiddleware
 	sseManager            *SSEManager
 
+	// Dashboard embedding
+	dashboardPath    string
+	dashboardHandler http.Handler
+
 	// Server lifecycle management
 	logger       *log.Logger
 	shutdownChan chan struct{}
@@ -174,6 +178,15 @@ func (sw *ServerWrapper) initializeSSEManager() {
 
 	sw.sseManager = NewSSEManager(sseConfig, sw.logger)
 	sw.logger.Printf("SSE manager initialized")
+}
+
+// SetDashboardHandler mounts an HTTP handler at the given path prefix.
+// The handler receives requests with the prefix already stripped.
+func (sw *ServerWrapper) SetDashboardHandler(pathPrefix string, handler http.Handler) {
+	sw.mutex.Lock()
+	defer sw.mutex.Unlock()
+	sw.dashboardPath = pathPrefix
+	sw.dashboardHandler = handler
 }
 
 // SetIPAuthMiddleware sets the IP authentication middleware
@@ -321,11 +334,14 @@ func (sw *ServerWrapper) Start() error {
 	sseHandler := mcp.NewSSEHandler(baseGetServer)
 	mux.Handle("/sse", sseHandler)
 
-	// Add health check endpoint
 	mux.HandleFunc("/health", sw.handleHealthCheck)
-
-	// Register auth-related routes (e.g., OAuth2 callback)
 	sw.registerAuthRoutes(mux)
+
+	if sw.dashboardHandler != nil && sw.dashboardPath != "" {
+		prefix := sw.dashboardPath
+		mux.Handle(prefix+"/", http.StripPrefix(prefix, sw.dashboardHandler))
+		sw.logger.Printf("Dashboard mounted at %s/", prefix)
+	}
 
 	// Build handler chain with authentication
 	var handler http.Handler = mux
