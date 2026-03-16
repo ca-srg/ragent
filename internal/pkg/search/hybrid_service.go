@@ -457,26 +457,8 @@ func (s *HybridSearchService) executeSlackSearch(ctx context.Context, request *S
 	slackCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
 
-	channels := sanitizeSlackChannels(request.SlackChannels)
+	channels := slacksearch.SanitizeSlackChannels(request.SlackChannels)
 	return s.slackService.Search(slackCtx, request.Query, channels)
-}
-
-func sanitizeSlackChannels(channels []string) []string {
-	if len(channels) == 0 {
-		return nil
-	}
-	clean := make([]string, 0, len(channels))
-	for _, ch := range channels {
-		ch = strings.TrimSpace(ch)
-		ch = strings.TrimPrefix(ch, "#")
-		if ch != "" {
-			clean = append(clean, ch)
-		}
-	}
-	if len(clean) == 0 {
-		return nil
-	}
-	return clean
 }
 
 func queryMentionsSlack(query string) bool {

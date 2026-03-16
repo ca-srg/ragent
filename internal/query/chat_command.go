@@ -246,7 +246,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 			fmt.Printf("Slack search unavailable: %v\n", slackErr)
 		} else if slackResult != nil {
 			fmt.Printf("Slack search completed in %d iteration(s).\n", slackResult.IterationCount)
-			printSlackResults(slackResult)
+			slacksearch.PrintSlackResults(slackResult)
 			if slackPrompt := slackContextForPrompt(slackResult); slackPrompt != "" {
 				contextParts = append(contextParts, slackPrompt)
 			}
@@ -305,7 +305,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 				fmt.Printf("Slack search unavailable: %v\n", slackErr)
 			} else if slackResult != nil {
 				fmt.Printf("Slack search completed in %d iteration(s).\n", slackResult.IterationCount)
-				printSlackResults(slackResult)
+				slacksearch.PrintSlackResults(slackResult)
 				if slackPrompt := slackContextForPrompt(slackResult); slackPrompt != "" {
 					contextParts = append(contextParts, slackPrompt)
 				}

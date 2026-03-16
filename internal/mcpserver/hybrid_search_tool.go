@@ -415,7 +415,7 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 
 	request.EnableSlackSearch = parseBoolParam(params["enable_slack_search"])
 	if channels := parseStringSliceParam(params["slack_channels"]); len(channels) > 0 {
-		request.SlackChannels = sanitizeSlackChannels(channels)
+		request.SlackChannels = slacksearch.NormalizeSlackChannels(channels)
 	}
 
 	if filtersInterface, ok := params["filters"]; ok {
@@ -720,25 +720,6 @@ func parseStringSliceParam(value interface{}) []string {
 	default:
 		return nil
 	}
-}
-
-func sanitizeSlackChannels(channels []string) []string {
-	result := make([]string, 0, len(channels))
-	for _, ch := range channels {
-		if normalized := normalizeSlackChannel(ch); normalized != "" {
-			result = append(result, normalized)
-		}
-	}
-	return result
-}
-
-func normalizeSlackChannel(value string) string {
-	trimmed := strings.TrimSpace(value)
-	trimmed = strings.TrimPrefix(trimmed, "#")
-	if trimmed == "" {
-		return ""
-	}
-	return strings.ToLower(trimmed)
 }
 
 func convertSlackResult(src *slacksearch.SlackSearchResult) []HybridSearchSlackResult {
