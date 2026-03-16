@@ -216,6 +216,7 @@ func (s *Server) setupRoutes() *http.ServeMux {
 	mux.HandleFunc("/api/vectorize/start", s.handleVectorizeStart)
 	mux.HandleFunc("/api/vectorize/stop", s.handleVectorizeStop)
 	mux.HandleFunc("/api/vectorize/progress", s.handleVectorizeProgress)
+	mux.HandleFunc("/api/upload", s.handleUpload)
 	mux.HandleFunc("/api/files", s.handleAPIFiles)
 	mux.HandleFunc("/api/history", s.handleAPIHistory)
 	mux.HandleFunc("/api/errors", s.handleAPIErrors)

@@ -144,3 +144,24 @@ type APIProgressResponse struct {
 	Progress *VectorizeProgressEvent `json:"progress,omitempty"`
 	LastRun  *RunInfo                `json:"last_run,omitempty"`
 }
+
+const (
+	MaxUploadSize  int64 = 50 * 1024 * 1024
+	MaxRequestSize int64 = 150 * 1024 * 1024
+)
+
+var AllowedExtensions = []string{".md", ".csv", ".pdf"}
+
+type UploadResult struct {
+	FileName string `json:"file_name"`
+	Status   string `json:"status"`
+	Message  string `json:"message"`
+	Size     int64  `json:"size"`
+}
+
+type UploadResponse struct {
+	Results            []UploadResult `json:"results"`
+	SavedCount         int            `json:"saved_count"`
+	RejectedCount      int            `json:"rejected_count"`
+	VectorizeTriggered bool           `json:"vectorize_triggered"`
+}

@@ -66,6 +66,20 @@
         </div>
     </section>
     
+    <!-- Upload Section -->
+    <section class="card upload-section">
+        <h2>ファイルアップロード</h2>
+        <div class="upload-dropzone" id="upload-dropzone">
+            <p class="upload-icon">📁</p>
+            <p>ファイルをドラッグ＆ドロップ、または</p>
+            <label for="file-input" class="btn btn-primary">ファイルを選択</label>
+            <input type="file" id="file-input" name="files" multiple
+                   accept=".md,.csv,.pdf" style="display:none">
+            <p class="upload-hint">対応形式: Markdown (.md), CSV (.csv), PDF (.pdf) — 最大 50MB/ファイル</p>
+        </div>
+        <div id="upload-status"></div>
+    </section>
+    
     <!-- Progress -->
     <section class="card progress-card" id="progress-section">
         <h2>進捗</h2>
@@ -102,4 +116,5 @@
     </section>
     {{end}}
 </div>
+<script src="{{basePath}}/static/js/upload.js"></script>
 {{end}}

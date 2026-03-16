@@ -460,6 +460,30 @@ footer {
     margin-bottom: 0.25rem;
 }
 
+/* Upload Section */
+.upload-section { /* 既存 .card を継承 */ }
+.upload-dropzone {
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s;
+}
+.upload-dropzone.dragover {
+    border-color: var(--primary-color);
+    background-color: rgba(59, 130, 246, 0.05);
+}
+.upload-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+.upload-hint { color: var(--text-muted); font-size: 0.875rem; margin-top: 0.5rem; }
+/* Result items */
+.upload-result { margin-top: 1rem; }
+.upload-result-item { padding: 0.5rem; border-radius: 4px; margin-bottom: 0.25rem; font-size: 0.875rem; }
+.upload-result-item.saved { background-color: rgba(34, 197, 94, 0.1); color: var(--success-color); }
+.upload-result-item.rejected { background-color: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
+.upload-result-item.error { background-color: rgba(245, 158, 11, 0.1); color: var(--warning-color); }
+.upload-loading { text-align: center; color: var(--text-muted); padding: 1rem; }
+
 /* Responsive */
 @media (max-width: 768px) {
     .navbar {
