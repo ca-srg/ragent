@@ -23,7 +23,7 @@ func TestBotSlackSearcherSearchesConversations(t *testing.T) {
 		},
 	}
 
-	searcher := newBotSlackSearcher(stub, nil)
+	searcher := slackbot.NewBotSlackSearcher(stub, nil)
 	require.NotNil(t, searcher)
 	res, err := searcher.SearchConversations(context.Background(), "release plan", slackbot.SearchOptions{})
 	require.NoError(t, err)
@@ -160,7 +160,7 @@ func TestConvertSlackSearchResult(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := convertSlackSearchResult(tt.src)
+			got := slackbot.ConvertSlackSearchResult(tt.src)
 			tt.assert(t, got)
 		})
 	}
