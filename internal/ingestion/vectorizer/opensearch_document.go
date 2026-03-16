@@ -31,6 +31,7 @@ type OpenSearchDocument struct {
 	ChunkIndex   *int                   `json:"chunk_index,omitempty"`  // Index of current chunk
 	TotalChunks  *int                   `json:"total_chunks,omitempty"` // Total number of chunks
 	CustomFields map[string]interface{} `json:"custom_fields,omitempty"`
+	Secret       bool                   `json:"secret"`
 }
 
 // NewOpenSearchDocument creates a new OpenSearchDocument from VectorData
@@ -66,6 +67,7 @@ func NewOpenSearchDocument(vectorData *pkgdomain.VectorData, contentJa string) *
 		IndexedAt:    time.Now(),
 		Embedding:    embeddingCopy,
 		CustomFields: vectorData.Metadata.CustomFields,
+		Secret:       vectorData.Metadata.Secret,
 	}
 }
 
@@ -239,6 +241,7 @@ func (doc *OpenSearchDocument) ToMap() map[string]interface{} {
 		"source":     doc.Source,
 		"file_path":  doc.FilePath,
 		"word_count": doc.WordCount,
+		"secret":     doc.Secret,
 		"created_at": doc.CreatedAt.Format(time.RFC3339),
 		"updated_at": doc.UpdatedAt.Format(time.RFC3339),
 		"indexed_at": doc.IndexedAt.Format(time.RFC3339),
@@ -282,6 +285,7 @@ func (doc *OpenSearchDocument) MarshalJSON() ([]byte, error) {
 		Source       string                 `json:"source"`
 		FilePath     string                 `json:"file_path"`
 		WordCount    int                    `json:"word_count"`
+		Secret       bool                   `json:"secret"`
 		CreatedAt    string                 `json:"created_at"`
 		UpdatedAt    string                 `json:"updated_at"`
 		IndexedAt    string                 `json:"indexed_at"`
@@ -304,6 +308,7 @@ func (doc *OpenSearchDocument) MarshalJSON() ([]byte, error) {
 		Source:       doc.Source,
 		FilePath:     doc.FilePath,
 		WordCount:    doc.WordCount,
+		Secret:       doc.Secret,
 		CreatedAt:    doc.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:    doc.UpdatedAt.Format(time.RFC3339),
 		IndexedAt:    doc.IndexedAt.Format(time.RFC3339),
@@ -371,6 +376,7 @@ func (doc *OpenSearchDocument) Clone() *OpenSearchDocument {
 		UpdatedAt: doc.UpdatedAt,
 		IndexedAt: doc.IndexedAt,
 	}
+	clone.Secret = doc.Secret
 
 	// Deep copy chunk information
 	if doc.ChunkIndex != nil {

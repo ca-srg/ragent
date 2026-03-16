@@ -13,6 +13,10 @@
             <label for="file-input" class="btn btn-primary">ファイルを選択</label>
             <input type="file" id="file-input" name="files" multiple
                    accept=".md,.csv,.pdf" style="display:none">
+            <label class="upload-secret-toggle" style="margin-top:12px; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="upload-secret" name="secret" value="true">
+                <span>シークレットとして登録</span>
+            </label>
             <p class="upload-hint">対応形式: Markdown (.md), CSV (.csv), PDF (.pdf) — 最大 50MB/ファイル</p>
         </div>
         <div id="upload-status"></div>

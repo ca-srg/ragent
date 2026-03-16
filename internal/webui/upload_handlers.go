@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,12 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseMultipartForm(MaxRequestSize); err != nil {
 		http.Error(w, "Invalid multipart form", http.StatusBadRequest)
+		return
+	}
+
+	secret, err := parseUploadSecretFlag(r.FormValue("secret"))
+	if err != nil {
+		http.Error(w, "Invalid secret flag", http.StatusBadRequest)
 		return
 	}
 
@@ -165,6 +172,10 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			IsMarkdown: ext == ".md",
 			IsCSV:      ext == ".csv",
 			IsPDF:      ext == ".pdf",
+			SourceType: "upload",
+			Metadata: domain.DocumentMetadata{
+				Secret: secret,
+			},
 		}
 		if ext == ".pdf" {
 			fileInfo.RawBytes = contentBytes
@@ -244,4 +255,18 @@ func (s *Server) vectorizeUploadedFiles(ctx context.Context, fileInfos []*domain
 	s.state.CompleteRun(result)
 	s.logger.Printf("Upload vectorization completed: %d processed, %d success, %d failed",
 		result.ProcessedFiles, result.SuccessCount, result.FailureCount)
+}
+
+func parseUploadSecretFlag(rawValue string) (bool, error) {
+	trimmed := strings.TrimSpace(rawValue)
+	if trimmed == "" {
+		return false, nil
+	}
+
+	secret, err := strconv.ParseBool(trimmed)
+	if err != nil {
+		return false, err
+	}
+
+	return secret, nil
 }

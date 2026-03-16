@@ -2,6 +2,7 @@
     const basePath = document.querySelector('meta[name="base-path"]')?.content || '';
     const dropzone = document.getElementById('upload-dropzone');
     const fileInput = document.getElementById('file-input');
+    const secretCheckbox = document.getElementById('upload-secret');
     const statusDiv = document.getElementById('upload-status');
     
     // Drag & drop
@@ -27,6 +28,9 @@
         showLoading();
         const formData = new FormData();
         for (const file of files) formData.append('files', file);
+        if (secretCheckbox && secretCheckbox.checked) {
+            formData.append('secret', 'true');
+        }
         
         fetch(basePath + '/api/upload', { method: 'POST', body: formData })
             .then(res => res.json())

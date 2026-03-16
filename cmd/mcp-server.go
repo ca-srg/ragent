@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ca-srg/ragent/internal/ingestion"
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/webui"
 )
@@ -93,25 +94,22 @@ Examples:
 			if dashboardDir == "" {
 				dashboardDir = "./source"
 			}
-			dashboardCfg := &webui.ServerConfig{
-				Directory: dashboardDir,
-				BasePath:  "/dashboard",
-			}
 
-			deps, err := webui.BuildDashboardDeps()
+			fs, vec, err := ingestion.BuildDashboardDependencies()
 			if err != nil {
 				return fmt.Errorf("failed to build dashboard dependencies: %w", err)
 			}
 
-			srv, err := webui.NewServer(dashboardCfg, deps, log.New(os.Stdout, "[dashboard] ", log.LstdFlags))
+			handler, cleanup, err := webui.SetupDashboard(
+				&webui.ServerConfig{Directory: dashboardDir, BasePath: "/dashboard"},
+				&webui.Dependencies{FileScanner: fs, Vectorizer: vec},
+				log.New(os.Stdout, "[dashboard] ", log.LstdFlags),
+			)
 			if err != nil {
-				return fmt.Errorf("failed to create dashboard server: %w", err)
+				return fmt.Errorf("failed to setup dashboard: %w", err)
 			}
-			if err := srv.Initialize(context.Background()); err != nil {
-				return fmt.Errorf("failed to initialize dashboard: %w", err)
-			}
-			opts.DashboardHandler = srv.Handler()
-			opts.DashboardCleanup = srv.Cleanup
+			opts.DashboardHandler = handler
+			opts.DashboardCleanup = cleanup
 			opts.DashboardBasePath = "/dashboard"
 		}
 

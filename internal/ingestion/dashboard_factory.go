@@ -1,4 +1,4 @@
-package webui
+package ingestion
 
 import (
 	"fmt"
@@ -9,24 +9,28 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/scanner"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/ca-srg/ragent/internal/pkg/embedding"
 )
 
-func BuildDashboardDeps() (*Dependencies, error) {
+// BuildDashboardDependencies constructs a FileScanner and Vectorizer for the
+// web dashboard.  Keeping this factory inside the ingestion slice prevents
+// other slices from importing ingestion sub-packages directly.
+func BuildDashboardDependencies() (pkgdomain.FileScanner, pkgdomain.Vectorizer, error) {
 	appCfg, err := appconfig.Load()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w", err)
+		return nil, nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
 
 	embeddingClient, err := embedding.NewEmbeddingClient(appCfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create embedding client: %w", err)
+		return nil, nil, fmt.Errorf("failed to create embedding client: %w", err)
 	}
 
 	sf := vectorizer.NewServiceFactory(appCfg)
 	vectorStoreClient, err := sf.CreateVectorStore()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create vector store client: %w", err)
+		return nil, nil, fmt.Errorf("failed to create vector store client: %w", err)
 	}
 
 	metadataExtractor := metadata.NewMetadataExtractor()
@@ -62,11 +66,8 @@ func BuildDashboardDeps() (*Dependencies, error) {
 
 	vec, err := vectorizer.NewVectorizerService(serviceConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create vectorizer service: %w", err)
+		return nil, nil, fmt.Errorf("failed to create vectorizer service: %w", err)
 	}
 
-	return &Dependencies{
-		FileScanner: fileScanner,
-		Vectorizer:  vec,
-	}, nil
+	return fileScanner, vec, nil
 }

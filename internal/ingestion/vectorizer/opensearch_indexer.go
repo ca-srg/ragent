@@ -660,6 +660,9 @@ func (osi *OpenSearchIndexerImpl) CreateVectorIndexWithJapanese(ctx context.Cont
 					"word_count": map[string]interface{}{
 						"type": "integer",
 					},
+					"secret": map[string]interface{}{
+						"type": "boolean",
+					},
 					"created_at": map[string]interface{}{
 						"type": "date",
 					},

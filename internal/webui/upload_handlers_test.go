@@ -56,6 +56,41 @@ func (m *recordingVectorizer) CallCount() int {
 	return m.calls
 }
 
+type capturingVectorizer struct {
+	mu        sync.Mutex
+	calls     int
+	fileInfos []*domain.FileInfo
+}
+
+func (m *capturingVectorizer) VectorizeFiles(_ context.Context, files []*domain.FileInfo, _ bool) (*domain.ProcessingResult, error) {
+	m.mu.Lock()
+	m.calls++
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		copy := *file
+		m.fileInfos = append(m.fileInfos, &copy)
+	}
+	m.mu.Unlock()
+
+	return &domain.ProcessingResult{}, nil
+}
+
+func (m *capturingVectorizer) CallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.calls
+}
+
+func (m *capturingVectorizer) LastInfos() []*domain.FileInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return append([]*domain.FileInfo{}, m.fileInfos...)
+}
+
 func newUploadTestServer(t *testing.T, dir string) *Server {
 	t.Helper()
 
@@ -75,6 +110,11 @@ func newUploadTestServer(t *testing.T, dir string) *Server {
 
 func createMultipartRequest(t *testing.T, files []testUploadFile) *http.Request {
 	t.Helper()
+	return createMultipartRequestWithSecret(t, files, false)
+}
+
+func createMultipartRequestWithSecret(t *testing.T, files []testUploadFile, secret bool) *http.Request {
+	t.Helper()
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -85,6 +125,10 @@ func createMultipartRequest(t *testing.T, files []testUploadFile) *http.Request 
 
 		_, err = part.Write(f.Content)
 		require.NoError(t, err)
+	}
+
+	if secret {
+		require.NoError(t, writer.WriteField("secret", "true"))
 	}
 
 	require.NoError(t, writer.Close())
@@ -138,6 +182,97 @@ func TestHandleUpload_NoFiles(t *testing.T) {
 
 	resp := w.Result()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestHandleUpload_InvalidSecretFlag(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.Directory = t.TempDir()
+
+	srv, err := NewServer(cfg, &Dependencies{
+		FileScanner: &mockFileScanner{},
+		Vectorizer:  &mockVectorizer{},
+	}, nil)
+	require.NoError(t, err)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("secret", "not-bool"))
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w := httptest.NewRecorder()
+
+	srv.handleUpload(w, req)
+
+	resp := w.Result()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestHandleUpload_SecretFlagPassedToVectorizer(t *testing.T) {
+	dir := t.TempDir()
+	vectorizer := &capturingVectorizer{}
+
+	cfg := DefaultServerConfig()
+	cfg.Directory = dir
+
+	srv, err := NewServer(cfg, &Dependencies{
+		FileScanner: &mockFileScanner{},
+		Vectorizer:  vectorizer,
+	}, nil)
+	require.NoError(t, err)
+
+	req := createMultipartRequestWithSecret(t, []testUploadFile{{
+		Name:    "secret.md",
+		Content: []byte("# secret"),
+	}}, true)
+	w := httptest.NewRecorder()
+
+	srv.handleUpload(w, req)
+
+	resp := w.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Eventually(t, func() bool {
+		return vectorizer.CallCount() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	infos := vectorizer.LastInfos()
+	assert.Len(t, infos, 1)
+	assert.True(t, infos[0].Metadata.Secret)
+	assert.Equal(t, "upload", infos[0].SourceType)
+}
+
+func TestHandleUpload_SecretFlagFalseDefaultsToFalse(t *testing.T) {
+	dir := t.TempDir()
+	vectorizer := &capturingVectorizer{}
+
+	cfg := DefaultServerConfig()
+	cfg.Directory = dir
+
+	srv, err := NewServer(cfg, &Dependencies{
+		FileScanner: &mockFileScanner{},
+		Vectorizer:  vectorizer,
+	}, nil)
+	require.NoError(t, err)
+
+	req := createMultipartRequest(t, []testUploadFile{{
+		Name:    "default-false.md",
+		Content: []byte("# default false"),
+	}})
+	w := httptest.NewRecorder()
+
+	srv.handleUpload(w, req)
+
+	resp := w.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Eventually(t, func() bool {
+		return vectorizer.CallCount() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	infos := vectorizer.LastInfos()
+	assert.Len(t, infos, 1)
+	assert.False(t, infos[0].Metadata.Secret)
+	assert.Equal(t, "upload", infos[0].SourceType)
 }
 
 func TestHandleUpload_InvalidExtension(t *testing.T) {
