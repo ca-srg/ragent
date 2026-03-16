@@ -8,17 +8,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// handleSSEProgress handles the SSE progress endpoint
-func (s *Server) handleSSEProgress(w http.ResponseWriter, r *http.Request) {
-	s.handleSSE(w, r, []string{
-		EventTypeVectorizeStarted,
-		EventTypeVectorizeProgress,
-		EventTypeVectorizeCompleted,
-		EventTypeVectorizeFailed,
-		EventTypeHeartbeat,
-	})
-}
-
 // handleSSEEvents handles the general SSE events endpoint
 func (s *Server) handleSSEEvents(w http.ResponseWriter, r *http.Request) {
 	// Parse filter query parameter

@@ -1,10 +1,13 @@
 package webui
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
+	"path/filepath"
 	"time"
 )
 
@@ -14,9 +17,11 @@ var templatesFS embed.FS
 //go:embed static/*
 var staticFiles embed.FS
 
-// TemplateManager manages HTML templates
+// TemplateManager manages HTML templates.
+// Each page template gets its own isolated template set to prevent
+// {{define "content"}} blocks from colliding across pages.
 type TemplateManager struct {
-	templates *template.Template
+	templates map[string]*template.Template
 }
 
 // NewTemplateManager creates a new template manager with no base path prefix.
@@ -39,20 +44,63 @@ func NewTemplateManagerWithBasePath(basePath string) (*TemplateManager, error) {
 		"basePath":       func() string { return basePath },
 	}
 
-	tmpl, err := template.New("").Funcs(funcMap).ParseFS(
-		templatesFS, "templates/*.html", "templates/partials/*.html")
+	shared, err := template.New("").Funcs(funcMap).ParseFS(
+		templatesFS, "templates/base.html", "templates/partials/*.html")
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse templates: %w", err)
+		return nil, fmt.Errorf("failed to parse shared templates: %w", err)
+	}
+
+	templates := make(map[string]*template.Template)
+
+	// Each page gets its own clone so {{define "content"}} blocks don't collide.
+	// Without this, the last-parsed page's "content" overwrites all others.
+	pageFiles, err := fs.Glob(templatesFS, "templates/*.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to glob page templates: %w", err)
+	}
+	for _, pf := range pageFiles {
+		name := filepath.Base(pf)
+		if name == "base.html" {
+			continue
+		}
+		clone, err := shared.Clone()
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone shared templates for %s: %w", name, err)
+		}
+		if _, err := clone.ParseFS(templatesFS, pf); err != nil {
+			return nil, fmt.Errorf("failed to parse page template %s: %w", name, err)
+		}
+		templates[name] = clone
+	}
+
+	partialFiles, err := fs.Glob(templatesFS, "templates/partials/*.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to glob partial templates: %w", err)
+	}
+	for _, pf := range partialFiles {
+		name := filepath.Base(pf)
+		templates[name] = shared
 	}
 
 	return &TemplateManager{
-		templates: tmpl,
+		templates: templates,
 	}, nil
 }
 
-// Render renders a template to the writer
+// Render renders a template to the writer.
+// Output is buffered internally to prevent partial writes on error,
+// which avoids superfluous WriteHeader calls when used with http.ResponseWriter.
 func (tm *TemplateManager) Render(w io.Writer, name string, data interface{}) error {
-	return tm.templates.ExecuteTemplate(w, name, data)
+	t, ok := tm.templates[name]
+	if !ok {
+		return fmt.Errorf("template %q not found", name)
+	}
+	var buf bytes.Buffer
+	if err := t.ExecuteTemplate(&buf, name, data); err != nil {
+		return err
+	}
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 // formatSize formats file size for display

@@ -368,7 +368,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 			builder.WriteString("\n\n## Slack Conversations\n\n")
 			for _, msg := range slackResult.EnrichedMessages {
 				orig := msg.OriginalMessage
-				fmt.Fprintf(&builder, "- #%s (%s): %s", channelName(orig.Channel), humanTimestamp(orig.Timestamp), strings.TrimSpace(orig.Text))
+				fmt.Fprintf(&builder, "- #%s (%s): %s", slacksearch.FormatSlackChannel(orig.Channel), slacksearch.FormatSlackTimestamp(orig.Timestamp), strings.TrimSpace(orig.Text))
 				if msg.Permalink != "" {
 					fmt.Fprintf(&builder, " (%s)", msg.Permalink)
 				}

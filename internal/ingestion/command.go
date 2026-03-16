@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/spf13/cobra"
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
@@ -24,7 +23,6 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding"
-	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
 )
 
@@ -775,17 +773,6 @@ func createVectorizerService(cfg *appconfig.Config) (*vectorizer.VectorizerServi
 
 // createVectorizerServiceWithCSVConfig creates a vectorizer service with CSV configuration
 func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Config) (*vectorizer.VectorizerService, error) {
-	var err error
-	// AWS config は OCR provider が bedrock の場合に必要
-	needsAWS := cfg.OCRProvider == "bedrock" || cfg.OCRProvider == ""
-	var awsCfg aws.Config
-	if needsAWS {
-		awsCfg, err = bedrock.BuildBedrockAWSConfig(context.TODO(), cfg.BedrockRegion, cfg.BedrockBearerToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build AWS config: %w", err)
-		}
-	}
-
 	embeddingClient, err := embedding.NewEmbeddingClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create embedding client: %w", err)
@@ -812,37 +799,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 		return nil, fmt.Errorf("OpenSearch index name is not set")
 	}
 
-	// Create PDF reader if OCR provider is configured
-	var pdfReader *pdf.Reader
-	if cfg.OCRProvider == "bedrock" {
-		ocrClient, err := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
-		if err != nil {
-			log.Printf("Warning: failed to create Bedrock OCR client: %v, PDF files will be skipped", err)
-		} else {
-			pdfReader = pdf.NewReader(ocrClient, pdf.PDFReaderConfig{
-				Provider:    cfg.OCRProvider,
-				Model:       cfg.OCRModel,
-				Timeout:     cfg.OCRTimeout,
-				Concurrency: cfg.OCRConcurrency,
-			})
-			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
-		}
-	} else if cfg.OCRProvider == "gemini" {
-		ocrClient, err := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.GeminiGCPProject, cfg.GeminiGCPLocation, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
-		if err != nil {
-			log.Printf("Warning: failed to create Gemini OCR client: %v, PDF files will be skipped", err)
-		} else {
-			pdfReader = pdf.NewReader(ocrClient, pdf.PDFReaderConfig{
-				Provider:    cfg.OCRProvider,
-				Model:       cfg.OCRModel,
-				Timeout:     cfg.OCRTimeout,
-				Concurrency: cfg.OCRConcurrency,
-			})
-			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
-		}
-	} else if cfg.OCRProvider != "" {
-		log.Printf("Warning: unsupported OCR_PROVIDER=%q, PDF files will be skipped", cfg.OCRProvider)
-	}
+	pdfReader := pdf.NewReaderFromConfig(cfg)
 
 	// Create vectorizer service with all dependencies including CSV config
 	return serviceFactory.CreateVectorizerServiceWithCSVConfig(

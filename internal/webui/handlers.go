@@ -44,7 +44,6 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	data := &DashboardData{
 		ActivePage:   "dashboard",
 		State:        state,
-		Scheduler:    s.scheduler.GetState(),
 		RecentErrors: s.state.GetRecentErrors(),
 		LastRun:      s.state.GetLastRun(),
 	}
@@ -128,42 +127,6 @@ func (s *Server) handlePartialProgress(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.templates.Render(w, "progress.html", progress); err != nil {
 		s.logger.Printf("Failed to render progress partial: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-	}
-}
-
-// handlePartialStats handles the stats partial for HTMX
-func (s *Server) handlePartialStats(w http.ResponseWriter, r *http.Request) {
-	progress := s.state.GetCurrentProgress()
-
-	// Check for external vectorize process via IPC
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	defer cancel()
-
-	extStatus, err := s.GetExternalProcessStatus(ctx)
-	if err != nil {
-		s.logger.Printf("Failed to get external process status: %v", err)
-	} else if extStatus != nil && extStatus.Status != nil {
-		isExtRunning := extStatus.Status.State == "running" || extStatus.Status.State == "waiting"
-		// If external process is active and webui is idle, update progress display
-		if isExtRunning && progress.Status == StatusIdle {
-			progress.Status = VectorizeStatus(extStatus.Status.State)
-			if extStatus.Progress != nil {
-				progress.TotalFiles = extStatus.Progress.TotalFiles
-				progress.ProcessedFiles = extStatus.Progress.ProcessedFiles
-				progress.SuccessCount = extStatus.Progress.SuccessCount
-				progress.FailedCount = extStatus.Progress.FailedCount
-				progress.PercentComplete = extStatus.Progress.Percentage
-			}
-			if extStatus.Status.StartedAt != nil {
-				progress.StartTime = *extStatus.Status.StartedAt
-				progress.ElapsedTime = time.Since(*extStatus.Status.StartedAt).Truncate(time.Second).String()
-			}
-		}
-	}
-
-	if err := s.templates.Render(w, "stats.html", progress); err != nil {
-		s.logger.Printf("Failed to render stats partial: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }

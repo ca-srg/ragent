@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ca-srg/ragent/internal/ingestion/metadata"
+	"github.com/ca-srg/ragent/internal/ingestion/pdf"
 	"github.com/ca-srg/ragent/internal/ingestion/scanner"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	"github.com/ca-srg/ragent/internal/mcpserver"
@@ -169,6 +170,7 @@ func buildDashboardDeps() (*webui.Dependencies, error) {
 		FileScanner:         fileScanner,
 		EnableOpenSearch:    osIndexer != nil,
 		OpenSearchIndexName: appCfg.OpenSearchIndex,
+		PDFReader:           pdf.NewReaderFromConfig(appCfg),
 	}
 
 	vec, err := vectorizer.NewVectorizerService(serviceConfig)

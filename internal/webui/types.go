@@ -24,7 +24,6 @@ const (
 	EventTypeVectorizeFailed    = "vectorize_failed"
 	EventTypeFileProcessed      = "file_processed"
 	EventTypeFileError          = "file_error"
-	EventTypeSchedulerTick      = "scheduler_tick"
 	EventTypeHeartbeat          = "heartbeat"
 )
 
@@ -65,14 +64,6 @@ type ErrorInfo struct {
 	Retryable bool                `json:"retryable"`
 }
 
-// SchedulerState represents the state of the follow mode scheduler
-type SchedulerState struct {
-	Enabled   bool          `json:"enabled"`
-	Interval  time.Duration `json:"interval"`
-	NextRunAt time.Time     `json:"next_run_at,omitempty"`
-	LastRunAt time.Time     `json:"last_run_at,omitempty"`
-}
-
 // SSEEvent represents a Server-Sent Event
 type SSEEvent struct {
 	Event string      `json:"event"`
@@ -101,7 +92,6 @@ type FileListItem struct {
 type DashboardData struct {
 	ActivePage   string
 	State        *VectorizeProgressEvent
-	Scheduler    *SchedulerState
 	RecentErrors []ErrorInfo
 	LastRun      *RunInfo
 }
@@ -125,7 +115,6 @@ type HistoryPageData struct {
 // APIStatusResponse represents the status API response
 type APIStatusResponse struct {
 	Status          VectorizeStatus        `json:"status"`
-	Scheduler       *SchedulerState        `json:"scheduler"`
 	ExternalProcess *ExternalProcessStatus `json:"external_process,omitempty"`
 }
 
@@ -137,12 +126,6 @@ type ExternalProcessStatus struct {
 	TotalFiles int     `json:"total_files,omitempty"`
 	Processed  int     `json:"processed,omitempty"`
 	Percentage float64 `json:"percentage,omitempty"`
-}
-
-// APIProgressResponse represents the progress API response
-type APIProgressResponse struct {
-	Progress *VectorizeProgressEvent `json:"progress,omitempty"`
-	LastRun  *RunInfo                `json:"last_run,omitempty"`
 }
 
 const (
