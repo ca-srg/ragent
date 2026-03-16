@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Auto-approve if actor is a maintainer
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           ACTOR: ${{ github.event.workflow_run.actor.login }}
