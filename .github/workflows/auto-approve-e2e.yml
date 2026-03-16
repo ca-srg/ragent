@@ -39,11 +39,18 @@ jobs:
           echo "Actor $ACTOR has $PERMISSION access — auto-approving."
 
           for attempt in $(seq 1 36); do
+            RUN_STATUS=$(gh api "repos/$REPO/actions/runs/$RUN_ID" \
+              --jq '.status' 2>/dev/null || echo "unknown")
+            if [[ "$RUN_STATUS" == "completed" || "$RUN_STATUS" == "cancelled" ]]; then
+              echo "Target run $RUN_ID is $RUN_STATUS — nothing to approve."
+              exit 0
+            fi
+
             ENV_IDS_JSON=$(gh api "repos/$REPO/actions/runs/$RUN_ID/pending_deployments" \
-              --jq '[.[] | select(.current_user_can_approve) | .environment.id] | unique')
+              --jq '[.[].environment.id] | unique')
 
             if [[ "$ENV_IDS_JSON" == "[]" ]]; then
-              echo "No approvable pending deployments yet (attempt $attempt/36)"
+              echo "No pending deployments yet (attempt $attempt/36, run status: $RUN_STATUS)"
               sleep 5
               continue
             fi
