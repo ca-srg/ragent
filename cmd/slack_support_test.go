@@ -10,16 +10,16 @@ import (
 )
 
 func TestSanitizeSlackChannelsNilInput(t *testing.T) {
-	require.Nil(t, sanitizeSlackChannels(nil))
+	require.Nil(t, slacksearch.SanitizeSlackChannels(nil))
 }
 
 func TestSanitizeSlackChannelsEmptySlice(t *testing.T) {
-	require.Nil(t, sanitizeSlackChannels([]string{}))
+	require.Nil(t, slacksearch.SanitizeSlackChannels([]string{}))
 }
 
 func TestPrintSlackResultsNilResult(t *testing.T) {
 	output := captureOutput(t, func() {
-		printSlackResults(nil)
+		slacksearch.PrintSlackResults(nil)
 	})
 
 	assert.Contains(t, output, "=== Slack Conversations ===")
@@ -30,7 +30,7 @@ func TestPrintSlackResultsEmptyMessages(t *testing.T) {
 	result := &slacksearch.SlackSearchResult{}
 
 	output := captureOutput(t, func() {
-		printSlackResults(result)
+		slacksearch.PrintSlackResults(result)
 	})
 
 	assert.Contains(t, output, "=== Slack Conversations ===")
