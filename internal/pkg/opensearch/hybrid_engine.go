@@ -45,6 +45,7 @@ type HybridQuery struct {
 	VectorField            string            `json:"vector_field"`
 	K                      int               `json:"k"`
 	EfSearch               int               `json:"ef_search,omitempty"`
+	ExcludeSecret          bool              `json:"exclude_secret,omitempty"`
 	Filters                map[string]string `json:"filters,omitempty"`
 	MinScore               float64           `json:"min_score,omitempty"`
 	BM25Weight             float64           `json:"bm25_weight"`
@@ -129,10 +130,11 @@ func (hse *HybridSearchEngine) Search(ctx context.Context, query *HybridQuery) (
 			log.Printf("URL detected in query: %v", detectionResult.URLs)
 			urlDetected = true
 			termQuery := &TermQuery{
-				Field:  "reference",
-				Values: detectionResult.URLs,
-				Size:   query.Size,
-			}
+						Field:         "reference",
+						Values:       detectionResult.URLs,
+						ExcludeSecret: query.ExcludeSecret,
+						Size:         query.Size,
+					}
 			if termQuery.Size <= 0 {
 				termQuery.Size = len(detectionResult.URLs)
 			}
@@ -413,6 +415,7 @@ func (hse *HybridSearchEngine) buildBM25Query(query *HybridQuery, processedQuery
 		Fields:             query.Fields,
 		Operator:           operator,
 		MinimumShouldMatch: minimumShouldMatch,
+		ExcludeSecret:      query.ExcludeSecret,
 		Filters:            query.Filters,
 		Size:               query.K,
 		From:               query.From,
@@ -426,6 +429,7 @@ func (hse *HybridSearchEngine) buildVectorQuery(query *HybridQuery, vector []flo
 		VectorField: query.VectorField,
 		K:           query.K,
 		EfSearch:    query.EfSearch,
+		ExcludeSecret: query.ExcludeSecret,
 		Filters:     query.Filters,
 		MinScore:    query.MinScore,
 		Size:        query.Size,

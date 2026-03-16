@@ -46,6 +46,7 @@ type BM25Query struct {
 	B                  float64           `json:"b,omitempty"`
 	Operator           string            `json:"operator,omitempty"`
 	MinimumShouldMatch string            `json:"minimum_should_match,omitempty"`
+	ExcludeSecret      bool              `json:"exclude_secret,omitempty"`
 	Filters            map[string]string `json:"filters,omitempty"`
 	Size               int               `json:"size,omitempty"`
 	From               int               `json:"from,omitempty"`
@@ -194,6 +195,9 @@ func (c *Client) buildBM25SearchBody(query *BM25Query) map[string]interface{} {
 		}
 		boolQuery["filter"] = filters
 	}
+
+	applySecretExclusion(boolQuery, query.ExcludeSecret)
+
 
 	return body
 }

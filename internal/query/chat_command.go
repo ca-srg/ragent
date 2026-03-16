@@ -277,6 +277,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 			BM25Weight:     opts.BM25Weight,
 			VectorWeight:   opts.VectorWeight,
 			UseJapaneseNLP: opts.UseJapaneseNLP,
+			ExcludeSecret:  true,
 			TimeoutSeconds: 30,
 		}
 

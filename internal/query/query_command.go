@@ -263,6 +263,7 @@ func attemptOpenSearchHybrid(ctx context.Context, cfg *appconfig.Config, embeddi
 		FusionMethod:   getFusionMethod(opts),
 		UseJapaneseNLP: opts.UseJapaneseNLP,
 		TimeoutSeconds: opts.Timeout,
+		ExcludeSecret:  true,
 	}
 
 	if opts.FilterQuery != "" {
@@ -322,6 +323,9 @@ func ParseFilters(filterJSON string) (map[string]string, error) {
 
 	filters := make(map[string]string)
 	for key, value := range rawFilters {
+		if strings.EqualFold(key, "secret") {
+			continue
+		}
 		if strValue, ok := value.(string); ok {
 			filters[key] = strValue
 		}

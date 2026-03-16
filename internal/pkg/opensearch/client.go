@@ -316,19 +316,33 @@ func BuildTermQueryBody(query *TermQuery) map[string]interface{} {
 		return map[string]interface{}{}
 	}
 
+	queryClause := map[string]interface{}{
+		"terms": map[string]interface{}{
+			query.Field: query.Values,
+		},
+	}
+
 	body := map[string]interface{}{
 		"size": query.Size,
-		"query": map[string]interface{}{
-			"terms": map[string]interface{}{
-				query.Field: query.Values,
-			},
-		},
+		"query": queryClause,
 	}
 
 	if query.From > 0 {
 		body["from"] = query.From
 	} else {
 		body["from"] = 0
+	}
+
+	if query.ExcludeSecret {
+		boolQuery := map[string]interface{}{
+			"must": []map[string]interface{}{
+				{"terms": queryClause["terms"].(map[string]interface{})},
+			},
+		}
+		applySecretExclusion(boolQuery, true)
+		body["query"] = map[string]interface{}{
+			"bool": boolQuery,
+		}
 	}
 
 	return body

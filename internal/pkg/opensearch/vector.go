@@ -36,6 +36,7 @@ type VectorQuery struct {
 	VectorField string            `json:"vector_field"`
 	K           int               `json:"k"`
 	EfSearch    int               `json:"ef_search,omitempty"`
+	ExcludeSecret bool            `json:"exclude_secret,omitempty"`
 	Filters     map[string]string `json:"filters,omitempty"`
 	MinScore    float64           `json:"min_score,omitempty"`
 	Size        int               `json:"size,omitempty"`
@@ -180,13 +181,37 @@ func (c *Client) buildVectorSearchBody(query *VectorQuery) map[string]interface{
 			})
 		}
 
-		body["query"] = map[string]interface{}{
+		queryClause := map[string]interface{}{
 			"bool": map[string]interface{}{
 				"must": []map[string]interface{}{
 					{"knn": knnQuery},
 				},
 				"filter": filters,
 			},
+		}
+		body["query"] = queryClause
+	}
+
+	if query.ExcludeSecret {
+		queryClause, ok := body["query"].(map[string]interface{})
+		if !ok {
+			queryClause = map[string]interface{}{}
+		}
+		boolQuery := queryClause["bool"]
+		if boolQuery == nil {
+			queryClause = map[string]interface{}{
+				"bool": map[string]interface{}{
+					"must": []map[string]interface{}{
+						{"knn": knnQuery},
+					},
+				},
+			}
+			body["query"] = queryClause
+			boolQuery = queryClause["bool"]
+		}
+
+		if boolClause, ok := boolQuery.(map[string]interface{}); ok {
+			applySecretExclusion(boolClause, true)
 		}
 	}
 

@@ -359,6 +359,7 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 		BM25Weight:      hsta.defaultConfig.DefaultBM25Weight,
 		VectorWeight:    hsta.defaultConfig.DefaultVectorWeight,
 		MinScore:        0.0,
+		ExcludeSecret:   true,
 		IncludeMetadata: false,
 		Filters:         make(map[string]string),
 	}
@@ -421,6 +422,9 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 	if filtersInterface, ok := params["filters"]; ok {
 		if filters, ok := filtersInterface.(map[string]interface{}); ok {
 			for k, v := range filters {
+				if strings.EqualFold(k, "secret") {
+					continue
+				}
 				if strVal, ok := v.(string); ok {
 					request.Filters[k] = strVal
 				}
@@ -535,6 +539,7 @@ func (hsta *HybridSearchToolAdapter) buildHybridQuery(request *HybridSearchReque
 		UseJapaneseNLP: hsta.defaultConfig.DefaultUseJapaneseNLP,
 		TimeoutSeconds: hsta.defaultConfig.DefaultTimeoutSeconds,
 		Filters:        request.Filters,
+		ExcludeSecret:  request.ExcludeSecret,
 		MinScore:       request.MinScore,
 		K:              request.TopK * 2, // Fetch more candidates for better fusion
 	}
