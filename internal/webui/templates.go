@@ -19,8 +19,15 @@ type TemplateManager struct {
 	templates *template.Template
 }
 
-// NewTemplateManager creates a new template manager
+// NewTemplateManager creates a new template manager with no base path prefix.
 func NewTemplateManager() (*TemplateManager, error) {
+	return NewTemplateManagerWithBasePath("")
+}
+
+// NewTemplateManagerWithBasePath creates a new template manager with a URL base path prefix.
+// basePath is prepended to all URL references in templates (e.g., "/dashboard").
+// Pass "" for standalone mode where the server owns the root path.
+func NewTemplateManagerWithBasePath(basePath string) (*TemplateManager, error) {
 	funcMap := template.FuncMap{
 		"formatSize":     formatSize,
 		"formatDuration": formatDurationTemplate,
@@ -29,6 +36,7 @@ func NewTemplateManager() (*TemplateManager, error) {
 		"statusClass":    statusClass,
 		"sub":            func(a, b int) int { return a - b },
 		"add":            func(a, b int) int { return a + b },
+		"basePath":       func() string { return basePath },
 	}
 
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(

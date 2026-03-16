@@ -1,18 +1,18 @@
 package vectorizer
 
 import (
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
 	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // Type aliases for common types
 type (
-	VectorData       = domain.VectorData
-	ProcessingResult = domain.ProcessingResult
+	VectorData       = pkgdomain.VectorData
+	ProcessingResult = pkgdomain.ProcessingResult
 	Config           = pkgconfig.Config
-	DocumentMetadata = domain.DocumentMetadata
-	FileInfo         = domain.FileInfo
-	ProcessingError  = domain.ProcessingError
+	DocumentMetadata = pkgdomain.DocumentMetadata
+	FileInfo         = pkgdomain.FileInfo
+	ProcessingError  = pkgdomain.ProcessingError
 	ErrorType        = pkgconfig.ErrorType
 )
 

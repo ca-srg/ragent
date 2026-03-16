@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
-	"github.com/ca-srg/ragent/internal/slackbot"
 	"github.com/slack-go/slack"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -45,7 +44,7 @@ type ContextResponse struct {
 
 type ContextRetriever struct {
 	client        slackConversationClient
-	rateLimiter   *slackbot.RateLimiter
+	rateLimiter   *RateLimiter
 	bedrockClient bedrockChatClient
 	logger        *log.Logger
 
@@ -58,7 +57,7 @@ type ContextRetriever struct {
 // NewContextRetriever constructs a new ContextRetriever instance.
 func NewContextRetriever(
 	client *slack.Client,
-	rateLimiter *slackbot.RateLimiter,
+	rateLimiter *RateLimiter,
 	bedrockClient *bedrock.BedrockClient,
 	config *SlackSearchConfig,
 	logger *log.Logger,

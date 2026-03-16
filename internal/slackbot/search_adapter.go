@@ -17,6 +17,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/slack-go/slack"
 )
 
@@ -25,10 +26,7 @@ type SearchAdapter interface {
 	Search(ctx context.Context, query string, opts SearchOptions) *SearchResult
 }
 
-type SearchOptions struct {
-	ChannelID       string
-	ThreadTimestamp string
-}
+type SearchOptions = slacksearch.SearchOptions
 
 // slackConvSearcher is the package-internal interface for Slack conversation search.
 // The public definition lives in internal/pkg/slacksearch; this unexported alias

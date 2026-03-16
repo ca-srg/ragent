@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -50,9 +51,12 @@ type MCPServerOptions struct {
 	BypassVerboseLog  bool
 	BypassAuditLog    bool
 	TrustedProxies    []string
-	OnlySlack         bool
-	ExportEval        bool
-	ExportEvalPath    string
+	OnlySlack          bool
+	ExportEval         bool
+	ExportEvalPath     string
+	DashboardHandler  http.Handler
+	DashboardCleanup  func()
+	DashboardBasePath string
 }
 
 // RunMCPServer is the entry point for the mcp-server command.
@@ -483,6 +487,15 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		registeredTools = append(registeredTools, toolName)
 	}
 
+	if opts.DashboardHandler != nil {
+		basePath := opts.DashboardBasePath
+		if basePath == "" {
+			basePath = "/dashboard"
+		}
+		server.SetDashboardHandler(basePath, opts.DashboardHandler)
+		logger.Printf("Dashboard enabled at %s/", basePath)
+	}
+
 	// Setup graceful shutdown
 	runCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -496,9 +509,11 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		logger.Printf("Received shutdown signal, stopping server...")
 		cancel()
 
-		// Give the server a moment to finish current requests
 		time.Sleep(1 * time.Second)
 
+		if opts.DashboardCleanup != nil {
+			opts.DashboardCleanup()
+		}
 		if err := server.Stop(); err != nil {
 			logger.Printf("Error during server shutdown: %v", err)
 		}

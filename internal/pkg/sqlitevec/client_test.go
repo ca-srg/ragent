@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
+	"github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // newTestStore creates a SqliteVecStore backed by a temp DB for use in tests.

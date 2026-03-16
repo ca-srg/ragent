@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion"
+	domain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 const (
@@ -125,7 +125,7 @@ func (s *VectorizeState) buildProgressEvent(currentFile string) *VectorizeProgre
 }
 
 // CompleteRun completes the current run
-func (s *VectorizeState) CompleteRun(result *ingestion.ProcessingResult) {
+func (s *VectorizeState) CompleteRun(result *domain.ProcessingResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -2,10 +2,19 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ca-srg/ragent/internal/ingestion/metadata"
+	"github.com/ca-srg/ragent/internal/ingestion/scanner"
+	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	"github.com/ca-srg/ragent/internal/mcpserver"
+	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	"github.com/ca-srg/ragent/internal/pkg/embedding"
+	"github.com/ca-srg/ragent/internal/webui"
 )
 
 var (
@@ -33,13 +42,15 @@ var (
 	oidcSkipDiscovery    bool
 
 	// Bypass IP authentication flags
-	mcpBypassIPRanges   []string
-	mcpBypassVerboseLog bool
-	mcpBypassAuditLog   bool
-	mcpTrustedProxies   []string
-	mcpOnlySlack        bool
-	mcpExportEval       bool
-	mcpExportEvalPath   string
+	mcpBypassIPRanges     []string
+	mcpBypassVerboseLog   bool
+	mcpBypassAuditLog     bool
+	mcpTrustedProxies     []string
+	mcpOnlySlack          bool
+	mcpExportEval         bool
+	mcpExportEvalPath     string
+	mcpEnableDashboard    bool
+	mcpDashboardDirectory string
 )
 
 var mcpServerCmd = &cobra.Command{
@@ -61,7 +72,7 @@ Examples:
   ragent mcp-server --allowed-ips "192.168.1.0/24"   # Allow specific IP range
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return mcpserver.RunMCPServer(context.Background(), cmd, mcpserver.MCPServerOptions{
+		opts := mcpserver.MCPServerOptions{
 			AuthMethod:        mcpAuthMethod,
 			AuthEnableLogging: mcpAuthEnableLogging,
 			OIDCIssuer:        oidcIssuer,
@@ -80,8 +91,95 @@ Examples:
 			OnlySlack:         mcpOnlySlack,
 			ExportEval:        mcpExportEval,
 			ExportEvalPath:    mcpExportEvalPath,
-		})
+		}
+
+		if mcpEnableDashboard {
+			dashboardDir := mcpDashboardDirectory
+			if dashboardDir == "" {
+				dashboardDir = "./source"
+			}
+			dashboardCfg := &webui.ServerConfig{
+				Directory: dashboardDir,
+				BasePath:  "/dashboard",
+			}
+
+			deps, err := buildDashboardDeps()
+			if err != nil {
+				return fmt.Errorf("failed to build dashboard dependencies: %w", err)
+			}
+
+			srv, err := webui.NewServer(dashboardCfg, deps, log.New(os.Stdout, "[dashboard] ", log.LstdFlags))
+			if err != nil {
+				return fmt.Errorf("failed to create dashboard server: %w", err)
+			}
+			if err := srv.Initialize(context.Background()); err != nil {
+				return fmt.Errorf("failed to initialize dashboard: %w", err)
+			}
+			opts.DashboardHandler = srv.Handler()
+			opts.DashboardCleanup = srv.Cleanup
+			opts.DashboardBasePath = "/dashboard"
+		}
+
+		return mcpserver.RunMCPServer(context.Background(), cmd, opts)
 	},
+}
+
+func buildDashboardDeps() (*webui.Dependencies, error) {
+	appCfg, err := appconfig.Load()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	embeddingClient, err := embedding.NewEmbeddingClient(appCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create embedding client: %w", err)
+	}
+
+	sf := vectorizer.NewServiceFactory(appCfg)
+	vectorStoreClient, err := sf.CreateVectorStore()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create vector store client: %w", err)
+	}
+
+	metadataExtractor := metadata.NewMetadataExtractor()
+	fileScanner := scanner.NewFileScanner()
+
+	var osIndexer vectorizer.OpenSearchIndexer
+	if appCfg.OpenSearchEndpoint != "" {
+		factory := vectorizer.NewIndexerFactory(appCfg)
+		webDimension := 768
+		if embeddingClient != nil {
+			_, d, dErr := embeddingClient.GetModelInfo()
+			if dErr == nil && d > 0 {
+				webDimension = d
+			}
+		}
+		osIndexer, err = factory.CreateOpenSearchIndexer(appCfg.OpenSearchIndex, webDimension)
+		if err != nil {
+			log.Printf("Warning: failed to create OpenSearch indexer: %v", err)
+		}
+	}
+
+	serviceConfig := &vectorizer.ServiceConfig{
+		Config:              appCfg,
+		EmbeddingClient:     embeddingClient,
+		VectorStoreClient:   vectorStoreClient,
+		OpenSearchIndexer:   osIndexer,
+		MetadataExtractor:   metadataExtractor,
+		FileScanner:         fileScanner,
+		EnableOpenSearch:    osIndexer != nil,
+		OpenSearchIndexName: appCfg.OpenSearchIndex,
+	}
+
+	vec, err := vectorizer.NewVectorizerService(serviceConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create vectorizer service: %w", err)
+	}
+
+	return &webui.Dependencies{
+		FileScanner: fileScanner,
+		Vectorizer:  vec,
+	}, nil
 }
 
 func init() {
@@ -120,4 +218,7 @@ func init() {
 	mcpServerCmd.Flags().BoolVar(&mcpOnlySlack, "only-slack", false, "Run in Slack-only mode (skip OpenSearch, provide only slack_search tool)")
 	mcpServerCmd.Flags().BoolVar(&mcpExportEval, "export-eval", false, "Enable evaluation data export")
 	mcpServerCmd.Flags().StringVar(&mcpExportEvalPath, "export-eval-path", "./evaluation/exports/", "Output directory for JSONL evaluation data")
+
+	mcpServerCmd.Flags().BoolVar(&mcpEnableDashboard, "enable-dashboard", false, "Enable vectorization dashboard at /dashboard/")
+	mcpServerCmd.Flags().StringVar(&mcpDashboardDirectory, "dashboard-directory", "./source", "Source directory for dashboard vectorization")
 }

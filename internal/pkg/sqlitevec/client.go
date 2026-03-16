@@ -24,7 +24,7 @@ import (
 
 	_ "modernc.org/sqlite" // registers "sqlite" driver – pure Go, CGO-free
 
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
+	"github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // createTableSQL defines the schema for vector storage.

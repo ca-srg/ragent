@@ -12,7 +12,7 @@
                name="search" 
                placeholder="ファイルを検索..."
                value="{{.SearchQuery}}"
-               hx-get="/partials/file-list"
+               hx-get="{{basePath}}/partials/file-list"
                hx-trigger="keyup changed delay:300ms"
                hx-target="#file-list"
                hx-include="this">
