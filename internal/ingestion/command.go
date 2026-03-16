@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/spf13/cobra"
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
@@ -23,8 +22,8 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/spreadsheet"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/ca-srg/ragent/internal/pkg/embedding"
-	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
 )
 
@@ -162,11 +161,11 @@ func runVectorize(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func executeVectorizationOnce(ctx context.Context, cfg *appconfig.Config) (*ProcessingResult, error) {
+func executeVectorizationOnce(ctx context.Context, cfg *appconfig.Config) (*pkgdomain.ProcessingResult, error) {
 	return executeVectorizationOnceWithProgress(ctx, cfg, currentProgressCallback)
 }
 
-func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Config, progressCallback ProgressCallback) (*ProcessingResult, error) {
+func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Config, progressCallback ProgressCallback) (*pkgdomain.ProcessingResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -302,7 +301,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 	}
 
 	// Collect files from all sources
-	var allFiles []*FileInfo
+	var allFiles []*pkgdomain.FileInfo
 
 	// 1. Scan local directory if specified
 	if hasLocalSource {
@@ -401,7 +400,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 
 	if len(allFiles) == 0 {
 		log.Println("No supported files found")
-		return &ProcessingResult{
+		return &pkgdomain.ProcessingResult{
 			ProcessedFiles: 0,
 			SuccessCount:   0,
 			FailureCount:   0,
@@ -413,7 +412,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 	// Change detection using hash store (unless --force is specified)
 	var changeResult *hashstore.ChangeDetectionResult
 	var hashStore *hashstore.HashStore
-	var filesToProcess []*FileInfo
+	var filesToProcess []*pkgdomain.FileInfo
 
 	if !forceProcess && !dryRun {
 		var err error
@@ -457,7 +456,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 
 	if len(filesToProcess) == 0 && !dryRun {
 		log.Println("No files need processing (all files are unchanged)")
-		return &ProcessingResult{
+		return &pkgdomain.ProcessingResult{
 			ProcessedFiles: 0,
 			SuccessCount:   0,
 			FailureCount:   0,
@@ -504,7 +503,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 }
 
 // scanLocalDirectoryWithHash scans a local directory and computes MD5 hash for each file
-func scanLocalDirectoryWithHash(dirPath string) ([]*FileInfo, error) {
+func scanLocalDirectoryWithHash(dirPath string) ([]*pkgdomain.FileInfo, error) {
 	fileScanner := scanner.NewFileScanner()
 	files, err := fileScanner.ScanDirectory(dirPath)
 	if err != nil {
@@ -546,8 +545,8 @@ func printChangeDetectionSummary(result *hashstore.ChangeDetectionResult) {
 func updateHashStoreForSuccessfulFiles(
 	ctx context.Context,
 	store *hashstore.HashStore,
-	files []*FileInfo,
-	result *ProcessingResult,
+	files []*pkgdomain.FileInfo,
+	result *pkgdomain.ProcessingResult,
 ) {
 	// Build a set of failed file paths from processing errors
 	failedPaths := make(map[string]bool)
@@ -698,7 +697,7 @@ func runFollowMode(ctx context.Context, cfg *appconfig.Config) error {
 }
 
 // runFollowCycleWithIPC runs a single vectorization cycle with IPC status updates
-func runFollowCycleWithIPC(ctx context.Context, cfg *appconfig.Config, ipcServer *ipc.Server) (*ProcessingResult, error) {
+func runFollowCycleWithIPC(ctx context.Context, cfg *appconfig.Config, ipcServer *ipc.Server) (*pkgdomain.ProcessingResult, error) {
 	if !startFollowProcessing() {
 		log.Println("[Follow Mode] Previous vectorization still running. Skipping this cycle.")
 		return nil, nil
@@ -775,17 +774,6 @@ func createVectorizerService(cfg *appconfig.Config) (*vectorizer.VectorizerServi
 
 // createVectorizerServiceWithCSVConfig creates a vectorizer service with CSV configuration
 func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Config) (*vectorizer.VectorizerService, error) {
-	var err error
-	// AWS config は OCR provider が bedrock の場合に必要
-	needsAWS := cfg.OCRProvider == "bedrock" || cfg.OCRProvider == ""
-	var awsCfg aws.Config
-	if needsAWS {
-		awsCfg, err = bedrock.BuildBedrockAWSConfig(context.TODO(), cfg.BedrockRegion, cfg.BedrockBearerToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build AWS config: %w", err)
-		}
-	}
-
 	embeddingClient, err := embedding.NewEmbeddingClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create embedding client: %w", err)
@@ -812,37 +800,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 		return nil, fmt.Errorf("OpenSearch index name is not set")
 	}
 
-	// Create PDF reader if OCR provider is configured
-	var pdfReader *pdf.Reader
-	if cfg.OCRProvider == "bedrock" {
-		ocrClient, err := pdf.NewBedrockOCRClient(awsCfg, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
-		if err != nil {
-			log.Printf("Warning: failed to create Bedrock OCR client: %v, PDF files will be skipped", err)
-		} else {
-			pdfReader = pdf.NewReader(ocrClient, pdf.PDFReaderConfig{
-				Provider:    cfg.OCRProvider,
-				Model:       cfg.OCRModel,
-				Timeout:     cfg.OCRTimeout,
-				Concurrency: cfg.OCRConcurrency,
-			})
-			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
-		}
-	} else if cfg.OCRProvider == "gemini" {
-		ocrClient, err := pdf.NewGeminiOCRClient(cfg.GeminiAPIKey, cfg.GeminiGCPProject, cfg.GeminiGCPLocation, cfg.OCRModel, cfg.OCRTimeout, cfg.OCRMaxTokens, cfg.OCRConcurrency)
-		if err != nil {
-			log.Printf("Warning: failed to create Gemini OCR client: %v, PDF files will be skipped", err)
-		} else {
-			pdfReader = pdf.NewReader(ocrClient, pdf.PDFReaderConfig{
-				Provider:    cfg.OCRProvider,
-				Model:       cfg.OCRModel,
-				Timeout:     cfg.OCRTimeout,
-				Concurrency: cfg.OCRConcurrency,
-			})
-			log.Printf("PDF OCR enabled: provider=%s, model=%s", cfg.OCRProvider, cfg.OCRModel)
-		}
-	} else if cfg.OCRProvider != "" {
-		log.Printf("Warning: unsupported OCR_PROVIDER=%q, PDF files will be skipped", cfg.OCRProvider)
-	}
+	pdfReader := pdf.NewReaderFromConfig(cfg)
 
 	// Create vectorizer service with all dependencies including CSV config
 	return serviceFactory.CreateVectorizerServiceWithCSVConfig(
@@ -858,7 +816,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 }
 
 // printResults prints the processing results in a user-friendly format
-func printResults(result *ProcessingResult, dryRun bool) {
+func printResults(result *pkgdomain.ProcessingResult, dryRun bool) {
 	fmt.Println("\n" + strings.Repeat("=", 60))
 	if dryRun {
 		fmt.Println("DRY RUN RESULTS")
@@ -1225,9 +1183,9 @@ func estimateProcessingTime(rowCount int) int {
 }
 
 // printCSVConfigInfo prints CSV configuration details for dry-run mode
-func printCSVConfigInfo(files []*FileInfo, csvCfg *csv.Config) {
+func printCSVConfigInfo(files []*pkgdomain.FileInfo, csvCfg *csv.Config) {
 	// Filter CSV files
-	var csvFiles []*FileInfo
+	var csvFiles []*pkgdomain.FileInfo
 	for _, f := range files {
 		if f.IsCSV {
 			csvFiles = append(csvFiles, f)

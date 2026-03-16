@@ -51,9 +51,9 @@ type MCPServerOptions struct {
 	BypassVerboseLog  bool
 	BypassAuditLog    bool
 	TrustedProxies    []string
-	OnlySlack          bool
-	ExportEval         bool
-	ExportEvalPath     string
+	OnlySlack         bool
+	ExportEval        bool
+	ExportEvalPath    string
 	DashboardHandler  http.Handler
 	DashboardCleanup  func()
 	DashboardBasePath string

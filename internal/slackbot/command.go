@@ -18,8 +18,6 @@ import (
 )
 
 // SlackBotOptions holds the command-line options for the slack-bot command.
-// BuildConvSearcher is provided by the cmd layer to avoid the
-// internal/slackbot ↔ internal/pkg/slacksearch circular import.
 type SlackBotOptions struct {
 	ContextSize       int
 	OnlySlack         bool
@@ -107,12 +105,11 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 		cfg.SlackSearchTimeoutSeconds = 60
 	}
 
-	// Build the conversation searcher via the factory provided by cmd layer.
-	// This avoids importing internal/pkg/slacksearch from internal/slackbot (circular dep).
 	var convSearcher SlackConversationSearcher
-	if opts.BuildConvSearcher != nil {
-		convSearcher = opts.BuildConvSearcher(cfg, client, logger)
+	if opts.BuildConvSearcher == nil {
+		opts.BuildConvSearcher = BuildConvSearcher
 	}
+	convSearcher = opts.BuildConvSearcher(cfg, client, logger)
 
 	// Choose adapter based on mode
 	var adapter SearchAdapter

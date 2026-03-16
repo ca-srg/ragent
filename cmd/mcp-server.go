@@ -8,12 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ca-srg/ragent/internal/ingestion/metadata"
-	"github.com/ca-srg/ragent/internal/ingestion/scanner"
-	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	"github.com/ca-srg/ragent/internal/mcpserver"
-	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
-	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/webui"
 )
 
@@ -103,7 +98,7 @@ Examples:
 				BasePath:  "/dashboard",
 			}
 
-			deps, err := buildDashboardDeps()
+			deps, err := webui.BuildDashboardDeps()
 			if err != nil {
 				return fmt.Errorf("failed to build dashboard dependencies: %w", err)
 			}
@@ -122,64 +117,6 @@ Examples:
 
 		return mcpserver.RunMCPServer(context.Background(), cmd, opts)
 	},
-}
-
-func buildDashboardDeps() (*webui.Dependencies, error) {
-	appCfg, err := appconfig.Load()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	embeddingClient, err := embedding.NewEmbeddingClient(appCfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create embedding client: %w", err)
-	}
-
-	sf := vectorizer.NewServiceFactory(appCfg)
-	vectorStoreClient, err := sf.CreateVectorStore()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create vector store client: %w", err)
-	}
-
-	metadataExtractor := metadata.NewMetadataExtractor()
-	fileScanner := scanner.NewFileScanner()
-
-	var osIndexer vectorizer.OpenSearchIndexer
-	if appCfg.OpenSearchEndpoint != "" {
-		factory := vectorizer.NewIndexerFactory(appCfg)
-		webDimension := 768
-		if embeddingClient != nil {
-			_, d, dErr := embeddingClient.GetModelInfo()
-			if dErr == nil && d > 0 {
-				webDimension = d
-			}
-		}
-		osIndexer, err = factory.CreateOpenSearchIndexer(appCfg.OpenSearchIndex, webDimension)
-		if err != nil {
-			log.Printf("Warning: failed to create OpenSearch indexer: %v", err)
-		}
-	}
-
-	serviceConfig := &vectorizer.ServiceConfig{
-		Config:              appCfg,
-		EmbeddingClient:     embeddingClient,
-		VectorStoreClient:   vectorStoreClient,
-		OpenSearchIndexer:   osIndexer,
-		MetadataExtractor:   metadataExtractor,
-		FileScanner:         fileScanner,
-		EnableOpenSearch:    osIndexer != nil,
-		OpenSearchIndexName: appCfg.OpenSearchIndex,
-	}
-
-	vec, err := vectorizer.NewVectorizerService(serviceConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create vectorizer service: %w", err)
-	}
-
-	return &webui.Dependencies{
-		FileScanner: fileScanner,
-		Vectorizer:  vec,
-	}, nil
 }
 
 func init() {

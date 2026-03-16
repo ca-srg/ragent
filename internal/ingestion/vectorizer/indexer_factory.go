@@ -6,9 +6,10 @@ import (
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
 	"github.com/ca-srg/ragent/internal/ingestion/pdf"
+	"github.com/ca-srg/ragent/internal/ingestion/s3vector"
+	"github.com/ca-srg/ragent/internal/ingestion/sqlitevec"
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/pkg/s3vector"
-	"github.com/ca-srg/ragent/internal/pkg/sqlitevec"
 )
 
 // Compile-time interface satisfaction checks moved here to avoid import cycles.
@@ -17,11 +18,11 @@ var _ VectorStore = (*sqlitevec.SqliteVecStore)(nil)
 
 // IndexerFactory creates OpenSearch indexers based on configuration
 type IndexerFactory struct {
-	config *Config
+	config *pkgconfig.Config
 }
 
 // NewIndexerFactory creates a new indexer factory
-func NewIndexerFactory(config *Config) *IndexerFactory {
+func NewIndexerFactory(config *pkgconfig.Config) *IndexerFactory {
 	return &IndexerFactory{
 		config: config,
 	}
@@ -173,7 +174,7 @@ type ServiceFactory struct {
 }
 
 // NewServiceFactory creates a new service factory
-func NewServiceFactory(config *Config) *ServiceFactory {
+func NewServiceFactory(config *pkgconfig.Config) *ServiceFactory {
 	return &ServiceFactory{
 		indexerFactory: NewIndexerFactory(config),
 	}

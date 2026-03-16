@@ -12,6 +12,7 @@ import (
 	"time"
 
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -167,11 +168,11 @@ func TestRunFollowMode_BasicExecution(t *testing.T) {
 
 	var mu sync.Mutex
 	callCount := 0
-	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*ProcessingResult, error) {
+	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*pkgdomain.ProcessingResult, error) {
 		mu.Lock()
 		callCount++
 		mu.Unlock()
-		return &ProcessingResult{ProcessedFiles: 3}, nil
+		return &pkgdomain.ProcessingResult{ProcessedFiles: 3}, nil
 	}
 
 	followIntervalDuration = 20 * time.Millisecond
@@ -249,7 +250,7 @@ func TestRunFollowCycle_SkipWhenProcessing(t *testing.T) {
 	resetFollowModeState()
 	t.Cleanup(resetFollowModeState)
 
-	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*ProcessingResult, error) {
+	vectorizationRunner = func(ctx context.Context, cfg *appconfig.Config) (*pkgdomain.ProcessingResult, error) {
 		t.Fatalf("vectorization runner should not be called when processing flag is set")
 		return nil, nil
 	}
@@ -311,7 +312,7 @@ func TestScanDirectoryDetectsPDFFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	// Find the PDF file
-	var pdfFile *scanner.FileInfo
+	var pdfFile *pkgdomain.FileInfo
 	for _, f := range files {
 		if f.IsPDF {
 			pdfFile = f

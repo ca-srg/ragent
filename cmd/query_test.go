@@ -24,7 +24,7 @@ func TestQueryOnlySlackFlag(t *testing.T) {
 
 func TestSanitizeSlackChannels(t *testing.T) {
 	channels := []string{"#general", " random ", "", "##ops"}
-	clean := sanitizeSlackChannels(channels)
+	clean := slacksearch.SanitizeSlackChannels(channels)
 	require.Equal(t, []string{"general", "random", "#ops"}, clean)
 }
 
@@ -52,7 +52,7 @@ func TestPrintSlackResultsIncludesPermalink(t *testing.T) {
 	}
 
 	output := captureOutput(t, func() {
-		printSlackResults(result)
+		slacksearch.PrintSlackResults(result)
 	})
 
 	assert.Contains(t, output, "=== Slack Conversations ===")

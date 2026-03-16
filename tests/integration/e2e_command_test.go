@@ -19,7 +19,7 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/pkg/search"
+	"github.com/ca-srg/ragent/internal/query/search"
 )
 
 // ---------------------------------------------------------------------------

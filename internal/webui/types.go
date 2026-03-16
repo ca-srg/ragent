@@ -24,7 +24,6 @@ const (
 	EventTypeVectorizeFailed    = "vectorize_failed"
 	EventTypeFileProcessed      = "file_processed"
 	EventTypeFileError          = "file_error"
-	EventTypeSchedulerTick      = "scheduler_tick"
 	EventTypeHeartbeat          = "heartbeat"
 )
 
@@ -65,14 +64,6 @@ type ErrorInfo struct {
 	Retryable bool                `json:"retryable"`
 }
 
-// SchedulerState represents the state of the follow mode scheduler
-type SchedulerState struct {
-	Enabled   bool          `json:"enabled"`
-	Interval  time.Duration `json:"interval"`
-	NextRunAt time.Time     `json:"next_run_at,omitempty"`
-	LastRunAt time.Time     `json:"last_run_at,omitempty"`
-}
-
 // SSEEvent represents a Server-Sent Event
 type SSEEvent struct {
 	Event string      `json:"event"`
@@ -101,7 +92,6 @@ type FileListItem struct {
 type DashboardData struct {
 	ActivePage   string
 	State        *VectorizeProgressEvent
-	Scheduler    *SchedulerState
 	RecentErrors []ErrorInfo
 	LastRun      *RunInfo
 }
@@ -125,7 +115,6 @@ type HistoryPageData struct {
 // APIStatusResponse represents the status API response
 type APIStatusResponse struct {
 	Status          VectorizeStatus        `json:"status"`
-	Scheduler       *SchedulerState        `json:"scheduler"`
 	ExternalProcess *ExternalProcessStatus `json:"external_process,omitempty"`
 }
 
@@ -139,8 +128,23 @@ type ExternalProcessStatus struct {
 	Percentage float64 `json:"percentage,omitempty"`
 }
 
-// APIProgressResponse represents the progress API response
-type APIProgressResponse struct {
-	Progress *VectorizeProgressEvent `json:"progress,omitempty"`
-	LastRun  *RunInfo                `json:"last_run,omitempty"`
+const (
+	MaxUploadSize  int64 = 50 * 1024 * 1024
+	MaxRequestSize int64 = 150 * 1024 * 1024
+)
+
+var AllowedExtensions = []string{".md", ".csv", ".pdf"}
+
+type UploadResult struct {
+	FileName string `json:"file_name"`
+	Status   string `json:"status"`
+	Message  string `json:"message"`
+	Size     int64  `json:"size"`
+}
+
+type UploadResponse struct {
+	Results            []UploadResult `json:"results"`
+	SavedCount         int            `json:"saved_count"`
+	RejectedCount      int            `json:"rejected_count"`
+	VectorizeTriggered bool           `json:"vectorize_triggered"`
 }

@@ -324,7 +324,7 @@ func FormatFetchedContext(messages []EnrichedMessage) string {
 			i+1,
 			orig.Channel,
 			user,
-			formatSlackTimestamp(orig.Timestamp),
+			FormatSlackTimestamp(orig.Timestamp),
 		)
 		result += fmt.Sprintf("Message: %s\n", orig.Text)
 
@@ -340,7 +340,7 @@ func FormatFetchedContext(messages []EnrichedMessage) string {
 					replyUser = reply.Username
 				}
 				result += fmt.Sprintf("  - [%s] %s: %s\n",
-					formatSlackTimestamp(reply.Timestamp),
+					FormatSlackTimestamp(reply.Timestamp),
 					replyUser,
 					reply.Text,
 				)

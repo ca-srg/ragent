@@ -18,8 +18,8 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/pkg/search"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
+	"github.com/ca-srg/ragent/internal/query/search"
 )
 
 // ChatResponder defines the interface for generating chat responses.
@@ -246,7 +246,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 			fmt.Printf("Slack search unavailable: %v\n", slackErr)
 		} else if slackResult != nil {
 			fmt.Printf("Slack search completed in %d iteration(s).\n", slackResult.IterationCount)
-			printSlackResults(slackResult)
+			slacksearch.PrintSlackResults(slackResult)
 			if slackPrompt := slackContextForPrompt(slackResult); slackPrompt != "" {
 				contextParts = append(contextParts, slackPrompt)
 			}
@@ -305,7 +305,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 				fmt.Printf("Slack search unavailable: %v\n", slackErr)
 			} else if slackResult != nil {
 				fmt.Printf("Slack search completed in %d iteration(s).\n", slackResult.IterationCount)
-				printSlackResults(slackResult)
+				slacksearch.PrintSlackResults(slackResult)
 				if slackPrompt := slackContextForPrompt(slackResult); slackPrompt != "" {
 					contextParts = append(contextParts, slackPrompt)
 				}
@@ -368,7 +368,7 @@ func GenerateChatResponse(userInput string, history []bedrock.ChatMessage, chatC
 			builder.WriteString("\n\n## Slack Conversations\n\n")
 			for _, msg := range slackResult.EnrichedMessages {
 				orig := msg.OriginalMessage
-				fmt.Fprintf(&builder, "- #%s (%s): %s", channelName(orig.Channel), humanTimestamp(orig.Timestamp), strings.TrimSpace(orig.Text))
+				fmt.Fprintf(&builder, "- #%s (%s): %s", slacksearch.FormatSlackChannel(orig.Channel), slacksearch.FormatSlackTimestamp(orig.Timestamp), strings.TrimSpace(orig.Text))
 				if msg.Permalink != "" {
 					fmt.Fprintf(&builder, " (%s)", msg.Permalink)
 				}

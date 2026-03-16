@@ -2,14 +2,14 @@ package slackbot
 
 import (
 	"fmt"
-	"math"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/slack-go/slack"
+
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 )
 
 const (
@@ -196,23 +196,6 @@ func escapeTitle(s string) string {
 	return strings.ReplaceAll(s, "|", "-")
 }
 
-func channelName(id string) string {
-	if id == "" {
-		return "-"
-	}
-	return id
-}
-
-func displayUser(userID, username string) string {
-	if username != "" {
-		return username
-	}
-	if userID != "" {
-		return userID
-	}
-	return "unknown"
-}
-
 func normalizeMarkdownForSlack(text string) string {
 	lines := strings.Split(text, "\n")
 	if len(lines) == 0 {
@@ -223,7 +206,7 @@ func normalizeMarkdownForSlack(text string) string {
 	insideCode := false
 
 	for _, line := range lines {
-		trimmedLeft := strings.TrimLeft(line, " \t")
+		trimmedLeft := strings.TrimLeft(line, " 	")
 
 		if strings.HasPrefix(trimmedLeft, "```") {
 			insideCode = !insideCode
@@ -345,19 +328,6 @@ func isDigits(s string) bool {
 	return true
 }
 
-func humanTimestamp(ts string) string {
-	if ts == "" {
-		return "-"
-	}
-	seconds, err := strconv.ParseFloat(ts, 64)
-	if err != nil {
-		return ts
-	}
-	secs := int64(seconds)
-	nsecs := int64((seconds - math.Floor(seconds)) * 1e9)
-	return time.Unix(secs, nsecs).Format(time.RFC3339)
-}
-
 // SearchResult is a simplified structure for Slack formatting
 type SearchResult struct {
 	Items             []SearchItem
@@ -411,9 +381,9 @@ func buildSlackResultBlocks(result *SlackConversationResult) []slack.Block {
 			break
 		}
 
-		channel := channelName(msg.Channel)
-		stamp := humanTimestamp(msg.Timestamp)
-		user := displayUser(msg.User, msg.Username)
+		channel := slacksearch.FormatSlackChannel(msg.Channel)
+		stamp := slacksearch.FormatSlackTimestamp(msg.Timestamp)
+		user := slacksearch.FormatSlackUser(msg.User, msg.Username)
 		header := fmt.Sprintf("*#%s* • %s • %s", channel, stamp, user)
 		blocks = append(blocks, slack.NewContextBlock(
 			fmt.Sprintf("slack-msg-meta-%d", i),

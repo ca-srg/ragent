@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 )
@@ -43,30 +44,30 @@ func NewOpenSearchIndexer(client OpenSearchClient, defaultIndex string, defaultD
 // IndexDocument indexes a single document in OpenSearch
 func (osi *OpenSearchIndexerImpl) IndexDocument(ctx context.Context, indexName string, document *OpenSearchDocument) error {
 	if document == nil {
-		return WrapError(fmt.Errorf("document cannot be nil"), ErrorTypeValidation, "")
+		return WrapError(fmt.Errorf("document cannot be nil"), pkgconfig.ErrorTypeValidation, "")
 	}
 
 	if err := document.Validate(); err != nil {
-		return WrapError(err, ErrorTypeValidation, document.FilePath)
+		return WrapError(err, pkgconfig.ErrorTypeValidation, document.FilePath)
 	}
 
 	// Process Japanese content if not already processed
 	if err := osi.processJapaneseContentForDocument(document); err != nil {
-		return WrapError(err, ErrorTypeValidation, document.FilePath)
+		return WrapError(err, pkgconfig.ErrorTypeValidation, document.FilePath)
 	}
 
 	startTime := time.Now()
 
 	// Wait for rate limiting
 	if err := osi.client.WaitForRateLimit(ctx); err != nil {
-		return WrapError(err, ErrorTypeRateLimit, document.FilePath)
+		return WrapError(err, pkgconfig.ErrorTypeRateLimit, document.FilePath)
 	}
 
 	operation := func() error {
 		// Directly marshal the document struct to preserve type information
 		bodyJSON, err := json.Marshal(document)
 		if err != nil {
-			return WrapError(err, ErrorTypeValidation, document.FilePath)
+			return WrapError(err, pkgconfig.ErrorTypeValidation, document.FilePath)
 		}
 
 		req := opensearchapi.IndexReq{
@@ -110,14 +111,14 @@ func (osi *OpenSearchIndexerImpl) IndexDocuments(ctx context.Context, indexName 
 	// Validate all documents first and process Japanese content
 	for i, doc := range documents {
 		if doc == nil {
-			return WrapError(fmt.Errorf("document at index %d is nil", i), ErrorTypeValidation, "")
+			return WrapError(fmt.Errorf("document at index %d is nil", i), pkgconfig.ErrorTypeValidation, "")
 		}
 		if err := doc.Validate(); err != nil {
-			return WrapError(err, ErrorTypeValidation, doc.FilePath)
+			return WrapError(err, pkgconfig.ErrorTypeValidation, doc.FilePath)
 		}
 		// Process Japanese content for each document
 		if err := osi.processJapaneseContentForDocument(doc); err != nil {
-			return WrapError(err, ErrorTypeValidation, doc.FilePath)
+			return WrapError(err, pkgconfig.ErrorTypeValidation, doc.FilePath)
 		}
 	}
 
@@ -134,7 +135,7 @@ func (osi *OpenSearchIndexerImpl) IndexDocuments(ctx context.Context, indexName 
 
 		batch := documents[i:end]
 		if err := osi.indexDocumentBatch(ctx, indexName, batch, i); err != nil {
-			return WrapError(err, ErrorTypeOpenSearchBulkIndex, fmt.Sprintf("batch_%d-%d", i, end-1))
+			return WrapError(err, pkgconfig.ErrorTypeOpenSearchBulkIndex, fmt.Sprintf("batch_%d-%d", i, end-1))
 		}
 		successCount += len(batch)
 
@@ -156,12 +157,12 @@ func (osi *OpenSearchIndexerImpl) indexDocumentBatch(ctx context.Context, indexN
 
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, fmt.Sprintf("batch_%d", offset))
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, fmt.Sprintf("batch_%d", offset))
 		}
 
 		bulkBody, err := osi.buildBulkBody(indexName, documents)
 		if err != nil {
-			return WrapError(err, ErrorTypeValidation, fmt.Sprintf("batch_%d", offset))
+			return WrapError(err, pkgconfig.ErrorTypeValidation, fmt.Sprintf("batch_%d", offset))
 		}
 
 		req := opensearchapi.BulkReq{
@@ -238,7 +239,7 @@ func (osi *OpenSearchIndexerImpl) ValidateConnection(ctx context.Context) error 
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return WrapError(err, ErrorTypeOpenSearchConnection, "health_check")
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchConnection, "health_check")
 	}
 
 	log.Printf("OpenSearch connection validated successfully in %v", duration)
@@ -256,7 +257,7 @@ func (osi *OpenSearchIndexerImpl) CreateIndex(ctx context.Context, indexName str
 
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		return osi.client.CreateVectorIndex(ctx, indexName, dimension, "lucene", "cosinesimil")
@@ -268,7 +269,7 @@ func (osi *OpenSearchIndexerImpl) CreateIndex(ctx context.Context, indexName str
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return WrapError(err, ErrorTypeOpenSearchIndex, indexName)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, indexName)
 	}
 
 	log.Printf("Successfully created index %s with dimension %d in %v", indexName, dimension, duration)
@@ -281,7 +282,7 @@ func (osi *OpenSearchIndexerImpl) DeleteIndex(ctx context.Context, indexName str
 
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		req := opensearchapi.IndicesDeleteReq{
@@ -302,7 +303,7 @@ func (osi *OpenSearchIndexerImpl) DeleteIndex(ctx context.Context, indexName str
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return WrapError(err, ErrorTypeOpenSearchIndex, indexName)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, indexName)
 	}
 
 	log.Printf("Successfully deleted index %s in %v", indexName, duration)
@@ -316,7 +317,7 @@ func (osi *OpenSearchIndexerImpl) IndexExists(ctx context.Context, indexName str
 	var exists bool
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		req := opensearchapi.IndicesExistsReq{
@@ -345,7 +346,7 @@ func (osi *OpenSearchIndexerImpl) IndexExists(ctx context.Context, indexName str
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return false, WrapError(err, ErrorTypeOpenSearchIndex, indexName)
+		return false, WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, indexName)
 	}
 
 	return exists, nil
@@ -358,7 +359,7 @@ func (osi *OpenSearchIndexerImpl) GetIndexInfo(ctx context.Context, indexName st
 	var info map[string]interface{}
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		// Get index settings and mappings
@@ -402,7 +403,7 @@ func (osi *OpenSearchIndexerImpl) GetIndexInfo(ctx context.Context, indexName st
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return nil, WrapError(err, ErrorTypeOpenSearchIndex, indexName)
+		return nil, WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, indexName)
 	}
 
 	return info, nil
@@ -414,7 +415,7 @@ func (osi *OpenSearchIndexerImpl) RefreshIndex(ctx context.Context, indexName st
 
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		req := opensearchapi.IndicesRefreshReq{
@@ -435,7 +436,7 @@ func (osi *OpenSearchIndexerImpl) RefreshIndex(ctx context.Context, indexName st
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return WrapError(err, ErrorTypeOpenSearchIndex, indexName)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, indexName)
 	}
 
 	return nil
@@ -448,7 +449,7 @@ func (osi *OpenSearchIndexerImpl) GetDocumentCount(ctx context.Context, indexNam
 	var count int64
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		// Use search API with size 0 to get document count
@@ -478,7 +479,7 @@ func (osi *OpenSearchIndexerImpl) GetDocumentCount(ctx context.Context, indexNam
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return 0, WrapError(err, ErrorTypeOpenSearchIndex, indexName)
+		return 0, WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, indexName)
 	}
 
 	return count, nil
@@ -545,7 +546,7 @@ func (osi *OpenSearchIndexerImpl) CreateVectorIndexWithJapanese(ctx context.Cont
 
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		// Create Japanese-optimized index settings and mappings
@@ -713,7 +714,7 @@ func (osi *OpenSearchIndexerImpl) CreateVectorIndexWithJapanese(ctx context.Cont
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return WrapError(err, ErrorTypeOpenSearchIndex, indexName)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, indexName)
 	}
 
 	log.Printf("Successfully created Japanese-optimized index %s with dimension %d in %v", indexName, dimension, duration)
@@ -739,7 +740,7 @@ func (osi *OpenSearchIndexerImpl) ValidateIndexCompatibility(ctx context.Context
 
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		// Get index mappings and settings
@@ -780,7 +781,7 @@ func (osi *OpenSearchIndexerImpl) ValidateIndexCompatibility(ctx context.Context
 	osi.client.RecordRequest(duration, err == nil)
 
 	if err != nil {
-		return WrapError(err, ErrorTypeOpenSearchIndex, indexName)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, indexName)
 	}
 
 	// Report compatibility issues if any
@@ -888,7 +889,7 @@ func (osi *OpenSearchIndexerImpl) CompareIndexSettings(ctx context.Context, inde
 	var issues []string
 	operation := func() error {
 		if err := osi.client.WaitForRateLimit(ctx); err != nil {
-			return WrapError(err, ErrorTypeRateLimit, indexName)
+			return WrapError(err, pkgconfig.ErrorTypeRateLimit, indexName)
 		}
 
 		// Get index settings and mappings
@@ -950,18 +951,18 @@ func (osi *OpenSearchIndexerImpl) classifyOpenSearchError(err error, context str
 
 	switch {
 	case strings.Contains(errStr, "connection") || strings.Contains(errStr, "dial") || strings.Contains(errStr, "timeout"):
-		return WrapError(err, ErrorTypeOpenSearchConnection, context)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchConnection, context)
 	case strings.Contains(errStr, "mapping") || strings.Contains(errStr, "field"):
-		return WrapError(err, ErrorTypeOpenSearchMapping, context)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchMapping, context)
 	case strings.Contains(errStr, "index") && (strings.Contains(errStr, "not found") || strings.Contains(errStr, "missing")):
-		return WrapError(err, ErrorTypeOpenSearchIndex, context)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchIndex, context)
 	case strings.Contains(errStr, "bulk") || strings.Contains(errStr, "batch"):
-		return WrapError(err, ErrorTypeOpenSearchBulkIndex, context)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchBulkIndex, context)
 	case strings.Contains(errStr, "query") || strings.Contains(errStr, "search"):
-		return WrapError(err, ErrorTypeOpenSearchQuery, context)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchQuery, context)
 	case strings.Contains(errStr, "rate limit") || strings.Contains(errStr, "too many requests"):
-		return WrapError(err, ErrorTypeRateLimit, context)
+		return WrapError(err, pkgconfig.ErrorTypeRateLimit, context)
 	default:
-		return WrapError(err, ErrorTypeOpenSearchIndexing, context)
+		return WrapError(err, pkgconfig.ErrorTypeOpenSearchIndexing, context)
 	}
 }

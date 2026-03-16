@@ -11,6 +11,8 @@ import (
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
 	"github.com/ca-srg/ragent/internal/ingestion/pdf"
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // ProgressCallback is called when processing progress is updated
@@ -25,7 +27,7 @@ type VectorizerService struct {
 	fileScanner         FileScanner
 	parallelController  *ParallelController
 	errorHandler        *DualBackendErrorHandler
-	config              *Config
+	config              *pkgconfig.Config
 	stats               *ProcessingStats
 	enableOpenSearch    bool
 	opensearchIndexName string
@@ -44,12 +46,12 @@ type ProcessingStats struct {
 	EmbeddingsCreated int
 	TotalTokens       int
 	StartTime         time.Time
-	Errors            []ProcessingError
+	Errors            []pkgdomain.ProcessingError
 }
 
 // ServiceConfig contains the configuration for creating a VectorizerService
 type ServiceConfig struct {
-	Config              *Config
+	Config              *pkgconfig.Config
 	EmbeddingClient     EmbeddingClient
 	VectorStoreClient   VectorStore
 	OpenSearchIndexer   OpenSearchIndexer
@@ -116,7 +118,7 @@ func NewVectorizerService(serviceConfig *ServiceConfig) (*VectorizerService, err
 		pdfReader:           serviceConfig.PDFReader,
 		stats: &ProcessingStats{
 			StartTime: time.Now(),
-			Errors:    make([]ProcessingError, 0),
+			Errors:    make([]pkgdomain.ProcessingError, 0),
 		},
 	}
 
@@ -154,7 +156,7 @@ func (vs *VectorizerService) ValidateConfiguration(ctx context.Context) error {
 }
 
 // VectorizeMarkdownFiles processes all supported files (markdown and CSV) in a directory
-func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directory string, dryRun bool) (*ProcessingResult, error) {
+func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directory string, dryRun bool) (*pkgdomain.ProcessingResult, error) {
 	vs.stats.StartTime = time.Now()
 
 	log.Printf("Scanning directory: %s", directory)
@@ -194,8 +196,8 @@ func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directo
 }
 
 // expandCSVFiles expands CSV files into individual FileInfo entries (one per row)
-func (vs *VectorizerService) expandCSVFiles(files []*FileInfo) ([]*FileInfo, error) {
-	var result []*FileInfo
+func (vs *VectorizerService) expandCSVFiles(files []*pkgdomain.FileInfo) ([]*pkgdomain.FileInfo, error) {
+	var result []*pkgdomain.FileInfo
 
 	for _, file := range files {
 		if file.IsCSV {
@@ -217,7 +219,7 @@ func (vs *VectorizerService) expandCSVFiles(files []*FileInfo) ([]*FileInfo, err
 }
 
 // expandPDFFiles expands PDF files into individual FileInfo entries (one per page)
-func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, error) {
+func (vs *VectorizerService) expandPDFFiles(files []*pkgdomain.FileInfo) ([]*pkgdomain.FileInfo, error) {
 	if vs.pdfReader == nil {
 		// OCR_PROVIDER not configured - skip PDF files with warning
 		hasPDF := false
@@ -231,7 +233,7 @@ func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, err
 			log.Println("Warning: PDF files found but OCR_PROVIDER is not set, PDF files will be skipped")
 		}
 		// Return non-PDF files only
-		var result []*FileInfo
+		var result []*pkgdomain.FileInfo
 		for _, f := range files {
 			if !f.IsPDF {
 				result = append(result, f)
@@ -241,8 +243,8 @@ func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, err
 	}
 
 	// Separate PDF and non-PDF files.
-	var pdfFiles []*FileInfo
-	var nonPDFFiles []*FileInfo
+	var pdfFiles []*pkgdomain.FileInfo
+	var nonPDFFiles []*pkgdomain.FileInfo
 	for _, file := range files {
 		if file.IsPDF {
 			pdfFiles = append(pdfFiles, file)
@@ -265,17 +267,17 @@ func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, err
 	semaphore := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	var expandedPDFs []*FileInfo
+	var expandedPDFs []*pkgdomain.FileInfo
 
 	for _, file := range pdfFiles {
 		wg.Add(1)
-		go func(f *FileInfo) {
+		go func(f *pkgdomain.FileInfo) {
 			defer wg.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
 			log.Printf("Expanding PDF file: %s", f.Path)
-			var pages []*FileInfo
+			var pages []*pkgdomain.FileInfo
 			var err error
 			if f.RawBytes != nil {
 				pages, err = vs.pdfReader.ReadFileFromBytes(f.RawBytes, f.Path)
@@ -297,7 +299,7 @@ func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, err
 	wg.Wait()
 
 	// Combine non-PDF files with expanded PDF pages.
-	result := make([]*FileInfo, 0, len(nonPDFFiles)+len(expandedPDFs))
+	result := make([]*pkgdomain.FileInfo, 0, len(nonPDFFiles)+len(expandedPDFs))
 	result = append(result, nonPDFFiles...)
 	result = append(result, expandedPDFs...)
 	return result, nil
@@ -305,7 +307,7 @@ func (vs *VectorizerService) expandPDFFiles(files []*FileInfo) ([]*FileInfo, err
 
 // VectorizeFiles processes a slice of FileInfo objects
 // This can be used for both markdown files and spreadsheet rows
-func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*FileInfo, dryRun bool) (*ProcessingResult, error) {
+func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*pkgdomain.FileInfo, dryRun bool) (*pkgdomain.ProcessingResult, error) {
 	vs.stats.StartTime = time.Now()
 
 	if len(files) == 0 {
@@ -342,12 +344,12 @@ func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*FileIn
 }
 
 // ProcessSingleFile processes a single markdown file
-func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *FileInfo, dryRun bool) error {
+func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *pkgdomain.FileInfo, dryRun bool) error {
 	// Load file content if not already loaded
 	if fileInfo.Content == "" {
 		content, err := vs.fileScanner.ReadFileContent(fileInfo.Path)
 		if err != nil {
-			return WrapError(err, ErrorTypeFileRead, fileInfo.Path)
+			return WrapError(err, pkgconfig.ErrorTypeFileRead, fileInfo.Path)
 		}
 		fileInfo.Content = content
 	}
@@ -358,7 +360,7 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 	if !fileInfo.IsPDF {
 		metadata, err := vs.metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
 		if err != nil {
-			return WrapError(err, ErrorTypeMetadata, fileInfo.Path)
+			return WrapError(err, pkgconfig.ErrorTypeMetadata, fileInfo.Path)
 		}
 		fileInfo.Metadata = *metadata
 	}
@@ -374,19 +376,19 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 	embedding, err := vs.embeddingClient.GenerateEmbedding(ctx, fileInfo.Content)
 	if err != nil {
 		log.Printf("ERROR: Failed to generate embedding for %s: %v", fileInfo.Path, err)
-		return WrapError(err, ErrorTypeEmbedding, fileInfo.Path)
+		return WrapError(err, pkgconfig.ErrorTypeEmbedding, fileInfo.Path)
 	}
 
 	// Validate embedding is not empty
 	if len(embedding) == 0 {
 		log.Printf("ERROR: Generated embedding is empty for file: %s", fileInfo.Path)
-		return WrapError(fmt.Errorf("embedding is empty"), ErrorTypeEmbedding, fileInfo.Path)
+		return WrapError(fmt.Errorf("embedding is empty"), pkgconfig.ErrorTypeEmbedding, fileInfo.Path)
 	}
 
 	log.Printf("Successfully generated embedding with %d dimensions for file: %s", len(embedding), fileInfo.Path)
 
 	// Create vector data
-	vectorData := &VectorData{
+	vectorData := &pkgdomain.VectorData{
 		ID:        vs.metadataExtractor.GenerateKey(&fileInfo.Metadata),
 		Embedding: embedding,
 		Metadata:  fileInfo.Metadata,
@@ -395,18 +397,18 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *Fi
 	}
 
 	if err := vs.vectorStore.StoreVector(ctx, vectorData); err != nil {
-		return WrapError(err, ErrorTypeS3Upload, fileInfo.Path)
+		return WrapError(err, pkgconfig.ErrorTypeS3Upload, fileInfo.Path)
 	}
 
 	return nil
 }
 
 // processFilesConcurrently processes files with controlled concurrency
-func (vs *VectorizerService) processFilesConcurrently(ctx context.Context, files []*FileInfo) (*ProcessingResult, error) {
+func (vs *VectorizerService) processFilesConcurrently(ctx context.Context, files []*pkgdomain.FileInfo) (*pkgdomain.ProcessingResult, error) {
 	// Create semaphore for concurrency control
 	semaphore := make(chan struct{}, vs.config.Concurrency)
 	var wg sync.WaitGroup
-	errorChan := make(chan ProcessingError, len(files))
+	errorChan := make(chan pkgdomain.ProcessingError, len(files))
 
 	// Progress tracking
 	var processedCount int64
@@ -418,7 +420,7 @@ func (vs *VectorizerService) processFilesConcurrently(ctx context.Context, files
 
 	for i, file := range files {
 		wg.Add(1)
-		go func(idx int, f *FileInfo) {
+		go func(idx int, f *pkgdomain.FileInfo) {
 			defer wg.Done()
 
 			// Acquire semaphore
@@ -426,10 +428,10 @@ func (vs *VectorizerService) processFilesConcurrently(ctx context.Context, files
 			defer func() { <-semaphore }()
 
 			if err := vs.ProcessSingleFile(ctx, f, false); err != nil {
-				if procErr, ok := err.(*ProcessingError); ok {
+				if procErr, ok := err.(*pkgdomain.ProcessingError); ok {
 					errorChan <- *procErr
 				} else {
-					errorChan <- *WrapError(err, ErrorTypeUnknown, f.Path)
+					errorChan <- *WrapError(err, pkgconfig.ErrorTypeUnknown, f.Path)
 				}
 				vs.updateStats(false)
 			} else {
@@ -461,13 +463,13 @@ func (vs *VectorizerService) processFilesConcurrently(ctx context.Context, files
 	close(errorChan)
 
 	// Collect errors
-	var errors []ProcessingError
+	var errors []pkgdomain.ProcessingError
 	for err := range errorChan {
 		errors = append(errors, err)
 	}
 
 	endTime := time.Now()
-	result := &ProcessingResult{
+	result := &pkgdomain.ProcessingResult{
 		ProcessedFiles: len(files),
 		SuccessCount:   vs.stats.FilesSuccessful,
 		FailureCount:   vs.stats.FilesFailed,
@@ -482,7 +484,7 @@ func (vs *VectorizerService) processFilesConcurrently(ctx context.Context, files
 }
 
 // dryRunProcessing simulates processing without making actual API calls
-func (vs *VectorizerService) dryRunProcessing(files []*FileInfo) (*ProcessingResult, error) {
+func (vs *VectorizerService) dryRunProcessing(files []*pkgdomain.FileInfo) (*pkgdomain.ProcessingResult, error) {
 	log.Println("Starting dry run processing...")
 
 	// Log OpenSearch simulation if enabled
@@ -550,11 +552,11 @@ func (vs *VectorizerService) dryRunProcessing(files []*FileInfo) (*ProcessingRes
 	}
 
 	endTime := time.Now()
-	result := &ProcessingResult{
+	result := &pkgdomain.ProcessingResult{
 		ProcessedFiles:           len(files),
 		SuccessCount:             len(files), // All succeed in dry run
 		FailureCount:             0,
-		Errors:                   []ProcessingError{},
+		Errors:                   []pkgdomain.ProcessingError{},
 		StartTime:                vs.stats.StartTime,
 		EndTime:                  endTime,
 		Duration:                 endTime.Sub(vs.stats.StartTime),
@@ -608,7 +610,7 @@ func (vs *VectorizerService) GetStats() ProcessingStats {
 		EmbeddingsCreated: vs.stats.EmbeddingsCreated,
 		TotalTokens:       vs.stats.TotalTokens,
 		StartTime:         vs.stats.StartTime,
-		Errors:            append([]ProcessingError{}, vs.stats.Errors...),
+		Errors:            append([]pkgdomain.ProcessingError{}, vs.stats.Errors...),
 	}
 }
 
@@ -631,7 +633,7 @@ func (vs *VectorizerService) notifyProgress(processed, total int) {
 }
 
 // processDualBackend processes files using both S3 Vector and OpenSearch backends
-func (vs *VectorizerService) processDualBackend(ctx context.Context, files []*FileInfo, dryRun bool) (*ProcessingResult, error) {
+func (vs *VectorizerService) processDualBackend(ctx context.Context, files []*pkgdomain.FileInfo, dryRun bool) (*pkgdomain.ProcessingResult, error) {
 	log.Printf("Starting dual backend processing for %d files", len(files))
 
 	// Validate OpenSearch index exists or create it if needed
@@ -793,13 +795,13 @@ func contains(s, substr string) bool {
 }
 
 // createEmptyResult creates an empty processing result
-func (vs *VectorizerService) createEmptyResult() *ProcessingResult {
+func (vs *VectorizerService) createEmptyResult() *pkgdomain.ProcessingResult {
 	now := time.Now()
-	return &ProcessingResult{
+	return &pkgdomain.ProcessingResult{
 		ProcessedFiles:           0,
 		SuccessCount:             0,
 		FailureCount:             0,
-		Errors:                   []ProcessingError{},
+		Errors:                   []pkgdomain.ProcessingError{},
 		StartTime:                vs.stats.StartTime,
 		EndTime:                  now,
 		Duration:                 now.Sub(vs.stats.StartTime),

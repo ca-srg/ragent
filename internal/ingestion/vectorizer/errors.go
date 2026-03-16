@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // NewProcessingError creates a new ProcessingError with the given parameters
-func NewProcessingError(errorType ErrorType, message, filePath string) *ProcessingError {
-	return &ProcessingError{
+func NewProcessingError(errorType pkgconfig.ErrorType, message, filePath string) *pkgdomain.ProcessingError {
+	return &pkgdomain.ProcessingError{
 		Type:       errorType,
 		Message:    message,
 		FilePath:   filePath,
@@ -19,13 +22,13 @@ func NewProcessingError(errorType ErrorType, message, filePath string) *Processi
 }
 
 // isRetryableError determines if an error type is retryable
-func isRetryableError(errorType ErrorType) bool {
+func isRetryableError(errorType pkgconfig.ErrorType) bool {
 	switch errorType {
-	case ErrorTypeNetworkTimeout, ErrorTypeRateLimit:
+	case pkgconfig.ErrorTypeNetworkTimeout, pkgconfig.ErrorTypeRateLimit:
 		return true
-	case ErrorTypeFileRead, ErrorTypeMetadata, ErrorTypeValidation:
+	case pkgconfig.ErrorTypeFileRead, pkgconfig.ErrorTypeMetadata, pkgconfig.ErrorTypeValidation:
 		return false
-	case ErrorTypeEmbedding, ErrorTypeS3Upload:
+	case pkgconfig.ErrorTypeEmbedding, pkgconfig.ErrorTypeS3Upload:
 		return true // These might be temporary network issues
 	default:
 		return false
@@ -33,12 +36,12 @@ func isRetryableError(errorType ErrorType) bool {
 }
 
 // WrapError wraps an existing error with additional context
-func WrapError(err error, errorType ErrorType, filePath string) *ProcessingError {
+func WrapError(err error, errorType pkgconfig.ErrorType, filePath string) *pkgdomain.ProcessingError {
 	if err == nil {
 		return nil
 	}
 
-	return &ProcessingError{
+	return &pkgdomain.ProcessingError{
 		Type:       errorType,
 		Message:    err.Error(),
 		FilePath:   filePath,
@@ -91,43 +94,43 @@ func IsRateLimitError(err error) bool {
 }
 
 // ClassifyError determines the error type based on the error message
-func ClassifyError(err error, context string) ErrorType {
+func ClassifyError(err error, context string) pkgconfig.ErrorType {
 	if err == nil {
-		return ErrorTypeUnknown
+		return pkgconfig.ErrorTypeUnknown
 	}
 
 	if IsNetworkError(err) {
-		return ErrorTypeNetworkTimeout
+		return pkgconfig.ErrorTypeNetworkTimeout
 	}
 
 	if IsRateLimitError(err) {
-		return ErrorTypeRateLimit
+		return pkgconfig.ErrorTypeRateLimit
 	}
 
 	// Classify based on context
 	switch context {
 	case "file_read":
-		return ErrorTypeFileRead
+		return pkgconfig.ErrorTypeFileRead
 	case "metadata":
-		return ErrorTypeMetadata
+		return pkgconfig.ErrorTypeMetadata
 	case "embedding":
-		return ErrorTypeEmbedding
+		return pkgconfig.ErrorTypeEmbedding
 	case "s3_upload":
-		return ErrorTypeS3Upload
+		return pkgconfig.ErrorTypeS3Upload
 	case "validation":
-		return ErrorTypeValidation
+		return pkgconfig.ErrorTypeValidation
 	default:
-		return ErrorTypeUnknown
+		return pkgconfig.ErrorTypeUnknown
 	}
 }
 
 // FormatErrorSummary creates a formatted summary of processing errors
-func FormatErrorSummary(errors []ProcessingError) string {
+func FormatErrorSummary(errors []pkgdomain.ProcessingError) string {
 	if len(errors) == 0 {
 		return "No errors occurred during processing."
 	}
 
-	errorCounts := make(map[ErrorType]int)
+	errorCounts := make(map[pkgconfig.ErrorType]int)
 	for _, err := range errors {
 		errorCounts[err.Type]++
 	}

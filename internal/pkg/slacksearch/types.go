@@ -66,56 +66,19 @@ func (r *SlackSearchResult) ForPrompt() string {
 		orig := msg.OriginalMessage
 		fmt.Fprintf(&sb, "- #%s at %s by %s: %s\n",
 			orig.Channel,
-			formatSlackTimestamp(orig.Timestamp),
-			displaySlackUser(orig.User, orig.Username),
+			FormatSlackTimestamp(orig.Timestamp),
+			FormatSlackUser(orig.User, orig.Username),
 			strings.TrimSpace(orig.Text),
 		)
 		for _, reply := range msg.ThreadMessages {
 			fmt.Fprintf(&sb, "    • Reply at %s by %s: %s\n",
-				formatSlackTimestamp(reply.Timestamp),
-				displaySlackUser(reply.User, reply.Username),
+				FormatSlackTimestamp(reply.Timestamp),
+				FormatSlackUser(reply.User, reply.Username),
 				strings.TrimSpace(reply.Text),
 			)
 		}
 	}
 	return sb.String()
-}
-
-// formatSlackTimestamp converts a Slack timestamp to RFC3339 format.
-func formatSlackTimestamp(ts string) string {
-	if ts == "" {
-		return "-"
-	}
-	var sb strings.Builder
-	for _, c := range ts {
-		if c == '.' {
-			break
-		}
-		sb.WriteRune(c)
-	}
-	secs := sb.String()
-	if secs == "" {
-		return ts
-	}
-	var seconds int64
-	for _, c := range secs {
-		if c < '0' || c > '9' {
-			return ts
-		}
-		seconds = seconds*10 + int64(c-'0')
-	}
-	return time.Unix(seconds, 0).Format(time.RFC3339)
-}
-
-// displaySlackUser returns a display name for a Slack user.
-func displaySlackUser(userID, username string) string {
-	if username != "" {
-		return username
-	}
-	if userID != "" {
-		return userID
-	}
-	return "unknown"
 }
 
 // Validate ensures the Slack search configuration values are within supported ranges.

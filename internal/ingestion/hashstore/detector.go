@@ -3,7 +3,7 @@ package hashstore
 import (
 	"context"
 
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // ChangeDetector detects file changes by comparing current files with stored hashes
@@ -21,7 +21,7 @@ func NewChangeDetector(store *HashStore) *ChangeDetector {
 func (d *ChangeDetector) DetectChanges(
 	ctx context.Context,
 	sourceTypes []string,
-	files []*domain.FileInfo,
+	files []*pkgdomain.FileInfo,
 ) (*ChangeDetectionResult, error) {
 	// Get all existing hashes for the given source types
 	existingHashes, err := d.store.GetAllFileHashesForSourceTypes(ctx, sourceTypes)
@@ -91,8 +91,8 @@ func (d *ChangeDetector) DetectChanges(
 func (d *ChangeDetector) FilterFilesToProcess(
 	ctx context.Context,
 	sourceTypes []string,
-	files []*domain.FileInfo,
-) ([]*domain.FileInfo, *ChangeDetectionResult, error) {
+	files []*pkgdomain.FileInfo,
+) ([]*pkgdomain.FileInfo, *ChangeDetectionResult, error) {
 	changes, err := d.DetectChanges(ctx, sourceTypes, files)
 	if err != nil {
 		return nil, nil, err
@@ -105,7 +105,7 @@ func (d *ChangeDetector) FilterFilesToProcess(
 	}
 
 	// Filter the original files list
-	filtered := make([]*domain.FileInfo, 0, len(changes.ToProcess))
+	filtered := make([]*pkgdomain.FileInfo, 0, len(changes.ToProcess))
 	for _, file := range files {
 		if toProcessPaths[file.Path] {
 			filtered = append(filtered, file)

@@ -8,12 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"gopkg.in/yaml.v3"
 )
-
-// Type alias for DocumentMetadata
-type DocumentMetadata = domain.DocumentMetadata
 
 // MetadataExtractor implements the MetadataExtractor interface
 type MetadataExtractor struct{}
@@ -24,8 +21,8 @@ func NewMetadataExtractor() *MetadataExtractor {
 }
 
 // ExtractMetadata extracts metadata from a file's content and path
-func (e *MetadataExtractor) ExtractMetadata(filePath string, content string) (*DocumentMetadata, error) {
-	metadata := &DocumentMetadata{
+func (e *MetadataExtractor) ExtractMetadata(filePath string, content string) (*pkgdomain.DocumentMetadata, error) {
+	metadata := &pkgdomain.DocumentMetadata{
 		FilePath:     filePath,
 		CustomFields: make(map[string]interface{}),
 	}
@@ -185,7 +182,7 @@ func (e *MetadataExtractor) parseMarkdownMetadata(content string) (map[string]in
 }
 
 // GenerateKey creates a unique key for the document
-func (e *MetadataExtractor) GenerateKey(metadata *DocumentMetadata) string {
+func (e *MetadataExtractor) GenerateKey(metadata *pkgdomain.DocumentMetadata) string {
 	// Use MD5 hash of file path and title for uniqueness
 	keySource := fmt.Sprintf("%s:%s", metadata.FilePath, metadata.Title)
 	hash := md5.Sum([]byte(keySource))
@@ -413,8 +410,8 @@ func (e *MetadataExtractor) isReservedField(fieldName string) bool {
 	return false
 }
 
-func (e *MetadataExtractor) ExtractGitHubMetadata(repoOwner, repoName, repoRelativePath, content string) (*DocumentMetadata, error) {
-	metadata := &DocumentMetadata{
+func (e *MetadataExtractor) ExtractGitHubMetadata(repoOwner, repoName, repoRelativePath, content string) (*pkgdomain.DocumentMetadata, error) {
+	metadata := &pkgdomain.DocumentMetadata{
 		FilePath:     fmt.Sprintf("github://%s/%s/%s", repoOwner, repoName, repoRelativePath),
 		CustomFields: make(map[string]interface{}),
 	}

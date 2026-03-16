@@ -1,0 +1,18 @@
+Task 13: slack support cleanup
+
+Changed files:
+- cmd/query_test.go
+- cmd/slack_support_test.go
+- cmd/slack_support_alias.go (deleted)
+
+Verification:
+- cmd/slack_support.go: missing
+- cmd/slack_support_alias.go: missing
+- grep -rn "^func sanitizeSlackChannels\|^func printSlackResults" cmd/ --include="*.go" | grep -v _test | wc -l => 0
+- grep -rn "var sanitizeSlackChannels\|var printSlackResults" cmd/ --include="*.go" | wc -l => 0
+- go build ./... => success
+- go test ./cmd/ -timeout 30s => ok github.com/ca-srg/ragent/cmd
+
+Notes:
+- Updated cmd tests to call slacksearch.SanitizeSlackChannels and slacksearch.PrintSlackResults directly.
+- lsp_diagnostics on modified test files returned workspace warnings ("No active builds contain ..."), but no code errors were surfaced and both build/test verification steps passed.

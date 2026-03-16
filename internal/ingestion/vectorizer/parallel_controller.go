@@ -9,6 +9,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // ParallelController manages concurrent processing of files for both S3 Vector and OpenSearch
@@ -51,7 +54,7 @@ type ParallelProcessingStats struct {
 	OSRetryCount     int64
 
 	// Error tracking
-	Errors   []ProcessingError
+	Errors   []pkgdomain.ProcessingError
 	errorsMu sync.Mutex
 
 	// Performance metrics
@@ -73,7 +76,7 @@ const (
 
 // FileProcessingResult represents the result of processing a single file
 type FileProcessingResult struct {
-	FileInfo       *FileInfo
+	FileInfo       *pkgdomain.FileInfo
 	Decision       ProcessingDecision
 	S3Success      bool
 	S3Error        error
@@ -96,7 +99,7 @@ func NewParallelController(vectorStore VectorStore, opensearchIndexer OpenSearch
 		concurrencyLimit:  concurrencyLimit,
 		stats: &ParallelProcessingStats{
 			StartTime: time.Now(),
-			Errors:    make([]ProcessingError, 0),
+			Errors:    make([]pkgdomain.ProcessingError, 0),
 		},
 	}
 }
@@ -104,12 +107,12 @@ func NewParallelController(vectorStore VectorStore, opensearchIndexer OpenSearch
 // ProcessFiles processes multiple files concurrently with dual backend support
 func (pc *ParallelController) ProcessFiles(
 	ctx context.Context,
-	files []*FileInfo,
+	files []*pkgdomain.FileInfo,
 	indexName string,
 	embeddingClient EmbeddingClient,
 	metadataExtractor MetadataExtractor,
 	dryRun bool,
-) (*ProcessingResult, error) {
+) (*pkgdomain.ProcessingResult, error) {
 
 	if len(files) == 0 {
 		return pc.createEmptyResult(), nil
@@ -131,7 +134,7 @@ func (pc *ParallelController) ProcessFiles(
 	// Process each file
 	for i, file := range files {
 		wg.Add(1)
-		go func(idx int, f *FileInfo) {
+		go func(idx int, f *pkgdomain.FileInfo) {
 			defer wg.Done()
 
 			// Acquire semaphore
@@ -173,7 +176,7 @@ func (pc *ParallelController) ProcessFiles(
 // processFile processes a single file with both S3 Vector and OpenSearch backends
 func (pc *ParallelController) processFile(
 	ctx context.Context,
-	fileInfo *FileInfo,
+	fileInfo *pkgdomain.FileInfo,
 	indexName string,
 	embeddingClient EmbeddingClient,
 	metadataExtractor MetadataExtractor,
@@ -288,7 +291,7 @@ func (pc *ParallelController) processFile(
 		chunkID := splitter.GenerateChunkID(documentID, chunk.ChunkIndex)
 
 		// Create vector data for this chunk
-		vectorData := &VectorData{
+		vectorData := &pkgdomain.VectorData{
 			ID:        chunkID,
 			Embedding: embedding,
 			Metadata:  chunkMetadata,
@@ -311,7 +314,7 @@ func (pc *ParallelController) processFile(
 
 		// S3 Vector processing
 		wg.Add(1)
-		go func(vData *VectorData, chunkInfo ChunkedDocument) {
+		go func(vData *pkgdomain.VectorData, chunkInfo ChunkedDocument) {
 			defer wg.Done()
 			s3Start := time.Now()
 			err := pc.vectorStore.StoreVector(ctx, vData)
@@ -336,7 +339,7 @@ func (pc *ParallelController) processFile(
 
 		// OpenSearch processing
 		wg.Add(1)
-		go func(vData *VectorData, chunkInfo ChunkedDocument) {
+		go func(vData *pkgdomain.VectorData, chunkInfo ChunkedDocument) {
 			defer wg.Done()
 			osStart := time.Now()
 
@@ -443,7 +446,7 @@ func (pc *ParallelController) updateStatisticsFromResult(result *FileProcessingR
 	} else {
 		atomic.AddInt64(&pc.stats.S3FailureCount, 1)
 		if result.S3Error != nil {
-			pc.addError(result.S3Error, result.FileInfo.Path, ErrorTypeS3Upload)
+			pc.addError(result.S3Error, result.FileInfo.Path, pkgconfig.ErrorTypeS3Upload)
 		}
 	}
 
@@ -455,7 +458,7 @@ func (pc *ParallelController) updateStatisticsFromResult(result *FileProcessingR
 	} else {
 		atomic.AddInt64(&pc.stats.OSFailureCount, 1)
 		if result.OSError != nil {
-			pc.addError(result.OSError, result.FileInfo.Path, ErrorTypeOpenSearchIndexing)
+			pc.addError(result.OSError, result.FileInfo.Path, pkgconfig.ErrorTypeOpenSearchIndexing)
 		}
 	}
 
@@ -465,11 +468,11 @@ func (pc *ParallelController) updateStatisticsFromResult(result *FileProcessingR
 }
 
 // addError safely adds an error to the statistics
-func (pc *ParallelController) addError(err error, filePath string, errorType ErrorType) {
+func (pc *ParallelController) addError(err error, filePath string, errorType pkgconfig.ErrorType) {
 	pc.stats.errorsMu.Lock()
 	defer pc.stats.errorsMu.Unlock()
 
-	procErr := ProcessingError{
+	procErr := pkgdomain.ProcessingError{
 		Type:      errorType,
 		Message:   err.Error(),
 		FilePath:  filePath,
@@ -493,7 +496,7 @@ func (pc *ParallelController) addDurationToStats(target *time.Duration, duration
 }
 
 // finalizeResults creates the final processing result from all file results
-func (pc *ParallelController) finalizeResults(results []*FileProcessingResult) *ProcessingResult {
+func (pc *ParallelController) finalizeResults(results []*FileProcessingResult) *pkgdomain.ProcessingResult {
 	pc.stats.EndTime = time.Now()
 	pc.stats.TotalDuration = pc.stats.EndTime.Sub(pc.stats.StartTime)
 
@@ -509,7 +512,7 @@ func (pc *ParallelController) finalizeResults(results []*FileProcessingResult) *
 	}
 
 	// Create the final result
-	result := &ProcessingResult{
+	result := &pkgdomain.ProcessingResult{
 		ProcessedFiles: int(pc.stats.FilesProcessed),
 		SuccessCount:   int(pc.stats.FilesSuccessful),
 		FailureCount:   int(pc.stats.FilesFailed),
@@ -540,12 +543,12 @@ func (pc *ParallelController) finalizeResults(results []*FileProcessingResult) *
 }
 
 // createEmptyResult creates an empty processing result
-func (pc *ParallelController) createEmptyResult() *ProcessingResult {
-	return &ProcessingResult{
+func (pc *ParallelController) createEmptyResult() *pkgdomain.ProcessingResult {
+	return &pkgdomain.ProcessingResult{
 		ProcessedFiles:           0,
 		SuccessCount:             0,
 		FailureCount:             0,
-		Errors:                   []ProcessingError{},
+		Errors:                   []pkgdomain.ProcessingError{},
 		StartTime:                pc.stats.StartTime,
 		EndTime:                  time.Now(),
 		Duration:                 time.Since(pc.stats.StartTime),
@@ -591,7 +594,7 @@ func (pc *ParallelController) GetStatistics() *ParallelProcessingStats {
 		ThroughputPerSec: pc.stats.ThroughputPerSec,
 		ConcurrencyUsed:  pc.stats.ConcurrencyUsed,
 
-		Errors: make([]ProcessingError, len(pc.stats.Errors)),
+		Errors: make([]pkgdomain.ProcessingError, len(pc.stats.Errors)),
 	}
 	copy(statsCopy.Errors, pc.stats.Errors)
 

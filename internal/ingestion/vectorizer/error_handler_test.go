@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 // Test helper functions
@@ -200,43 +202,43 @@ func TestDualBackendErrorHandler_ClassifyError(t *testing.T) {
 	tests := []struct {
 		name              string
 		errorMessage      string
-		expectedType      ErrorType
+		expectedType      pkgconfig.ErrorType
 		expectedRetryable bool
 	}{
 		{
 			name:              "connection error",
 			errorMessage:      "dial tcp: connection refused",
-			expectedType:      ErrorTypeOpenSearchConnection,
+			expectedType:      pkgconfig.ErrorTypeOpenSearchConnection,
 			expectedRetryable: true,
 		},
 		{
 			name:              "timeout error",
 			errorMessage:      "context deadline exceeded",
-			expectedType:      ErrorTypeTimeout,
+			expectedType:      pkgconfig.ErrorTypeTimeout,
 			expectedRetryable: true,
 		},
 		{
 			name:              "rate limit error",
 			errorMessage:      "too many requests",
-			expectedType:      ErrorTypeRateLimit,
+			expectedType:      pkgconfig.ErrorTypeRateLimit,
 			expectedRetryable: true,
 		},
 		{
 			name:              "validation error",
 			errorMessage:      "invalid field mapping",
-			expectedType:      ErrorTypeValidation,
+			expectedType:      pkgconfig.ErrorTypeValidation,
 			expectedRetryable: false,
 		},
 		{
 			name:              "authentication error",
 			errorMessage:      "authentication failed: invalid credentials",
-			expectedType:      ErrorTypeAuthentication,
+			expectedType:      pkgconfig.ErrorTypeAuthentication,
 			expectedRetryable: false,
 		},
 		{
 			name:              "unknown error",
 			errorMessage:      "some unknown error occurred",
-			expectedType:      ErrorTypeUnknown,
+			expectedType:      pkgconfig.ErrorTypeUnknown,
 			expectedRetryable: true, // Default to retryable for unknown errors
 		},
 	}

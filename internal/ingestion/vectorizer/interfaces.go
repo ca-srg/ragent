@@ -2,6 +2,9 @@ package vectorizer
 
 import (
 	"context"
+
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // EmbeddingClient defines the interface for generating embeddings from text
@@ -19,7 +22,7 @@ type EmbeddingClient interface {
 // VectorStore defines the interface for storing and managing vectors in a backend store
 type VectorStore interface {
 	// StoreVector saves a vector with its metadata to the vector store
-	StoreVector(ctx context.Context, vectorData *VectorData) error
+	StoreVector(ctx context.Context, vectorData *pkgdomain.VectorData) error
 
 	// ValidateAccess checks if the vector store is accessible
 	ValidateAccess(ctx context.Context) error
@@ -40,19 +43,19 @@ type VectorStore interface {
 // MetadataExtractor defines the interface for extracting metadata from files
 type MetadataExtractor interface {
 	// ExtractMetadata extracts metadata from a file's content and path
-	ExtractMetadata(filePath string, content string) (*DocumentMetadata, error)
+	ExtractMetadata(filePath string, content string) (*pkgdomain.DocumentMetadata, error)
 
 	// ParseFrontMatter extracts YAML front matter from markdown content
 	ParseFrontMatter(content string) (map[string]interface{}, string, error)
 
 	// GenerateKey creates a unique key for the document
-	GenerateKey(metadata *DocumentMetadata) string
+	GenerateKey(metadata *pkgdomain.DocumentMetadata) string
 }
 
 // FileScanner defines the interface for scanning and processing files
 type FileScanner interface {
 	// ScanDirectory scans a directory for supported files (markdown and CSV)
-	ScanDirectory(dirPath string) ([]*FileInfo, error)
+	ScanDirectory(dirPath string) ([]*pkgdomain.FileInfo, error)
 
 	// ValidateDirectory checks if the directory exists and is readable
 	ValidateDirectory(dirPath string) error
@@ -76,7 +79,7 @@ type FileScanner interface {
 // ConcurrencyController defines the interface for managing concurrent processing
 type ConcurrencyController interface {
 	// ProcessConcurrently processes multiple files with controlled concurrency
-	ProcessConcurrently(ctx context.Context, files []*FileInfo, processFn func(*FileInfo) error) *ProcessingResult
+	ProcessConcurrently(ctx context.Context, files []*pkgdomain.FileInfo, processFn func(*pkgdomain.FileInfo) error) *pkgdomain.ProcessingResult
 
 	// SetConcurrency sets the maximum number of concurrent operations
 	SetConcurrency(maxConcurrency int)
@@ -88,10 +91,10 @@ type ConcurrencyController interface {
 // Validator defines the interface for validating configuration and connections
 type Validator interface {
 	// ValidateConfig checks if all required configuration is present and valid
-	ValidateConfig(config *Config) error
+	ValidateConfig(config *pkgconfig.Config) error
 
 	// ValidateConnections tests connections to external services
-	ValidateConnections(ctx context.Context, config *Config) error
+	ValidateConnections(ctx context.Context, config *pkgconfig.Config) error
 
 	// GenerateConfigGuide returns a guide for setting up configuration
 	GenerateConfigGuide() string

@@ -46,12 +46,10 @@ type Server struct {
 	templates    *TemplateManager
 	state        *VectorizeState
 	sseManager   *SSEManager
-	scheduler    *Scheduler
 	vectorizer   domain.Vectorizer
 	fileScanner  domain.FileScanner
 	ipcClient    *ipc.Client
 	logger       *log.Logger
-	mu           sync.RWMutex
 	cancelFunc   context.CancelFunc
 	shutdownOnce sync.Once
 }
@@ -84,9 +82,6 @@ func NewServer(serverConfig *ServerConfig, deps *Dependencies, logger *log.Logge
 	// Create state manager
 	state := NewVectorizeState(sseManager)
 
-	// Create scheduler
-	scheduler := NewScheduler(state, 30*time.Minute, logger)
-
 	// Create template manager
 	templates, err := NewTemplateManagerWithBasePath(serverConfig.BasePath)
 	if err != nil {
@@ -101,7 +96,6 @@ func NewServer(serverConfig *ServerConfig, deps *Dependencies, logger *log.Logge
 		templates:   templates,
 		state:       state,
 		sseManager:  sseManager,
-		scheduler:   scheduler,
 		vectorizer:  deps.Vectorizer,
 		fileScanner: deps.FileScanner,
 		ipcClient:   ipcClient,
@@ -111,15 +105,11 @@ func NewServer(serverConfig *ServerConfig, deps *Dependencies, logger *log.Logge
 	return s, nil
 }
 
-// Initialize prepares the server for handling requests (vectorizer, scheduler, SSE)
+// Initialize prepares the server for handling requests (SSE)
 // without starting an HTTP listener. Call this before Handler() when embedding.
 func (s *Server) Initialize(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancelFunc = cancel
-
-	s.scheduler.SetRunFunc(func(runCtx context.Context) error {
-		return s.runVectorization(runCtx, false)
-	})
 
 	s.sseManager.Start(ctx)
 	return nil
@@ -132,10 +122,9 @@ func (s *Server) Handler() http.Handler {
 	return s.loggingMiddleware(mux)
 }
 
-// Cleanup stops the SSE manager and scheduler. Call on shutdown when embedded.
+// Cleanup stops the SSE manager. Call on shutdown when embedded.
 func (s *Server) Cleanup() {
 	s.sseManager.Stop()
-	s.scheduler.Stop()
 	if s.cancelFunc != nil {
 		s.cancelFunc()
 	}
@@ -180,9 +169,6 @@ func (s *Server) shutdown() error {
 	s.shutdownOnce.Do(func() {
 		s.logger.Println("Shutting down server...")
 
-		// Stop scheduler
-		s.scheduler.Stop()
-
 		// Shutdown HTTP server
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), s.config.ShutdownTimeout)
 		defer cancel()
@@ -213,23 +199,16 @@ func (s *Server) setupRoutes() *http.ServeMux {
 
 	// API endpoints
 	mux.HandleFunc("/api/status", s.handleAPIStatus)
-	mux.HandleFunc("/api/vectorize/start", s.handleVectorizeStart)
-	mux.HandleFunc("/api/vectorize/stop", s.handleVectorizeStop)
-	mux.HandleFunc("/api/vectorize/progress", s.handleVectorizeProgress)
+	mux.HandleFunc("/api/upload", s.handleUpload)
 	mux.HandleFunc("/api/files", s.handleAPIFiles)
 	mux.HandleFunc("/api/history", s.handleAPIHistory)
 	mux.HandleFunc("/api/errors", s.handleAPIErrors)
-	mux.HandleFunc("/api/scheduler/status", s.handleSchedulerStatus)
-	mux.HandleFunc("/api/scheduler/toggle", s.handleSchedulerToggle)
-	mux.HandleFunc("/api/scheduler/interval", s.handleSchedulerInterval)
 
 	// SSE endpoints
-	mux.HandleFunc("/sse/progress", s.handleSSEProgress)
 	mux.HandleFunc("/sse/events", s.handleSSEEvents)
 
 	// HTMX partials
 	mux.HandleFunc("/partials/progress", s.handlePartialProgress)
-	mux.HandleFunc("/partials/stats", s.handlePartialStats)
 	mux.HandleFunc("/partials/file-list", s.handlePartialFileList)
 	mux.HandleFunc("/partials/error-list", s.handlePartialErrorList)
 
@@ -257,57 +236,9 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// runVectorization runs the vectorization process
-func (s *Server) runVectorization(ctx context.Context, dryRun bool) error {
-	s.mu.Lock()
-	if s.state.IsRunning() {
-		s.mu.Unlock()
-		return fmt.Errorf("vectorization already running")
-	}
-	s.mu.Unlock()
-
-	// Scan files
-	files, err := s.fileScanner.ScanDirectory(s.config.Directory)
-	if err != nil {
-		s.state.FailRun(err)
-		return fmt.Errorf("failed to scan directory: %w", err)
-	}
-
-	if len(files) == 0 {
-		s.logger.Println("No files found to process")
-		return nil
-	}
-
-	// Start run
-	runID := s.state.StartRun(len(files), dryRun)
-	s.logger.Printf("Starting vectorization run %s with %d files (dry-run: %v)", runID, len(files), dryRun)
-
-	fileInfos := make([]*domain.FileInfo, len(files))
-	copy(fileInfos, files)
-
-	// Run vectorization
-	result, err := s.vectorizer.VectorizeFiles(ctx, fileInfos, dryRun)
-	if err != nil {
-		s.state.FailRun(err)
-		return fmt.Errorf("vectorization failed: %w", err)
-	}
-
-	// Complete run
-	s.state.CompleteRun(result)
-	s.logger.Printf("Vectorization completed: %d processed, %d success, %d failed",
-		result.ProcessedFiles, result.SuccessCount, result.FailureCount)
-
-	return nil
-}
-
 // GetState returns the current state
 func (s *Server) GetState() *VectorizeState {
 	return s.state
-}
-
-// GetScheduler returns the scheduler
-func (s *Server) GetScheduler() *Scheduler {
-	return s.scheduler
 }
 
 // GetExternalProcessStatus returns the status of an external vectorize process via IPC

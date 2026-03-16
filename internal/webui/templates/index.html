@@ -4,66 +4,18 @@
 
 {{define "content"}}
 <div class="dashboard">
-    <!-- Status Card -->
-    <section class="card status-card">
-        <h2>ベクトル化ステータス</h2>
-        <div id="status-display" 
-             hx-get="{{basePath}}/partials/stats" 
-             hx-trigger="every 5s"
-             hx-swap="innerHTML">
-            {{template "stats.html" .State}}
+    <!-- Upload Section -->
+    <section class="card upload-section">
+        <h2>ファイルアップロード</h2>
+        <div class="upload-dropzone" id="upload-dropzone">
+            <p class="upload-icon">📁</p>
+            <p>ファイルをドラッグ＆ドロップ、または</p>
+            <label for="file-input" class="btn btn-primary">ファイルを選択</label>
+            <input type="file" id="file-input" name="files" multiple
+                   accept=".md,.csv,.pdf" style="display:none">
+            <p class="upload-hint">対応形式: Markdown (.md), CSV (.csv), PDF (.pdf) — 最大 50MB/ファイル</p>
         </div>
-    </section>
-    
-    <!-- Control Panel -->
-    <section class="card control-panel">
-        <h2>コントロール</h2>
-        <div class="button-group">
-            <button hx-post="{{basePath}}/api/vectorize/start"
-                    hx-swap="none"
-                    hx-on::after-request="htmx.trigger('#status-display', 'refresh')"
-                    {{if or (eq .State.Status "running") (eq .State.Status "waiting")}}disabled{{end}}
-                    class="btn btn-primary">
-                ベクトル化開始
-            </button>
-            <button hx-post="{{basePath}}/api/vectorize/stop"
-                    hx-swap="none"
-                    {{if and (ne .State.Status "running") (ne .State.Status "waiting")}}disabled{{end}}
-                    class="btn btn-danger">
-                停止
-            </button>
-        </div>
-        
-        <!-- Scheduler -->
-        <div class="scheduler-controls">
-            <h3>スケジューラー（フォローモード）</h3>
-            <div class="scheduler-row">
-                <button hx-post="{{basePath}}/api/scheduler/toggle"
-                        hx-target="#scheduler-status"
-                        class="btn {{if .Scheduler.Enabled}}btn-danger{{else}}btn-primary{{end}}">
-                    {{if .Scheduler.Enabled}}スケジューラー停止{{else}}スケジューラー開始{{end}}
-                </button>
-                <div id="scheduler-status">
-                    {{if .Scheduler.Enabled}}
-                    <p>次回実行: {{formatTime .Scheduler.NextRunAt}}</p>
-                    <p>間隔: {{.Scheduler.Interval}}</p>
-                    {{else}}
-                    <p>スケジューラーは停止中です</p>
-                    {{end}}
-                </div>
-            </div>
-            <div class="interval-input">
-                <label for="interval">間隔:</label>
-                <input type="text" 
-                       id="interval"
-                       name="interval" 
-                       value="30m"
-                       placeholder="30m, 1h など"
-                       hx-put="{{basePath}}/api/scheduler/interval"
-                       hx-trigger="change"
-                       hx-target="#scheduler-status">
-            </div>
-        </div>
+        <div id="upload-status"></div>
     </section>
     
     <!-- Progress -->
@@ -102,4 +54,5 @@
     </section>
     {{end}}
 </div>
+<script src="{{basePath}}/static/js/upload.js"></script>
 {{end}}

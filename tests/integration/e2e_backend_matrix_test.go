@@ -16,6 +16,7 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/pdf"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 )
@@ -147,11 +148,11 @@ func TestE2E_BackendMatrix(t *testing.T) {
 			require.NoError(t, vectorStore.ValidateAccess(ctx))
 
 			testVectorID := fmt.Sprintf("e2e-matrix-%s-%d", tc.name, time.Now().UnixNano())
-			err = vectorStore.StoreVector(ctx, &vectorizer.VectorData{
+			err = vectorStore.StoreVector(ctx, &pkgdomain.VectorData{
 				ID:        testVectorID,
 				Embedding: emb,
 				Content:   "E2E backend matrix test: " + tc.name,
-				Metadata: vectorizer.DocumentMetadata{
+				Metadata: pkgdomain.DocumentMetadata{
 					Title:    "E2E Matrix Test: " + tc.name,
 					Category: "e2e-test",
 					Source:   "e2e-matrix",

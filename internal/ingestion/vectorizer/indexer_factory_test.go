@@ -5,13 +5,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 func TestServiceFactory_CreateVectorStore_SQLite(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	cfg := &Config{
+	cfg := &pkgconfig.Config{
 		VectorDBBackend: "sqlite",
 		SqliteVecDBPath: dbPath,
 	}
@@ -27,7 +29,7 @@ func TestServiceFactory_CreateVectorStore_SQLite(t *testing.T) {
 }
 
 func TestServiceFactory_CreateVectorStore_UnknownBackend(t *testing.T) {
-	cfg := &Config{
+	cfg := &pkgconfig.Config{
 		VectorDBBackend: "unknown",
 	}
 
@@ -49,7 +51,7 @@ func TestServiceFactory_CreateVectorStore_UnknownBackend(t *testing.T) {
 }
 
 func TestServiceFactory_CreateVectorStore_EmptyBackend(t *testing.T) {
-	cfg := &Config{
+	cfg := &pkgconfig.Config{
 		VectorDBBackend: "",
 	}
 
@@ -70,7 +72,7 @@ func TestServiceFactory_CreateVectorStore_EmptyBackend(t *testing.T) {
 func TestServiceFactory_CreateVectorStore_S3_DispatchesToS3(t *testing.T) {
 	// S3 backend with an empty bucket name triggers NewS3VectorService's own
 	// validation, confirming that dispatch reached the s3 path.
-	cfg := &Config{
+	cfg := &pkgconfig.Config{
 		VectorDBBackend:   "s3",
 		AWSS3VectorBucket: "",
 		AWSS3VectorIndex:  "idx",
