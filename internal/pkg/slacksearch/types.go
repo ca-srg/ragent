@@ -31,6 +31,7 @@ type TimeRange struct {
 type SearchOptions struct {
 	ChannelID       string
 	ThreadTimestamp string
+	UserID          string
 }
 
 // EnrichedMessage combines a Slack message with additional contextual data.

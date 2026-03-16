@@ -1,14 +1,16 @@
 package config
 
+import "strings"
+
 // SecretAccessChecker evaluates whether a user can access documents marked as secret.
 type SecretAccessChecker struct {
-	slackConfig *SlackSecretConfig
+	secretConfig *SlackSecretConfig
 }
 
 // NewSecretAccessChecker creates a new checker instance.
 func NewSecretAccessChecker(slackConfig *SlackSecretConfig) *SecretAccessChecker {
 	return &SecretAccessChecker{
-		slackConfig: slackConfig,
+		secretConfig: slackConfig,
 	}
 }
 
@@ -22,10 +24,10 @@ func (c *SecretAccessChecker) CanAccessSecret(isOIDCAuthenticated bool, slackUse
 	if isOIDCAuthenticated {
 		return true
 	}
-	if c == nil || c.slackConfig == nil {
+	if c == nil || c.secretConfig == nil {
 		return false
 	}
-	if c.slackConfig.IsAllowed(slackUserID) {
+	if c.secretConfig.IsAllowed(strings.TrimSpace(slackUserID)) {
 		return true
 	}
 	return false

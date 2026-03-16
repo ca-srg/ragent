@@ -130,11 +130,11 @@ func (hse *HybridSearchEngine) Search(ctx context.Context, query *HybridQuery) (
 			log.Printf("URL detected in query: %v", detectionResult.URLs)
 			urlDetected = true
 			termQuery := &TermQuery{
-						Field:         "reference",
-						Values:       detectionResult.URLs,
-						ExcludeSecret: query.ExcludeSecret,
-						Size:         query.Size,
-					}
+				Field:         "reference",
+				Values:        detectionResult.URLs,
+				ExcludeSecret: query.ExcludeSecret,
+				Size:          query.Size,
+			}
 			if termQuery.Size <= 0 {
 				termQuery.Size = len(detectionResult.URLs)
 			}
@@ -425,15 +425,15 @@ func (hse *HybridSearchEngine) buildBM25Query(query *HybridQuery, processedQuery
 
 func (hse *HybridSearchEngine) buildVectorQuery(query *HybridQuery, vector []float64) *VectorQuery {
 	return &VectorQuery{
-		Vector:      vector,
-		VectorField: query.VectorField,
-		K:           query.K,
-		EfSearch:    query.EfSearch,
+		Vector:        vector,
+		VectorField:   query.VectorField,
+		K:             query.K,
+		EfSearch:      query.EfSearch,
 		ExcludeSecret: query.ExcludeSecret,
-		Filters:     query.Filters,
-		MinScore:    query.MinScore,
-		Size:        query.Size,
-		From:        query.From,
+		Filters:       query.Filters,
+		MinScore:      query.MinScore,
+		Size:          query.Size,
+		From:          query.From,
 	}
 }
 

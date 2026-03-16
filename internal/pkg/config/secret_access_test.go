@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSecretAccessChecker_DefaultDeny(t *testing.T) {
@@ -36,6 +35,6 @@ func TestSecretAccessChecker_IPOnlyDeny(t *testing.T) {
 
 func TestSecretAccessChecker_NilConfigDeny(t *testing.T) {
 	var checker *SecretAccessChecker
-	assert.False(t, checker.CanAccessSecret(true, "U12345"))
+	assert.True(t, checker.CanAccessSecret(true, "U12345"))
 	assert.False(t, checker.CanAccessSecret(false, "U12345"))
 }

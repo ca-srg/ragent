@@ -193,6 +193,7 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 	if err != nil {
 		return CreateToolCallErrorResult(fmt.Sprintf("Invalid parameters: %v", err)), err
 	}
+	hsta.applySecretPolicyFromContext(ctx, searchRequest)
 	if searchRequest.EnableSlackSearch && hsta.slackService == nil {
 		err := fmt.Errorf("slack search requested but not configured")
 		return CreateToolCallErrorResult(err.Error()), err
@@ -353,11 +354,20 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 
 // parseParams extracts and validates parameters from MCP tool call
 func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) (*HybridSearchRequest, error) {
+	defaultSize := 10
+	defaultBM25Weight := 0.5
+	defaultVectorWeight := 0.5
+	if hsta != nil && hsta.defaultConfig != nil {
+		defaultSize = hsta.defaultConfig.DefaultSize
+		defaultBM25Weight = hsta.defaultConfig.DefaultBM25Weight
+		defaultVectorWeight = hsta.defaultConfig.DefaultVectorWeight
+	}
+
 	request := &HybridSearchRequest{
 		SearchMode:      "hybrid",
-		TopK:            hsta.defaultConfig.DefaultSize,
-		BM25Weight:      hsta.defaultConfig.DefaultBM25Weight,
-		VectorWeight:    hsta.defaultConfig.DefaultVectorWeight,
+		TopK:            defaultSize,
+		BM25Weight:      defaultBM25Weight,
+		VectorWeight:    defaultVectorWeight,
 		MinScore:        0.0,
 		ExcludeSecret:   true,
 		IncludeMetadata: false,
@@ -449,6 +459,30 @@ func (hsta *HybridSearchToolAdapter) parseParams(params map[string]interface{}) 
 	return request, nil
 }
 
+func (hsta *HybridSearchToolAdapter) applySecretPolicyFromContext(ctx context.Context, request *HybridSearchRequest) {
+	if request == nil {
+		return
+	}
+
+	request.ExcludeSecret = true
+	tokenInfo := hsta.getOIDCTokenInfo(ctx)
+	if tokenInfo != nil {
+		request.ExcludeSecret = false
+	}
+}
+
+func (hsta *HybridSearchToolAdapter) getOIDCTokenInfo(ctx context.Context) *TokenInfo {
+	if ctx == nil {
+		return nil
+	}
+
+	if token, ok := ctx.Value(userContextKey).(*TokenInfo); ok {
+		return token
+	}
+
+	return nil
+}
+
 func parseFloatParam(value interface{}, fallback float64) float64 {
 	switch v := value.(type) {
 	case float64:
@@ -523,21 +557,39 @@ func (hsta *HybridSearchToolAdapter) executeVectorSearch(ctx context.Context, re
 
 // buildHybridQuery constructs HybridQuery from MCP request
 func (hsta *HybridSearchToolAdapter) buildHybridQuery(request *HybridSearchRequest) *opensearch.HybridQuery {
+	if request == nil {
+		return nil
+	}
+
 	fusionMethod := opensearch.FusionMethodWeightedSum
 	if request.SearchMode == "rrf" || len(request.Query) > 0 {
 		// Can be extended to support different fusion methods
 		fusionMethod = opensearch.FusionMethodWeightedSum
 	}
 
+	indexName := "ragent-docs"
+	useJapaneseNLP := true
+	timeoutSeconds := 30
+	if hsta != nil && hsta.defaultConfig != nil {
+		if hsta.defaultConfig.DefaultIndexName != "" {
+			indexName = hsta.defaultConfig.DefaultIndexName
+		}
+		useJapaneseNLP = hsta.defaultConfig.DefaultUseJapaneseNLP
+		timeoutSeconds = hsta.defaultConfig.DefaultTimeoutSeconds
+		if timeoutSeconds <= 0 {
+			timeoutSeconds = 30
+		}
+	}
+
 	return &opensearch.HybridQuery{
 		Query:          request.Query,
-		IndexName:      hsta.defaultConfig.DefaultIndexName,
+		IndexName:      indexName,
 		Size:           request.TopK,
 		BM25Weight:     request.BM25Weight,
 		VectorWeight:   request.VectorWeight,
 		FusionMethod:   fusionMethod,
-		UseJapaneseNLP: hsta.defaultConfig.DefaultUseJapaneseNLP,
-		TimeoutSeconds: hsta.defaultConfig.DefaultTimeoutSeconds,
+		UseJapaneseNLP: useJapaneseNLP,
+		TimeoutSeconds: timeoutSeconds,
 		Filters:        request.Filters,
 		ExcludeSecret:  request.ExcludeSecret,
 		MinScore:       request.MinScore,

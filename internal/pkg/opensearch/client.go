@@ -323,7 +323,7 @@ func BuildTermQueryBody(query *TermQuery) map[string]interface{} {
 	}
 
 	body := map[string]interface{}{
-		"size": query.Size,
+		"size":  query.Size,
 		"query": queryClause,
 	}
 

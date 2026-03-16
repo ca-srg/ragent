@@ -59,8 +59,16 @@ func (c *SlackSecretConfig) IsAllowed(userID string) bool {
 		return false
 	}
 
+	normalizedUser := strings.TrimSpace(userID)
+	if normalizedUser == "" {
+		return false
+	}
+
 	for _, allowed := range c.AllowedUsers {
-		if allowed == userID {
+		if strings.TrimSpace(allowed) == normalizedUser {
+			if allowed == "" {
+				continue
+			}
 			return true
 		}
 	}

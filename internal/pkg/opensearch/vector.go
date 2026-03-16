@@ -32,15 +32,15 @@ type VectorSearchResponse struct {
 }
 
 type VectorQuery struct {
-	Vector      []float64         `json:"vector"`
-	VectorField string            `json:"vector_field"`
-	K           int               `json:"k"`
-	EfSearch    int               `json:"ef_search,omitempty"`
-	ExcludeSecret bool            `json:"exclude_secret,omitempty"`
-	Filters     map[string]string `json:"filters,omitempty"`
-	MinScore    float64           `json:"min_score,omitempty"`
-	Size        int               `json:"size,omitempty"`
-	From        int               `json:"from,omitempty"`
+	Vector        []float64         `json:"vector"`
+	VectorField   string            `json:"vector_field"`
+	K             int               `json:"k"`
+	EfSearch      int               `json:"ef_search,omitempty"`
+	ExcludeSecret bool              `json:"exclude_secret,omitempty"`
+	Filters       map[string]string `json:"filters,omitempty"`
+	MinScore      float64           `json:"min_score,omitempty"`
+	Size          int               `json:"size,omitempty"`
+	From          int               `json:"from,omitempty"`
 }
 
 func (c *Client) SearchDenseVector(ctx context.Context, indexName string, query *VectorQuery) (*VectorSearchResponse, error) {

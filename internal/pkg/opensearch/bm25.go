@@ -198,7 +198,6 @@ func (c *Client) buildBM25SearchBody(query *BM25Query) map[string]interface{} {
 
 	applySecretExclusion(boolQuery, query.ExcludeSecret)
 
-
 	return body
 }
 
