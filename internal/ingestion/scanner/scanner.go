@@ -12,9 +12,6 @@ import (
 	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
-// Type alias for FileInfo
-type FileInfo = pkgdomain.FileInfo
-
 // FileScanner implements the FileScanner interface for scanning markdown files
 type FileScanner struct{}
 
@@ -24,12 +21,12 @@ func NewFileScanner() *FileScanner {
 }
 
 // ScanDirectory scans a directory for supported files (markdown and CSV)
-func (s *FileScanner) ScanDirectory(dirPath string) ([]*FileInfo, error) {
+func (s *FileScanner) ScanDirectory(dirPath string) ([]*pkgdomain.FileInfo, error) {
 	if err := s.ValidateDirectory(dirPath); err != nil {
 		return nil, fmt.Errorf("directory validation failed: %w", err)
 	}
 
-	var files []*FileInfo
+	var files []*pkgdomain.FileInfo
 
 	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -54,7 +51,7 @@ func (s *FileScanner) ScanDirectory(dirPath string) ([]*FileInfo, error) {
 		}
 
 		// Create FileInfo struct
-		fileInfo := &FileInfo{
+		fileInfo := &pkgdomain.FileInfo{
 			Path:       path,
 			Name:       d.Name(),
 			Size:       info.Size(),
@@ -135,7 +132,7 @@ func (s *FileScanner) IsSupportedFile(filePath string) bool {
 }
 
 // LoadFileWithContent loads file info and reads its content
-func (s *FileScanner) LoadFileWithContent(fileInfo *FileInfo) error {
+func (s *FileScanner) LoadFileWithContent(fileInfo *pkgdomain.FileInfo) error {
 	content, err := s.ReadFileContent(fileInfo.Path)
 	if err != nil {
 		return err
@@ -146,7 +143,7 @@ func (s *FileScanner) LoadFileWithContent(fileInfo *FileInfo) error {
 }
 
 // LoadFileWithContentAndHash loads file info, reads its content, and computes MD5 hash
-func (s *FileScanner) LoadFileWithContentAndHash(fileInfo *FileInfo) error {
+func (s *FileScanner) LoadFileWithContentAndHash(fileInfo *pkgdomain.FileInfo) error {
 	content, err := s.ReadFileContent(fileInfo.Path)
 	if err != nil {
 		return err
@@ -160,7 +157,7 @@ func (s *FileScanner) LoadFileWithContentAndHash(fileInfo *FileInfo) error {
 
 // LoadPDFFileWithHash loads PDF file info and computes MD5 hash without reading content
 // (PDF is binary, so Content is NOT set to avoid binary corruption)
-func (s *FileScanner) LoadPDFFileWithHash(fileInfo *FileInfo) error {
+func (s *FileScanner) LoadPDFFileWithHash(fileInfo *pkgdomain.FileInfo) error {
 	data, err := os.ReadFile(fileInfo.Path)
 	if err != nil {
 		return fmt.Errorf("failed to read PDF file %s: %w", fileInfo.Path, err)
@@ -177,8 +174,8 @@ func ComputeMD5Hash(content string) string {
 }
 
 // FilterFilesBySize filters files by size constraints
-func (s *FileScanner) FilterFilesBySize(files []*FileInfo, minSize, maxSize int64) []*FileInfo {
-	var filtered []*FileInfo
+func (s *FileScanner) FilterFilesBySize(files []*pkgdomain.FileInfo, minSize, maxSize int64) []*pkgdomain.FileInfo {
+	var filtered []*pkgdomain.FileInfo
 
 	for _, file := range files {
 		if file.Size >= minSize && file.Size <= maxSize {
@@ -190,8 +187,8 @@ func (s *FileScanner) FilterFilesBySize(files []*FileInfo, minSize, maxSize int6
 }
 
 // FilterFilesByPattern filters files by name pattern
-func (s *FileScanner) FilterFilesByPattern(files []*FileInfo, pattern string) ([]*FileInfo, error) {
-	var filtered []*FileInfo
+func (s *FileScanner) FilterFilesByPattern(files []*pkgdomain.FileInfo, pattern string) ([]*pkgdomain.FileInfo, error) {
+	var filtered []*pkgdomain.FileInfo
 
 	for _, file := range files {
 		matched, err := filepath.Match(pattern, file.Name)
@@ -208,7 +205,7 @@ func (s *FileScanner) FilterFilesByPattern(files []*FileInfo, pattern string) ([
 }
 
 // GetFileStats returns statistics about scanned files
-func (s *FileScanner) GetFileStats(files []*FileInfo) map[string]interface{} {
+func (s *FileScanner) GetFileStats(files []*pkgdomain.FileInfo) map[string]interface{} {
 	stats := make(map[string]interface{})
 
 	if len(files) == 0 {
@@ -229,7 +226,7 @@ func (s *FileScanner) GetFileStats(files []*FileInfo) map[string]interface{} {
 }
 
 // ScanDirectoryWithStats scans directory and returns files with statistics
-func (s *FileScanner) ScanDirectoryWithStats(dirPath string) ([]*FileInfo, map[string]interface{}, error) {
+func (s *FileScanner) ScanDirectoryWithStats(dirPath string) ([]*pkgdomain.FileInfo, map[string]interface{}, error) {
 	files, err := s.ScanDirectory(dirPath)
 	if err != nil {
 		return nil, nil, err

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -108,7 +109,7 @@ func TestGitHubScanner_ScanRepository(t *testing.T) {
 
 	assert.Len(t, files, 3)
 
-	pathMap := make(map[string]*FileInfo)
+	pathMap := make(map[string]*pkgdomain.FileInfo)
 	for _, f := range files {
 		pathMap[f.Path] = f
 	}
