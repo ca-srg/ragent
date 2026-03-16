@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ca-srg/ragent/internal/pkg/domain"
-	"github.com/ca-srg/ragent/internal/pkg/sqlitevec"
+	"github.com/ca-srg/ragent/internal/ingestion/sqlitevec"
 )
 
 func makeEmbedding(seed float64) []float64 {

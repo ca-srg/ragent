@@ -8,7 +8,7 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/pdf"
 	"github.com/ca-srg/ragent/internal/ingestion/s3vector"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/pkg/sqlitevec"
+	"github.com/ca-srg/ragent/internal/ingestion/sqlitevec"
 )
 
 // Compile-time interface satisfaction checks moved here to avoid import cycles.
