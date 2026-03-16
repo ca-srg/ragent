@@ -6,8 +6,8 @@ import (
 
 	"github.com/ca-srg/ragent/internal/ingestion/csv"
 	"github.com/ca-srg/ragent/internal/ingestion/pdf"
+	"github.com/ca-srg/ragent/internal/ingestion/s3vector"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/pkg/s3vector"
 	"github.com/ca-srg/ragent/internal/pkg/sqlitevec"
 )
 
