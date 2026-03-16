@@ -11,7 +11,7 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	search "github.com/ca-srg/ragent/internal/pkg/search"
+	search "github.com/ca-srg/ragent/internal/query/search"
 )
 
 var _ *search.HybridSearchService

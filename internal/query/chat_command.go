@@ -18,8 +18,8 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
-	"github.com/ca-srg/ragent/internal/pkg/search"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
+	"github.com/ca-srg/ragent/internal/query/search"
 )
 
 // ChatResponder defines the interface for generating chat responses.
