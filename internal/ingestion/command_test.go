@@ -312,7 +312,7 @@ func TestScanDirectoryDetectsPDFFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	// Find the PDF file
-	var pdfFile *scanner.FileInfo
+	var pdfFile *pkgdomain.FileInfo
 	for _, f := range files {
 		if f.IsPDF {
 			pdfFile = f
