@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
 )
 
 // DualBackendErrorHandler handles errors from both S3 Vector and OpenSearch backends
@@ -202,9 +204,9 @@ func (eh *DualBackendErrorHandler) HandleDualBackendErrors(
 }
 
 // classifyError classifies an error into specific categories
-func (eh *DualBackendErrorHandler) classifyError(err error, backendType BackendType) ErrorType {
+func (eh *DualBackendErrorHandler) classifyError(err error, backendType BackendType) pkgconfig.ErrorType {
 	if err == nil {
-		return ErrorTypeUnknown
+		return pkgconfig.ErrorTypeUnknown
 	}
 
 	errStr := strings.ToLower(err.Error())
@@ -213,7 +215,7 @@ func (eh *DualBackendErrorHandler) classifyError(err error, backendType BackendT
 	if strings.Contains(errStr, "timeout") ||
 		strings.Contains(errStr, "deadline") ||
 		strings.Contains(errStr, "context deadline exceeded") {
-		return ErrorTypeTimeout
+		return pkgconfig.ErrorTypeTimeout
 	}
 
 	// Network and connection errors
@@ -222,9 +224,9 @@ func (eh *DualBackendErrorHandler) classifyError(err error, backendType BackendT
 		strings.Contains(errStr, "network") ||
 		strings.Contains(errStr, "host") {
 		if backendType == BackendOpenSearch {
-			return ErrorTypeOpenSearchConnection
+			return pkgconfig.ErrorTypeOpenSearchConnection
 		}
-		return ErrorTypeNetworkTimeout
+		return pkgconfig.ErrorTypeNetworkTimeout
 	}
 
 	// Authentication and authorization errors
@@ -232,67 +234,67 @@ func (eh *DualBackendErrorHandler) classifyError(err error, backendType BackendT
 		strings.Contains(errStr, "unauthorized") ||
 		strings.Contains(errStr, "authentication") ||
 		strings.Contains(errStr, "auth") {
-		return ErrorTypeAuthentication
+		return pkgconfig.ErrorTypeAuthentication
 	}
 
 	// Rate limiting errors
 	if strings.Contains(errStr, "rate limit") ||
 		strings.Contains(errStr, "too many requests") ||
 		strings.Contains(errStr, "throttle") {
-		return ErrorTypeRateLimit
+		return pkgconfig.ErrorTypeRateLimit
 	}
 
 	// Backend specific errors
 	switch backendType {
 	case BackendS3Vector:
 		if strings.Contains(errStr, "bucket") || strings.Contains(errStr, "key") {
-			return ErrorTypeS3Upload
+			return pkgconfig.ErrorTypeS3Upload
 		}
 
 	case BackendOpenSearch:
 		if strings.Contains(errStr, "mapping") || strings.Contains(errStr, "field") {
-			return ErrorTypeOpenSearchMapping
+			return pkgconfig.ErrorTypeOpenSearchMapping
 		}
 		if strings.Contains(errStr, "index") && strings.Contains(errStr, "not found") {
-			return ErrorTypeOpenSearchIndex
+			return pkgconfig.ErrorTypeOpenSearchIndex
 		}
 		if strings.Contains(errStr, "bulk") || strings.Contains(errStr, "batch") {
-			return ErrorTypeOpenSearchBulkIndex
+			return pkgconfig.ErrorTypeOpenSearchBulkIndex
 		}
 		if strings.Contains(errStr, "query") || strings.Contains(errStr, "search") {
-			return ErrorTypeOpenSearchQuery
+			return pkgconfig.ErrorTypeOpenSearchQuery
 		}
-		return ErrorTypeOpenSearchIndexing
+		return pkgconfig.ErrorTypeOpenSearchIndexing
 	}
 
 	// Validation errors
 	if strings.Contains(errStr, "validation") ||
 		strings.Contains(errStr, "invalid") ||
 		strings.Contains(errStr, "malformed") {
-		return ErrorTypeValidation
+		return pkgconfig.ErrorTypeValidation
 	}
 
-	return ErrorTypeUnknown
+	return pkgconfig.ErrorTypeUnknown
 }
 
 // isRetryableError determines if an error should be retried
-func (eh *DualBackendErrorHandler) isRetryableError(err error, backendType BackendType, errorType ErrorType) bool {
+func (eh *DualBackendErrorHandler) isRetryableError(err error, backendType BackendType, errorType pkgconfig.ErrorType) bool {
 	if err == nil {
 		return false
 	}
 
 	// Always retryable error types
-	retryableTypes := map[ErrorType]bool{
-		ErrorTypeNetworkTimeout:       true,
-		ErrorTypeTimeout:              true, // New: timeout errors are retryable
-		ErrorTypeRateLimit:            true,
-		ErrorTypeOpenSearchConnection: true,
-		ErrorTypeAuthentication:       false, // New: authentication errors are not retryable
-		ErrorTypeS3Upload:             false, // Usually not retryable without changes
-		ErrorTypeOpenSearchMapping:    false,
-		ErrorTypeValidation:           false,
-		ErrorTypeOpenSearchIndex:      false,
-		ErrorTypeOpenSearchBulkIndex:  true,
+	retryableTypes := map[pkgconfig.ErrorType]bool{
+		pkgconfig.ErrorTypeNetworkTimeout:       true,
+		pkgconfig.ErrorTypeTimeout:              true, // New: timeout errors are retryable
+		pkgconfig.ErrorTypeRateLimit:            true,
+		pkgconfig.ErrorTypeOpenSearchConnection: true,
+		pkgconfig.ErrorTypeAuthentication:       false, // New: authentication errors are not retryable
+		pkgconfig.ErrorTypeS3Upload:             false, // Usually not retryable without changes
+		pkgconfig.ErrorTypeOpenSearchMapping:    false,
+		pkgconfig.ErrorTypeValidation:           false,
+		pkgconfig.ErrorTypeOpenSearchIndex:      false,
+		pkgconfig.ErrorTypeOpenSearchBulkIndex:  true,
 	}
 
 	if retryable, exists := retryableTypes[errorType]; exists {
@@ -348,7 +350,7 @@ func (eh *DualBackendErrorHandler) isRetryableError(err error, backendType Backe
 // determineProcessingDecision determines the overall processing decision
 func (eh *DualBackendErrorHandler) determineProcessingDecision(
 	ctx *BackendErrorContext,
-	errorType ErrorType,
+	errorType pkgconfig.ErrorType,
 	isRetryable bool,
 ) ProcessingDecision {
 
@@ -367,9 +369,9 @@ func (eh *DualBackendErrorHandler) determineProcessingDecision(
 	}
 
 	// For validation errors or other non-retryable errors
-	if errorType == ErrorTypeValidation ||
-		errorType == ErrorTypeOpenSearchMapping ||
-		errorType == ErrorTypeOpenSearchIndex {
+	if errorType == pkgconfig.ErrorTypeValidation ||
+		errorType == pkgconfig.ErrorTypeOpenSearchMapping ||
+		errorType == pkgconfig.ErrorTypeOpenSearchIndex {
 		return ProcessingPartialSuccess // Other backend might still work
 	}
 
@@ -453,14 +455,14 @@ func (eh *DualBackendErrorHandler) calculateRetryDelay(attemptNumber int) time.D
 // createErrorMessages creates user-friendly error messages and suggestions
 func (eh *DualBackendErrorHandler) createErrorMessages(
 	ctx *BackendErrorContext,
-	errorType ErrorType,
+	errorType pkgconfig.ErrorType,
 ) (userMessage, technicalDetails string, suggestions []string) {
 
 	backendName := eh.getBackendName(ctx.BackendType)
 	operationName := eh.getOperationName(ctx.OperationType)
 
 	switch errorType {
-	case ErrorTypeNetworkTimeout:
+	case pkgconfig.ErrorTypeNetworkTimeout:
 		userMessage = fmt.Sprintf("%s operation timed out", backendName)
 		technicalDetails = fmt.Sprintf("Network timeout during %s %s operation", backendName, operationName)
 		suggestions = []string{
@@ -469,7 +471,7 @@ func (eh *DualBackendErrorHandler) createErrorMessages(
 			"Consider increasing timeout values",
 		}
 
-	case ErrorTypeTimeout:
+	case pkgconfig.ErrorTypeTimeout:
 		userMessage = fmt.Sprintf("%s operation timeout", backendName)
 		technicalDetails = fmt.Sprintf("Operation timeout during %s %s operation", backendName, operationName)
 		suggestions = []string{
@@ -478,7 +480,7 @@ func (eh *DualBackendErrorHandler) createErrorMessages(
 			"Retry with smaller batch sizes",
 		}
 
-	case ErrorTypeRateLimit:
+	case pkgconfig.ErrorTypeRateLimit:
 		userMessage = fmt.Sprintf("%s rate limit exceeded", backendName)
 		technicalDetails = fmt.Sprintf("Rate limiting applied during %s %s operation", backendName, operationName)
 		suggestions = []string{
@@ -487,7 +489,7 @@ func (eh *DualBackendErrorHandler) createErrorMessages(
 			"Check rate limit quotas",
 		}
 
-	case ErrorTypeValidation:
+	case pkgconfig.ErrorTypeValidation:
 		userMessage = fmt.Sprintf("%s validation error", backendName)
 		technicalDetails = fmt.Sprintf("Data validation failed during %s %s operation", backendName, operationName)
 		suggestions = []string{
@@ -496,7 +498,7 @@ func (eh *DualBackendErrorHandler) createErrorMessages(
 			"Review validation rules",
 		}
 
-	case ErrorTypeAuthentication:
+	case pkgconfig.ErrorTypeAuthentication:
 		userMessage = fmt.Sprintf("%s authentication failed", backendName)
 		technicalDetails = fmt.Sprintf("Authentication error during %s %s operation", backendName, operationName)
 		suggestions = []string{
@@ -505,7 +507,7 @@ func (eh *DualBackendErrorHandler) createErrorMessages(
 			"Ensure proper permissions are configured",
 		}
 
-	case ErrorTypeOpenSearchConnection:
+	case pkgconfig.ErrorTypeOpenSearchConnection:
 		userMessage = "OpenSearch connection failed"
 		technicalDetails = fmt.Sprintf("Connection error during OpenSearch %s operation", operationName)
 		suggestions = []string{
@@ -514,7 +516,7 @@ func (eh *DualBackendErrorHandler) createErrorMessages(
 			"Test network connectivity to OpenSearch",
 		}
 
-	case ErrorTypeOpenSearchMapping:
+	case pkgconfig.ErrorTypeOpenSearchMapping:
 		userMessage = "OpenSearch mapping error"
 		technicalDetails = fmt.Sprintf("Index mapping issue during OpenSearch %s operation", operationName)
 		suggestions = []string{
@@ -523,7 +525,7 @@ func (eh *DualBackendErrorHandler) createErrorMessages(
 			"Consider recreating the index",
 		}
 
-	case ErrorTypeS3Upload:
+	case pkgconfig.ErrorTypeS3Upload:
 		userMessage = "S3 Vector storage failed"
 		technicalDetails = fmt.Sprintf("S3 error during %s operation", operationName)
 		suggestions = []string{
@@ -554,15 +556,15 @@ func (eh *DualBackendErrorHandler) updateErrorStatistics(ctx *BackendErrorContex
 	switch ctx.BackendType {
 	case BackendS3Vector:
 		switch eh.classifyError(ctx.OriginalError, ctx.BackendType) {
-		case ErrorTypeNetworkTimeout:
+		case pkgconfig.ErrorTypeNetworkTimeout:
 			eh.stats.S3ConnectionErrors++
-		case ErrorTypeTimeout:
+		case pkgconfig.ErrorTypeTimeout:
 			eh.stats.S3ConnectionErrors++
-		case ErrorTypeS3Upload:
+		case pkgconfig.ErrorTypeS3Upload:
 			eh.stats.S3UploadErrors++
-		case ErrorTypeValidation:
+		case pkgconfig.ErrorTypeValidation:
 			eh.stats.S3ValidationErrors++
-		case ErrorTypeAuthentication:
+		case pkgconfig.ErrorTypeAuthentication:
 			eh.stats.S3ValidationErrors++
 		}
 		if eh.isRetryableError(ctx.OriginalError, ctx.BackendType, eh.classifyError(ctx.OriginalError, ctx.BackendType)) {
@@ -571,15 +573,15 @@ func (eh *DualBackendErrorHandler) updateErrorStatistics(ctx *BackendErrorContex
 
 	case BackendOpenSearch:
 		switch eh.classifyError(ctx.OriginalError, ctx.BackendType) {
-		case ErrorTypeOpenSearchConnection:
+		case pkgconfig.ErrorTypeOpenSearchConnection:
 			eh.stats.OSConnectionErrors++
-		case ErrorTypeOpenSearchIndexing:
+		case pkgconfig.ErrorTypeOpenSearchIndexing:
 			eh.stats.OSIndexingErrors++
-		case ErrorTypeOpenSearchMapping:
+		case pkgconfig.ErrorTypeOpenSearchMapping:
 			eh.stats.OSMappingErrors++
-		case ErrorTypeOpenSearchBulkIndex:
+		case pkgconfig.ErrorTypeOpenSearchBulkIndex:
 			eh.stats.OSBulkIndexErrors++
-		case ErrorTypeOpenSearchQuery:
+		case pkgconfig.ErrorTypeOpenSearchQuery:
 			eh.stats.OSQueryErrors++
 		}
 		if eh.isRetryableError(ctx.OriginalError, ctx.BackendType, eh.classifyError(ctx.OriginalError, ctx.BackendType)) {
@@ -597,15 +599,15 @@ func (eh *DualBackendErrorHandler) updateErrorStatistics(ctx *BackendErrorContex
 
 	// Update error classification counts
 	switch errorType {
-	case ErrorTypeNetworkTimeout:
+	case pkgconfig.ErrorTypeNetworkTimeout:
 		eh.stats.TimeoutErrors++
-	case ErrorTypeTimeout:
+	case pkgconfig.ErrorTypeTimeout:
 		eh.stats.TimeoutErrors++
-	case ErrorTypeRateLimit:
+	case pkgconfig.ErrorTypeRateLimit:
 		eh.stats.RateLimitErrors++
-	case ErrorTypeValidation:
+	case pkgconfig.ErrorTypeValidation:
 		eh.stats.ValidationErrors++
-	case ErrorTypeAuthentication:
+	case pkgconfig.ErrorTypeAuthentication:
 		eh.stats.ValidationErrors++
 	default:
 		eh.stats.UnknownErrors++

@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // Mock implementations for testing
@@ -48,7 +50,7 @@ func (m *MockVectorStore) GetCallCount() int64 {
 	return atomic.LoadInt64(&m.callCount)
 }
 
-func (m *MockVectorStore) StoreVector(ctx context.Context, vectorData *VectorData) error {
+func (m *MockVectorStore) StoreVector(ctx context.Context, vectorData *pkgdomain.VectorData) error {
 	atomic.AddInt64(&m.callCount, 1)
 
 	m.mu.Lock()
@@ -235,7 +237,7 @@ func TestNewParallelController(t *testing.T) {
 func TestParallelProcessingStats_UpdateStatistics(t *testing.T) {
 	stats := &ParallelProcessingStats{
 		StartTime: time.Now(),
-		Errors:    make([]ProcessingError, 0),
+		Errors:    make([]pkgdomain.ProcessingError, 0),
 	}
 
 	// Test atomic operations
@@ -325,7 +327,7 @@ func TestParallelController_ConcurrencyControl(t *testing.T) {
 	pc := NewParallelController(s3Client, osIndexer, 2)
 
 	// Create test file infos
-	fileInfos := []*FileInfo{
+	fileInfos := []*pkgdomain.FileInfo{
 		{Name: "file1.md", Path: "/test/file1.md", Content: "content1"},
 		{Name: "file2.md", Path: "/test/file2.md", Content: "content2"},
 		{Name: "file3.md", Path: "/test/file3.md", Content: "content3"},
@@ -343,7 +345,7 @@ func TestParallelController_ConcurrencyControl(t *testing.T) {
 
 	for i, file := range fileInfos {
 		wg.Add(1)
-		go func(idx int, f *FileInfo) {
+		go func(idx int, f *pkgdomain.FileInfo) {
 			defer wg.Done()
 
 			// Acquire semaphore
@@ -406,7 +408,7 @@ func TestParallelController_ErrorHandling(t *testing.T) {
 			// Test individual operations
 			ctx := context.Background()
 
-			s3Err := s3Client.StoreVector(ctx, &VectorData{ID: "test"})
+			s3Err := s3Client.StoreVector(ctx, &pkgdomain.VectorData{ID: "test"})
 			osErr := osIndexer.IndexDocument(ctx, "test-index", &OpenSearchDocument{ID: "test"})
 
 			if tt.s3Fails && s3Err == nil {
@@ -427,7 +429,7 @@ func TestParallelController_ErrorHandling(t *testing.T) {
 }
 
 func TestFileProcessingResult_ValidateFields(t *testing.T) {
-	fileInfo := &FileInfo{
+	fileInfo := &pkgdomain.FileInfo{
 		Name:    "test.md",
 		Path:    "/test/test.md",
 		Content: "test content",
@@ -478,9 +480,9 @@ func BenchmarkParallelController_ConcurrentProcessing(b *testing.B) {
 
 	pc := NewParallelController(s3Client, osIndexer, 5)
 
-	fileInfos := make([]*FileInfo, 10)
+	fileInfos := make([]*pkgdomain.FileInfo, 10)
 	for i := 0; i < 10; i++ {
-		fileInfos[i] = &FileInfo{
+		fileInfos[i] = &pkgdomain.FileInfo{
 			Name:    fmt.Sprintf("file%d.md", i),
 			Path:    fmt.Sprintf("/test/file%d.md", i),
 			Content: fmt.Sprintf("content %d", i),
@@ -495,7 +497,7 @@ func BenchmarkParallelController_ConcurrentProcessing(b *testing.B) {
 
 		for _, file := range fileInfos {
 			wg.Add(1)
-			go func(f *FileInfo) {
+			go func(f *pkgdomain.FileInfo) {
 				defer wg.Done()
 				semaphore <- struct{}{}
 				defer func() { <-semaphore }()

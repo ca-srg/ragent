@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 )
@@ -101,7 +103,7 @@ func TestOpenSearchIndexerImpl_ValidateConnection(t *testing.T) {
 		},
 		{
 			name:        "connection validation failure",
-			setupError:  &ProcessingError{Type: ErrorTypeOpenSearchConnection, Message: "connection failed"},
+			setupError:  &pkgdomain.ProcessingError{Type: pkgconfig.ErrorTypeOpenSearchConnection, Message: "connection failed"},
 			expectError: true,
 		},
 	}
@@ -188,7 +190,7 @@ func TestOpenSearchDocument_Validate(t *testing.T) {
 		name        string
 		document    *OpenSearchDocument
 		expectError bool
-		errorType   ErrorType
+		errorType   pkgconfig.ErrorType
 	}{
 		{
 			name: "valid document",
@@ -209,7 +211,7 @@ func TestOpenSearchDocument_Validate(t *testing.T) {
 			name:        "nil document",
 			document:    nil,
 			expectError: true,
-			errorType:   ErrorTypeValidation,
+			errorType:   pkgconfig.ErrorTypeValidation,
 		},
 		{
 			name: "missing ID",
@@ -218,7 +220,7 @@ func TestOpenSearchDocument_Validate(t *testing.T) {
 				Content: "Test content",
 			},
 			expectError: true,
-			errorType:   ErrorTypeValidation,
+			errorType:   pkgconfig.ErrorTypeValidation,
 		},
 		{
 			name: "missing title and content",
@@ -226,7 +228,7 @@ func TestOpenSearchDocument_Validate(t *testing.T) {
 				ID: "test-id",
 			},
 			expectError: true,
-			errorType:   ErrorTypeValidation,
+			errorType:   pkgconfig.ErrorTypeValidation,
 		},
 	}
 
@@ -236,14 +238,14 @@ func TestOpenSearchDocument_Validate(t *testing.T) {
 			if tt.document != nil {
 				err = tt.document.Validate()
 			} else {
-				err = NewProcessingError(ErrorTypeValidation, "document cannot be nil", "")
+				err = NewProcessingError(pkgconfig.ErrorTypeValidation, "document cannot be nil", "")
 			}
 
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("expected error but got none")
 				}
-				if procErr, ok := err.(*ProcessingError); ok {
+				if procErr, ok := err.(*pkgdomain.ProcessingError); ok {
 					if tt.errorType != "" && procErr.Type != tt.errorType {
 						t.Errorf("expected error type %v, got %v", tt.errorType, procErr.Type)
 					}
@@ -269,25 +271,25 @@ func TestOpenSearchIndexerImpl_classifyOpenSearchError(t *testing.T) {
 		name         string
 		inputError   error
 		context      string
-		expectedType ErrorType
+		expectedType pkgconfig.ErrorType
 	}{
 		{
 			name:         "connection error",
 			inputError:   fmt.Errorf("connection refused"),
 			context:      "test-context",
-			expectedType: ErrorTypeOpenSearchConnection,
+			expectedType: pkgconfig.ErrorTypeOpenSearchConnection,
 		},
 		{
 			name:         "mapping error",
 			inputError:   fmt.Errorf("mapping error"),
 			context:      "test-context",
-			expectedType: ErrorTypeOpenSearchMapping,
+			expectedType: pkgconfig.ErrorTypeOpenSearchMapping,
 		},
 		{
 			name:         "rate limit error",
 			inputError:   fmt.Errorf("rate limit exceeded"),
 			context:      "test-context",
-			expectedType: ErrorTypeRateLimit,
+			expectedType: pkgconfig.ErrorTypeRateLimit,
 		},
 	}
 
@@ -302,12 +304,12 @@ func TestOpenSearchIndexerImpl_classifyOpenSearchError(t *testing.T) {
 				return
 			}
 
-			if procErr, ok := result.(*ProcessingError); ok {
+			if procErr, ok := result.(*pkgdomain.ProcessingError); ok {
 				if procErr.Type != tt.expectedType {
 					t.Errorf("expected error type %v, got %v", tt.expectedType, procErr.Type)
 				}
 			} else {
-				t.Errorf("expected ProcessingError, got %T", result)
+				t.Errorf("expected pkgdomain.ProcessingError, got %T", result)
 			}
 		})
 	}

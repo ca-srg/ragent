@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +24,7 @@ func TestVectorizerService_IntegrationWithMocks(t *testing.T) {
 	mockOSIndexer := NewMockOpenSearchIndexerIntegration()
 
 	// Set up test files
-	testFiles := []*FileInfo{
+	testFiles := []*pkgdomain.FileInfo{
 		{
 			Path:    "test1.md",
 			Name:    "test1.md",
@@ -47,7 +49,7 @@ func TestVectorizerService_IntegrationWithMocks(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create service config
-	cfg := &Config{
+	cfg := &pkgconfig.Config{
 		Concurrency: 2,
 	}
 
@@ -88,12 +90,12 @@ func TestDualBackendProcessing_WithMocks(t *testing.T) {
 	mockOSIndexer := NewMockOpenSearchIndexerIntegration()
 
 	// Create test documents
-	testFiles := []*FileInfo{
+	testFiles := []*pkgdomain.FileInfo{
 		{
 			Name:    "file1.md",
 			Path:    "/test/file1.md",
 			Content: "Content 1",
-			Metadata: DocumentMetadata{
+			Metadata: pkgdomain.DocumentMetadata{
 				Title:     "File 1",
 				Category:  "test",
 				WordCount: 10,
@@ -103,7 +105,7 @@ func TestDualBackendProcessing_WithMocks(t *testing.T) {
 			Name:    "file2.md",
 			Path:    "/test/file2.md",
 			Content: "Content 2",
-			Metadata: DocumentMetadata{
+			Metadata: pkgdomain.DocumentMetadata{
 				Title:     "File 2",
 				Category:  "test",
 				WordCount: 15,
@@ -162,7 +164,7 @@ func TestDualBackendProcessing_WithMocks(t *testing.T) {
 			var s3Success, osSuccess bool
 
 			// Test S3 operation
-			s3Err := mockVectorStoreClient.StoreVector(ctx, &VectorData{
+			s3Err := mockVectorStoreClient.StoreVector(ctx, &pkgdomain.VectorData{
 				ID:        "test-doc",
 				Embedding: []float64{0.1, 0.2, 0.3},
 				Metadata:  testFiles[0].Metadata,
@@ -294,7 +296,7 @@ func TestServiceConfiguration_ValidationWithMocks(t *testing.T) {
 		{
 			name: "valid configuration",
 			config: &ServiceConfig{
-				Config:              &Config{Concurrency: 3, RetryAttempts: 2},
+				Config:              &pkgconfig.Config{Concurrency: 3, RetryAttempts: 2},
 				EmbeddingClient:     NewMockEmbeddingClient(),
 				VectorStoreClient:   NewMockVectorStore(),
 				OpenSearchIndexer:   NewMockOpenSearchIndexerIntegration(),
@@ -314,7 +316,7 @@ func TestServiceConfiguration_ValidationWithMocks(t *testing.T) {
 		{
 			name: "missing embedding client",
 			config: &ServiceConfig{
-				Config:              &Config{Concurrency: 3},
+				Config:              &pkgconfig.Config{Concurrency: 3},
 				EmbeddingClient:     nil,
 				VectorStoreClient:   NewMockVectorStore(),
 				OpenSearchIndexer:   NewMockOpenSearchIndexerIntegration(),
@@ -353,12 +355,12 @@ func TestServiceConfiguration_ValidationWithMocks(t *testing.T) {
 // Helper mock implementations for testing
 
 type MockMetadataExtractor struct {
-	metadata *DocumentMetadata
+	metadata *pkgdomain.DocumentMetadata
 }
 
 func NewMockMetadataExtractor() *MockMetadataExtractor {
 	return &MockMetadataExtractor{
-		metadata: &DocumentMetadata{
+		metadata: &pkgdomain.DocumentMetadata{
 			Title:     "Mock Title",
 			Category:  "mock",
 			WordCount: 100,
@@ -367,36 +369,36 @@ func NewMockMetadataExtractor() *MockMetadataExtractor {
 	}
 }
 
-func (m *MockMetadataExtractor) ExtractMetadata(filePath string, content string) (*DocumentMetadata, error) {
+func (m *MockMetadataExtractor) ExtractMetadata(filePath string, content string) (*pkgdomain.DocumentMetadata, error) {
 	if m.metadata != nil {
 		return m.metadata, nil
 	}
-	return &DocumentMetadata{Title: "Default", Category: "default"}, nil
+	return &pkgdomain.DocumentMetadata{Title: "Default", Category: "default"}, nil
 }
 
 func (m *MockMetadataExtractor) ParseFrontMatter(content string) (map[string]interface{}, string, error) {
 	return map[string]interface{}{}, content, nil
 }
 
-func (m *MockMetadataExtractor) GenerateKey(metadata *DocumentMetadata) string {
+func (m *MockMetadataExtractor) GenerateKey(metadata *pkgdomain.DocumentMetadata) string {
 	return fmt.Sprintf("mock-key-%s", metadata.Title)
 }
 
 type MockFileScanner struct {
-	files []*FileInfo
+	files []*pkgdomain.FileInfo
 }
 
 func NewMockFileScanner() *MockFileScanner {
 	return &MockFileScanner{
-		files: []*FileInfo{},
+		files: []*pkgdomain.FileInfo{},
 	}
 }
 
-func (m *MockFileScanner) SetFiles(files []*FileInfo) {
+func (m *MockFileScanner) SetFiles(files []*pkgdomain.FileInfo) {
 	m.files = files
 }
 
-func (m *MockFileScanner) ScanDirectory(dirPath string) ([]*FileInfo, error) {
+func (m *MockFileScanner) ScanDirectory(dirPath string) ([]*pkgdomain.FileInfo, error) {
 	return m.files, nil
 }
 

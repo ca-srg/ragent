@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,9 +98,9 @@ func TestReader_ReadFileFromBytes_OCRError(t *testing.T) {
 	_, err := reader.ReadFileFromBytes([]byte("fake pdf"), "/path/to/error.pdf")
 	assert.Error(t, err)
 
-	// ReadFileFromBytes wraps OCR errors in domain.ProcessingError
-	var procErr *domain.ProcessingError
-	assert.True(t, errors.As(err, &procErr), "error should be a *domain.ProcessingError")
+	// ReadFileFromBytes wraps OCR errors in pkgdomain.ProcessingError
+	var procErr *pkgdomain.ProcessingError
+	assert.True(t, errors.As(err, &procErr), "error should be a *pkgdomain.ProcessingError")
 	assert.True(t, procErr.Retryable, "OCR errors should be retryable")
 	assert.Contains(t, procErr.Message, "OCR failed")
 }

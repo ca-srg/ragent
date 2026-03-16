@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ca-srg/ragent/internal/ingestion/domain"
 	pkgconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // Reader converts PDF files into domain.FileInfo slices (one per page).
@@ -28,7 +28,7 @@ func NewReader(client OCRClient, config PDFReaderConfig) *Reader {
 }
 
 // ReadFile reads a local PDF file and returns one FileInfo per page.
-func (r *Reader) ReadFile(filePath string) ([]*domain.FileInfo, error) {
+func (r *Reader) ReadFile(filePath string) ([]*pkgdomain.FileInfo, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat PDF file %s: %w", filePath, err)
@@ -42,15 +42,15 @@ func (r *Reader) ReadFile(filePath string) ([]*domain.FileInfo, error) {
 
 // ReadFileFromBytes reads a PDF from bytes and returns one FileInfo per page.
 // Used for S3 and GitHub sources where content is already in memory.
-func (r *Reader) ReadFileFromBytes(pdfData []byte, filePath string) ([]*domain.FileInfo, error) {
+func (r *Reader) ReadFileFromBytes(pdfData []byte, filePath string) ([]*pkgdomain.FileInfo, error) {
 	return r.readFileFromBytesWithModTime(pdfData, filePath, time.Time{})
 }
 
 // readFileFromBytesWithModTime is the internal implementation that accepts an optional file modification time.
-func (r *Reader) readFileFromBytesWithModTime(pdfData []byte, filePath string, modTime time.Time) ([]*domain.FileInfo, error) {
+func (r *Reader) readFileFromBytesWithModTime(pdfData []byte, filePath string, modTime time.Time) ([]*pkgdomain.FileInfo, error) {
 	if len(pdfData) == 0 {
 		log.Printf("Warning: empty PDF data for %s", filePath)
-		return []*domain.FileInfo{}, nil
+		return []*pkgdomain.FileInfo{}, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.config.Timeout)
@@ -61,7 +61,7 @@ func (r *Reader) readFileFromBytesWithModTime(pdfData []byte, filePath string, m
 	log.Printf("Running OCR on PDF: %s (%d bytes)", filePath, len(pdfData))
 	pages, err := r.client.ExtractPages(ctx, pdfData, filename)
 	if err != nil {
-		return nil, &domain.ProcessingError{
+		return nil, &pkgdomain.ProcessingError{
 			Type:      pkgconfig.ErrorTypeOCR,
 			Message:   fmt.Sprintf("OCR failed for %s: %v", filePath, err),
 			FilePath:  filePath,
@@ -72,7 +72,7 @@ func (r *Reader) readFileFromBytesWithModTime(pdfData []byte, filePath string, m
 
 	if len(pages) == 0 {
 		log.Printf("Warning: OCR returned 0 pages for %s", filePath)
-		return []*domain.FileInfo{}, nil
+		return []*pkgdomain.FileInfo{}, nil
 	}
 
 	// Resolve the file timestamp: use actual file modTime, fallback to now.
@@ -87,7 +87,7 @@ func (r *Reader) readFileFromBytesWithModTime(pdfData []byte, filePath string, m
 		coverAuthor = pages[0].Author
 	}
 
-	var files []*domain.FileInfo
+	var files []*pkgdomain.FileInfo
 	for _, page := range pages {
 		fileInfo := r.pageToFileInfo(page, filePath, fileTime, coverAuthor)
 		if fileInfo != nil {
@@ -100,7 +100,7 @@ func (r *Reader) readFileFromBytesWithModTime(pdfData []byte, filePath string, m
 }
 
 // pageToFileInfo converts a PageResult to a domain.FileInfo.
-func (r *Reader) pageToFileInfo(page *PageResult, filePath string, fileTime time.Time, coverAuthor string) *domain.FileInfo {
+func (r *Reader) pageToFileInfo(page *PageResult, filePath string, fileTime time.Time, coverAuthor string) *pkgdomain.FileInfo {
 	if page == nil || strings.TrimSpace(page.Text) == "" {
 		return nil
 	}
@@ -127,7 +127,7 @@ func (r *Reader) pageToFileInfo(page *PageResult, filePath string, fileTime time
 		author = coverAuthor
 	}
 
-	return &domain.FileInfo{
+	return &pkgdomain.FileInfo{
 		Path:         path,
 		Name:         fmt.Sprintf("%s page %d", filename, page.PageIndex),
 		Size:         int64(len(page.Text)),
@@ -135,7 +135,7 @@ func (r *Reader) pageToFileInfo(page *PageResult, filePath string, fileTime time
 		IsPDF:        true,
 		PDFPageIndex: page.PageIndex,
 		Content:      page.Text,
-		Metadata: domain.DocumentMetadata{
+		Metadata: pkgdomain.DocumentMetadata{
 			Title:     title,
 			Category:  category,
 			Tags:      page.Tags,

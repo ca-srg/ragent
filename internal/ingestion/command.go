@@ -22,6 +22,7 @@ import (
 	"github.com/ca-srg/ragent/internal/ingestion/spreadsheet"
 	"github.com/ca-srg/ragent/internal/ingestion/vectorizer"
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/ipc"
 )
@@ -160,11 +161,11 @@ func runVectorize(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func executeVectorizationOnce(ctx context.Context, cfg *appconfig.Config) (*ProcessingResult, error) {
+func executeVectorizationOnce(ctx context.Context, cfg *appconfig.Config) (*pkgdomain.ProcessingResult, error) {
 	return executeVectorizationOnceWithProgress(ctx, cfg, currentProgressCallback)
 }
 
-func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Config, progressCallback ProgressCallback) (*ProcessingResult, error) {
+func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Config, progressCallback ProgressCallback) (*pkgdomain.ProcessingResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -300,7 +301,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 	}
 
 	// Collect files from all sources
-	var allFiles []*FileInfo
+	var allFiles []*pkgdomain.FileInfo
 
 	// 1. Scan local directory if specified
 	if hasLocalSource {
@@ -399,7 +400,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 
 	if len(allFiles) == 0 {
 		log.Println("No supported files found")
-		return &ProcessingResult{
+		return &pkgdomain.ProcessingResult{
 			ProcessedFiles: 0,
 			SuccessCount:   0,
 			FailureCount:   0,
@@ -411,7 +412,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 	// Change detection using hash store (unless --force is specified)
 	var changeResult *hashstore.ChangeDetectionResult
 	var hashStore *hashstore.HashStore
-	var filesToProcess []*FileInfo
+	var filesToProcess []*pkgdomain.FileInfo
 
 	if !forceProcess && !dryRun {
 		var err error
@@ -455,7 +456,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 
 	if len(filesToProcess) == 0 && !dryRun {
 		log.Println("No files need processing (all files are unchanged)")
-		return &ProcessingResult{
+		return &pkgdomain.ProcessingResult{
 			ProcessedFiles: 0,
 			SuccessCount:   0,
 			FailureCount:   0,
@@ -502,7 +503,7 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 }
 
 // scanLocalDirectoryWithHash scans a local directory and computes MD5 hash for each file
-func scanLocalDirectoryWithHash(dirPath string) ([]*FileInfo, error) {
+func scanLocalDirectoryWithHash(dirPath string) ([]*pkgdomain.FileInfo, error) {
 	fileScanner := scanner.NewFileScanner()
 	files, err := fileScanner.ScanDirectory(dirPath)
 	if err != nil {
@@ -544,8 +545,8 @@ func printChangeDetectionSummary(result *hashstore.ChangeDetectionResult) {
 func updateHashStoreForSuccessfulFiles(
 	ctx context.Context,
 	store *hashstore.HashStore,
-	files []*FileInfo,
-	result *ProcessingResult,
+	files []*pkgdomain.FileInfo,
+	result *pkgdomain.ProcessingResult,
 ) {
 	// Build a set of failed file paths from processing errors
 	failedPaths := make(map[string]bool)
@@ -696,7 +697,7 @@ func runFollowMode(ctx context.Context, cfg *appconfig.Config) error {
 }
 
 // runFollowCycleWithIPC runs a single vectorization cycle with IPC status updates
-func runFollowCycleWithIPC(ctx context.Context, cfg *appconfig.Config, ipcServer *ipc.Server) (*ProcessingResult, error) {
+func runFollowCycleWithIPC(ctx context.Context, cfg *appconfig.Config, ipcServer *ipc.Server) (*pkgdomain.ProcessingResult, error) {
 	if !startFollowProcessing() {
 		log.Println("[Follow Mode] Previous vectorization still running. Skipping this cycle.")
 		return nil, nil
@@ -815,7 +816,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 }
 
 // printResults prints the processing results in a user-friendly format
-func printResults(result *ProcessingResult, dryRun bool) {
+func printResults(result *pkgdomain.ProcessingResult, dryRun bool) {
 	fmt.Println("\n" + strings.Repeat("=", 60))
 	if dryRun {
 		fmt.Println("DRY RUN RESULTS")
@@ -1182,9 +1183,9 @@ func estimateProcessingTime(rowCount int) int {
 }
 
 // printCSVConfigInfo prints CSV configuration details for dry-run mode
-func printCSVConfigInfo(files []*FileInfo, csvCfg *csv.Config) {
+func printCSVConfigInfo(files []*pkgdomain.FileInfo, csvCfg *csv.Config) {
 	// Filter CSV files
-	var csvFiles []*FileInfo
+	var csvFiles []*pkgdomain.FileInfo
 	for _, f := range files {
 		if f.IsCSV {
 			csvFiles = append(csvFiles, f)

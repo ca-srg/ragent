@@ -6,6 +6,8 @@ import (
 	"log"
 	"time"
 	"unicode/utf8"
+
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // OpenSearchDocument represents a document structure optimized for OpenSearch indexing
@@ -32,7 +34,7 @@ type OpenSearchDocument struct {
 }
 
 // NewOpenSearchDocument creates a new OpenSearchDocument from VectorData
-func NewOpenSearchDocument(vectorData *VectorData, contentJa string) *OpenSearchDocument {
+func NewOpenSearchDocument(vectorData *pkgdomain.VectorData, contentJa string) *OpenSearchDocument {
 	// Deep copy the embedding to avoid reference issues
 	var embeddingCopy []float64
 	if vectorData.Embedding != nil {
