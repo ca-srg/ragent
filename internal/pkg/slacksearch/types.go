@@ -81,16 +81,6 @@ func (r *SlackSearchResult) ForPrompt() string {
 	return sb.String()
 }
 
-// formatSlackTimestamp converts a Slack timestamp to RFC3339 format.
-func formatSlackTimestamp(ts string) string {
-	return FormatSlackTimestamp(ts)
-}
-
-// displaySlackUser returns a display name for a Slack user.
-func displaySlackUser(userID, username string) string {
-	return FormatSlackUser(userID, username)
-}
-
 // Validate ensures the Slack search configuration values are within supported ranges.
 func (c *SlackSearchConfig) Validate() error {
 	if c == nil {

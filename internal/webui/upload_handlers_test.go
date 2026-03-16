@@ -412,7 +412,7 @@ func TestUploadIntegration_FullFlow(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -443,7 +443,7 @@ func TestUploadIntegration_RouteRegistered(t *testing.T) {
 
 	resp, err := http.Get(ts.URL + "/api/upload")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
 }
