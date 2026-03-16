@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,7 +47,7 @@ func LoadSlackSecretConfig(path string) (*SlackSecretConfig, error) {
 
 	var cfg SlackSecretConfig
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		fmt.Printf("failed to parse slack secret config %q: %v\n", path, err)
+		log.Printf("failed to parse slack secret config %q: %v", path, err)
 		return &SlackSecretConfig{AllowedUsers: nil}, nil
 	}
 
