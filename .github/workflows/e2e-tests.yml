@@ -223,7 +223,7 @@ jobs:
 
       - name: Create E2E matrix test index
         run: |
-          for attempt in 1 2 3 4 5; do
+          for attempt in $(seq 1 10); do
             if curl -sf -X PUT "http://localhost:9200/ragent-e2e-matrix-${{ matrix.name }}" \
               -H "Content-Type: application/json" \
               -d @tests/testdata/e2e-index-mapping.json; then
@@ -231,10 +231,10 @@ jobs:
               echo "Index ragent-e2e-matrix-${{ matrix.name }} created successfully"
               exit 0
             fi
-            echo "Attempt $attempt failed, retrying in 3s..."
-            sleep 3
+            echo "Attempt $attempt/10 failed, retrying in 5s..."
+            sleep 5
           done
-          echo "::error::Failed to create index after 5 attempts"
+          echo "::error::Failed to create index after 10 attempts"
           exit 1
 
       - name: Run go vet
