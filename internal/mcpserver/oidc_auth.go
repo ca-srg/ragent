@@ -631,7 +631,7 @@ func (m *OIDCAuthMiddleware) HandleCallback(w http.ResponseWriter, r *http.Reque
 		host = xfh
 	}
 	serverURL := fmt.Sprintf("%s://%s", scheme, host)
-	addCmd := fmt.Sprintf("claude mcp add --transport sse ragent %s/sse --header \"Authorization: Bearer %s\"", serverURL, rawIDToken)
+	addCmd := fmt.Sprintf("claude mcp add --transport <http or sse> ragent %s --header \"Authorization: Bearer %s\"", serverURL, rawIDToken)
 
 	// Optionally set a cookie for browser-based calls
 	http.SetCookie(w, &http.Cookie{Name: "mcp_auth_token", Value: rawIDToken, Path: "/", HttpOnly: true, Secure: scheme == "https"})
