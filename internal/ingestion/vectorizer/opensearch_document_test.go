@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
@@ -70,7 +71,6 @@ func TestOpenSearchDocument_Clone_PreservesSecret(t *testing.T) {
 	doc := NewOpenSearchDocument(newTestVectorData(true), "")
 
 	clone := doc.Clone()
-	if assert.NotNil(t, clone) {
-		assert.True(t, clone.Secret)
-	}
+	require.NotNil(t, clone)
+	assert.True(t, clone.Secret)
 }

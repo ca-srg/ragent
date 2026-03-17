@@ -540,18 +540,27 @@ func parseIntParamStrict(value interface{}) (int, error) {
 // executeHybridSearch performs hybrid search
 func (hsta *HybridSearchToolAdapter) executeHybridSearch(ctx context.Context, request *HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
 	hybridQuery := hsta.buildHybridQuery(request)
+	if hybridQuery == nil {
+		return nil, fmt.Errorf("failed to build hybrid query: request is nil")
+	}
 	return hsta.hybridEngine.Search(ctx, hybridQuery)
 }
 
 // executeBM25Search performs BM25-only search
 func (hsta *HybridSearchToolAdapter) executeBM25Search(ctx context.Context, request *HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
 	hybridQuery := hsta.buildHybridQuery(request)
+	if hybridQuery == nil {
+		return nil, fmt.Errorf("failed to build hybrid query: request is nil")
+	}
 	return hsta.hybridEngine.SearchBM25Only(ctx, hybridQuery)
 }
 
 // executeVectorSearch performs vector-only search
 func (hsta *HybridSearchToolAdapter) executeVectorSearch(ctx context.Context, request *HybridSearchRequest) (*opensearch.HybridSearchResult, error) {
 	hybridQuery := hsta.buildHybridQuery(request)
+	if hybridQuery == nil {
+		return nil, fmt.Errorf("failed to build hybrid query: request is nil")
+	}
 	return hsta.hybridEngine.SearchVectorOnly(ctx, hybridQuery)
 }
 
