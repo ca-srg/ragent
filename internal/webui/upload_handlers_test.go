@@ -570,6 +570,144 @@ func TestUploadIntegration_FullFlow(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 }
 
+func TestInjectSecretIntoFrontMatter(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "no front matter",
+			input: "# Hello\nworld",
+			want:  "---\nsecret: true\n---\n# Hello\nworld",
+		},
+		{
+			name:  "existing front matter without secret",
+			input: "---\ntitle: Test\n---\n# Hello",
+			want:  "---\ntitle: Test\nsecret: true\n---\n# Hello",
+		},
+		{
+			name:  "existing front matter with secret false",
+			input: "---\ntitle: Test\nsecret: false\n---\n# Hello",
+			want:  "---\ntitle: Test\nsecret: true\n---\n# Hello",
+		},
+		{
+			name:  "existing front matter with secret true",
+			input: "---\nsecret: true\n---\n# Hello",
+			want:  "---\nsecret: true\n---\n# Hello",
+		},
+		{
+			name:  "empty content",
+			input: "",
+			want:  "---\nsecret: true\n---\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := injectSecretIntoFrontMatter(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestHandleUpload_SecretInjectedIntoSavedFile(t *testing.T) {
+	dir := t.TempDir()
+	vectorizer := &capturingVectorizer{}
+
+	cfg := DefaultServerConfig()
+	cfg.Directory = dir
+
+	srv, err := NewServer(cfg, &Dependencies{
+		FileScanner: &mockFileScanner{},
+		Vectorizer:  vectorizer,
+	}, nil)
+	require.NoError(t, err)
+
+	req := createMultipartRequestWithSecret(t, []testUploadFile{{
+		Name:    "no-secret.md",
+		Content: []byte("# No secret in frontmatter"),
+	}}, true)
+	w := httptest.NewRecorder()
+
+	srv.handleUpload(w, req)
+
+	resp := w.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	savedContent, err := os.ReadFile(filepath.Join(dir, "no-secret.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(savedContent), "secret: true")
+
+	assert.Eventually(t, func() bool {
+		return vectorizer.CallCount() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	infos := vectorizer.LastInfos()
+	require.Len(t, infos, 1)
+	assert.Contains(t, infos[0].Content, "secret: true")
+	assert.True(t, infos[0].Metadata.Secret)
+}
+
+func TestHandleUpload_SecretNotInjectedWhenCheckboxOff(t *testing.T) {
+	dir := t.TempDir()
+	vectorizer := &capturingVectorizer{}
+
+	cfg := DefaultServerConfig()
+	cfg.Directory = dir
+
+	srv, err := NewServer(cfg, &Dependencies{
+		FileScanner: &mockFileScanner{},
+		Vectorizer:  vectorizer,
+	}, nil)
+	require.NoError(t, err)
+
+	req := createMultipartRequest(t, []testUploadFile{{
+		Name:    "normal.md",
+		Content: []byte("# Normal file"),
+	}})
+	w := httptest.NewRecorder()
+
+	srv.handleUpload(w, req)
+
+	resp := w.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	savedContent, err := os.ReadFile(filepath.Join(dir, "normal.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(savedContent), "secret: true")
+	assert.Equal(t, "# Normal file", string(savedContent))
+}
+
+func TestHandleUpload_SecretNotInjectedForCSV(t *testing.T) {
+	dir := t.TempDir()
+	vectorizer := &capturingVectorizer{}
+
+	cfg := DefaultServerConfig()
+	cfg.Directory = dir
+
+	srv, err := NewServer(cfg, &Dependencies{
+		FileScanner: &mockFileScanner{},
+		Vectorizer:  vectorizer,
+	}, nil)
+	require.NoError(t, err)
+
+	req := createMultipartRequestWithSecret(t, []testUploadFile{{
+		Name:    "data.csv",
+		Content: []byte("a,b\n1,2"),
+	}}, true)
+	w := httptest.NewRecorder()
+
+	srv.handleUpload(w, req)
+
+	resp := w.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	savedContent, err := os.ReadFile(filepath.Join(dir, "data.csv"))
+	require.NoError(t, err)
+	assert.Equal(t, "a,b\n1,2", string(savedContent))
+}
+
 func TestUploadIntegration_RouteRegistered(t *testing.T) {
 	srv := newUploadTestServer(t, t.TempDir())
 

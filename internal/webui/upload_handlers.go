@@ -128,6 +128,11 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			s.logger.Printf("Failed to close uploaded file %q: %v", sanitizedName, closeErr)
 		}
 
+		ext := strings.ToLower(filepath.Ext(sanitizedName))
+		if secret && ext == ".md" {
+			contentBytes = []byte(injectSecretIntoFrontMatter(string(contentBytes)))
+		}
+
 		destinationPath := filepath.Join(s.config.Directory, sanitizedName)
 		dst, err := os.Create(destinationPath)
 		if err != nil {
@@ -163,7 +168,6 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		ext := strings.ToLower(filepath.Ext(sanitizedName))
 		fileInfo := &domain.FileInfo{
 			Path:       destinationPath,
 			Name:       sanitizedName,
@@ -269,4 +273,38 @@ func parseUploadSecretFlag(rawValue string) (bool, error) {
 	}
 
 	return secret, nil
+}
+
+func injectSecretIntoFrontMatter(content string) string {
+	lines := strings.Split(content, "\n")
+
+	if strings.HasPrefix(content, "---") {
+		endIndex := -1
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				endIndex = i
+				break
+			}
+		}
+		if endIndex > 0 {
+			found := false
+			for i := 1; i < endIndex; i++ {
+				if strings.HasPrefix(strings.TrimSpace(lines[i]), "secret:") {
+					lines[i] = "secret: true"
+					found = true
+					break
+				}
+			}
+			if !found {
+				newLines := make([]string, 0, len(lines)+1)
+				newLines = append(newLines, lines[:endIndex]...)
+				newLines = append(newLines, "secret: true")
+				newLines = append(newLines, lines[endIndex:]...)
+				lines = newLines
+			}
+			return strings.Join(lines, "\n")
+		}
+	}
+
+	return "---\nsecret: true\n---\n" + content
 }
