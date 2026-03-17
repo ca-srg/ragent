@@ -150,7 +150,6 @@ func indexSecretTestDocuments(
 		"content":        secretContent,
 		"title":          "Secret E2E Test Document " + testID,
 		"category":       "e2e-test",
-		"team":           "e2e-test",
 		"secret":         true,
 		"embedding":      secretEmbed,
 		"knn_vector":     secretEmbed,
@@ -161,7 +160,6 @@ func indexSecretTestDocuments(
 		"content":        publicContent,
 		"title":          "Public E2E Test Document " + testID,
 		"category":       "e2e-test",
-		"team":           "e2e-test",
 		"secret":         false,
 		"embedding":      publicEmbed,
 		"knn_vector":     publicEmbed,
@@ -489,8 +487,8 @@ func TestE2E_MCPServer_SecretMetadata_SecretFilterIgnored(t *testing.T) {
 		defer cancel()
 
 		maliciousFilters := map[string]interface{}{
-			"secret": "true",
-			"team":   "e2e-test",
+			"secret":   "true",
+			"category": "e2e-test",
 		}
 
 		secretResult, err := client.CallTool(ctx, "hybrid_search", map[string]interface{}{
