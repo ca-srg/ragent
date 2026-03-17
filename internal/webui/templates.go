@@ -2,6 +2,7 @@ package webui
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
 	"fmt"
 	"html/template"
@@ -29,10 +30,31 @@ func NewTemplateManager() (*TemplateManager, error) {
 	return NewTemplateManagerWithBasePath("")
 }
 
+// staticContentHash computes a short SHA-256 hash of all embedded static files.
+// The hash changes whenever any static asset is modified, forcing CDN/browser
+// cache invalidation on redeploy.
+func staticContentHash() string {
+	h := sha256.New()
+	_ = fs.WalkDir(staticFiles, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(staticFiles, path)
+		if err != nil {
+			return err
+		}
+		h.Write(data)
+		return nil
+	})
+	return fmt.Sprintf("%x", h.Sum(nil))[:8]
+}
+
 // NewTemplateManagerWithBasePath creates a new template manager with a URL base path prefix.
 // basePath is prepended to all URL references in templates (e.g., "/dashboard").
 // Pass "" for standalone mode where the server owns the root path.
 func NewTemplateManagerWithBasePath(basePath string) (*TemplateManager, error) {
+	assetVersion := staticContentHash()
+
 	funcMap := template.FuncMap{
 		"formatSize":     formatSize,
 		"formatDuration": formatDurationTemplate,
@@ -42,6 +64,7 @@ func NewTemplateManagerWithBasePath(basePath string) (*TemplateManager, error) {
 		"sub":            func(a, b int) int { return a - b },
 		"add":            func(a, b int) int { return a + b },
 		"basePath":       func() string { return basePath },
+		"assetVersion":   func() string { return assetVersion },
 	}
 
 	shared, err := template.New("").Funcs(funcMap).ParseFS(
