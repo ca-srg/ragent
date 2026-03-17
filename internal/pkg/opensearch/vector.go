@@ -32,14 +32,15 @@ type VectorSearchResponse struct {
 }
 
 type VectorQuery struct {
-	Vector      []float64         `json:"vector"`
-	VectorField string            `json:"vector_field"`
-	K           int               `json:"k"`
-	EfSearch    int               `json:"ef_search,omitempty"`
-	Filters     map[string]string `json:"filters,omitempty"`
-	MinScore    float64           `json:"min_score,omitempty"`
-	Size        int               `json:"size,omitempty"`
-	From        int               `json:"from,omitempty"`
+	Vector        []float64         `json:"vector"`
+	VectorField   string            `json:"vector_field"`
+	K             int               `json:"k"`
+	EfSearch      int               `json:"ef_search,omitempty"`
+	ExcludeSecret bool              `json:"exclude_secret,omitempty"`
+	Filters       map[string]string `json:"filters,omitempty"`
+	MinScore      float64           `json:"min_score,omitempty"`
+	Size          int               `json:"size,omitempty"`
+	From          int               `json:"from,omitempty"`
 }
 
 func (c *Client) SearchDenseVector(ctx context.Context, indexName string, query *VectorQuery) (*VectorSearchResponse, error) {
@@ -180,13 +181,37 @@ func (c *Client) buildVectorSearchBody(query *VectorQuery) map[string]interface{
 			})
 		}
 
-		body["query"] = map[string]interface{}{
+		queryClause := map[string]interface{}{
 			"bool": map[string]interface{}{
 				"must": []map[string]interface{}{
 					{"knn": knnQuery},
 				},
 				"filter": filters,
 			},
+		}
+		body["query"] = queryClause
+	}
+
+	if query.ExcludeSecret {
+		queryClause, ok := body["query"].(map[string]interface{})
+		if !ok {
+			queryClause = map[string]interface{}{}
+		}
+		boolQuery := queryClause["bool"]
+		if boolQuery == nil {
+			queryClause = map[string]interface{}{
+				"bool": map[string]interface{}{
+					"must": []map[string]interface{}{
+						{"knn": knnQuery},
+					},
+				},
+			}
+			body["query"] = queryClause
+			boolQuery = queryClause["bool"]
+		}
+
+		if boolClause, ok := boolQuery.(map[string]interface{}); ok {
+			applySecretExclusion(boolClause, true)
 		}
 	}
 
@@ -286,6 +311,22 @@ func (c *Client) IndexDocument(ctx context.Context, indexName, docID string, doc
 	}
 
 	_, err = c.client.Index(ctx, req)
+	if err != nil {
+		return ClassifyConnectionError(err)
+	}
+
+	return nil
+}
+
+func (c *Client) DeleteDocument(ctx context.Context, indexName, docID string) error {
+	if err := c.WaitForRateLimit(ctx); err != nil {
+		return fmt.Errorf("rate limit error: %w", err)
+	}
+
+	_, err := c.client.Document.Delete(ctx, opensearchapi.DocumentDeleteReq{
+		Index:      indexName,
+		DocumentID: docID,
+	})
 	if err != nil {
 		return ClassifyConnectionError(err)
 	}

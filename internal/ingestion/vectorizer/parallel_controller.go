@@ -211,12 +211,16 @@ func (pc *ParallelController) processFile(
 	// Re-extracting with the page path (pdf://...pdf/page/N) would produce wrong values
 	// because filepath.Base() returns the page number instead of the original filename.
 	if !fileInfo.IsPDF {
+		secret := fileInfo.Metadata.Secret
 		metadata, err := metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
 		if err != nil {
 			log.Printf("Failed to extract metadata for %s: %v", fileInfo.Name, err)
 			result.Decision = ProcessingCompleteFailure
 			result.ProcessingTime = time.Since(startTime)
 			return result
+		}
+		if fileInfo.SourceType == "upload" {
+			applyUploadSecretMetadata(metadata, secret)
 		}
 		fileInfo.Metadata = *metadata
 	}

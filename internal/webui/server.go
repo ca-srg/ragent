@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -119,7 +118,7 @@ func (s *Server) Initialize(ctx context.Context) error {
 // Call Initialize() before this method.
 func (s *Server) Handler() http.Handler {
 	mux := s.setupRoutes()
-	return s.loggingMiddleware(mux)
+	return mux
 }
 
 // Cleanup stops the SSE manager. Call on shutdown when embedded.
@@ -213,27 +212,6 @@ func (s *Server) setupRoutes() *http.ServeMux {
 	mux.HandleFunc("/partials/error-list", s.handlePartialErrorList)
 
 	return mux
-}
-
-// loggingMiddleware logs HTTP requests
-func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		// Skip logging for static files and SSE (too noisy)
-		skipLog := strings.HasPrefix(r.URL.Path, "/static/") ||
-			strings.HasPrefix(r.URL.Path, "/sse/")
-
-		if !skipLog {
-			s.logger.Printf("%s %s", r.Method, r.URL.Path)
-		}
-
-		next.ServeHTTP(w, r)
-
-		if !skipLog {
-			s.logger.Printf("%s %s completed in %v", r.Method, r.URL.Path, time.Since(start))
-		}
-	})
 }
 
 // GetState returns the current state

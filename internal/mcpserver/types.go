@@ -83,6 +83,7 @@ type HybridSearchRequest struct {
 	VectorWeight      float64           `json:"vector_weight,omitempty"`    // Weight for vector scoring in hybrid mode
 	MinScore          float64           `json:"min_score,omitempty"`        // Minimum score threshold
 	IncludeMetadata   bool              `json:"include_metadata,omitempty"` // Include document metadata in results
+	ExcludeSecret     bool              `json:"exclude_secret,omitempty"`
 	EnableSlackSearch bool              `json:"enable_slack_search,omitempty"`
 	SlackChannels     []string          `json:"slack_channels,omitempty"`
 }

@@ -167,6 +167,8 @@ func (s *S3VectorService) StoreVector(ctx context.Context, vectorData *domain.Ve
 		metadataMap[key] = value
 	}
 
+	metadataMap["secret"] = vectorData.Metadata.Secret
+
 	vectorMetadata := document.NewLazyDocument(metadataMap)
 
 	input := &s3vectors.PutVectorsInput{

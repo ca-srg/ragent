@@ -43,6 +43,7 @@ type SearchRequest struct {
 	BM25Weight        float64           `json:"bm25_weight"`
 	VectorWeight      float64           `json:"vector_weight"`
 	UseJapaneseNLP    bool              `json:"use_japanese_nlp"`
+	ExcludeSecret     bool              `json:"exclude_secret,omitempty"`
 	TimeoutSeconds    int               `json:"timeout_seconds"`
 	Filters           map[string]string `json:"filters,omitempty"`
 	EnableSlackSearch bool              `json:"enable_slack_search"`
@@ -186,6 +187,7 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 		FusionMethod:   opensearch.FusionMethodWeightedSum,
 		UseJapaneseNLP: request.UseJapaneseNLP,
 		TimeoutSeconds: request.TimeoutSeconds,
+		ExcludeSecret:  request.ExcludeSecret,
 		Filters:        request.Filters,
 	}
 

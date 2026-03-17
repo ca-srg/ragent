@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -229,11 +230,11 @@ func (m *OIDCAuthMiddleware) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Validate token
 		tokenInfo, err := m.validateToken(token)
 		if err != nil {
 			if m.enableLogging {
-				log.Printf("Token validation failed: %v", err)
+				segments := strings.Count(token, ".")
+				log.Printf("Token validation failed (len=%d, segments=%d): %v", len(token), segments+1, err)
 			}
 			m.sendAuthenticationRequired(w, r)
 			return
@@ -266,28 +267,42 @@ func (m *OIDCAuthMiddleware) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// extractToken extracts the authentication token from the request
+// extractToken extracts and sanitizes the authentication token from the request
 func (m *OIDCAuthMiddleware) extractToken(r *http.Request) string {
 	// Check Authorization header
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" {
 		const bearerPrefix = "Bearer "
 		if len(authHeader) > len(bearerPrefix) && authHeader[:len(bearerPrefix)] == bearerPrefix {
-			return authHeader[len(bearerPrefix):]
+			return sanitizeToken(authHeader[len(bearerPrefix):])
 		}
 	}
 
 	// Check query parameter
 	if token := r.URL.Query().Get("token"); token != "" {
-		return token
+		return sanitizeToken(token)
 	}
 
 	// Check cookie
 	if cookie, err := r.Cookie("mcp_auth_token"); err == nil {
-		return cookie.Value
+		return sanitizeToken(cookie.Value)
 	}
 
 	return ""
+}
+
+// sanitizeToken strips whitespace from a JWT token to prevent base64 decode failures.
+// Go's base64.RawURLEncoding rejects spaces/tabs (unlike \n/\r which are skipped),
+// and whitespace can be introduced via copy-paste from HTML or HTTP header folding.
+func sanitizeToken(token string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\t', '\n', '\r':
+			return -1
+		default:
+			return r
+		}
+	}, token)
 }
 
 // validateToken validates the ID token
@@ -631,7 +646,7 @@ func (m *OIDCAuthMiddleware) HandleCallback(w http.ResponseWriter, r *http.Reque
             <title>Authentication Successful</title>
             <style>
                 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 40px; line-height: 1.6; }
-                code, pre { background: #f5f7fa; border: 1px solid #e3e8ef; border-radius: 6px; padding: 12px; display: block; white-space: pre-wrap; word-break: break-all; }
+                code, pre { background: #f5f7fa; border: 1px solid #e3e8ef; border-radius: 6px; padding: 12px; display: block; white-space: pre; overflow-x: auto; }
                 .small { color: #6b7280; font-size: 12px; }
                 hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
             </style>

@@ -289,10 +289,18 @@ func (vs *VectorizerService) expandPDFFiles(files []*pkgdomain.FileInfo) ([]*pkg
 				return
 			}
 			log.Printf("  Expanded to %d pages", len(pages))
+			for _, page := range pages {
+				if page == nil {
+					continue
+				}
 
-			mu.Lock()
-			expandedPDFs = append(expandedPDFs, pages...)
-			mu.Unlock()
+				if f.SourceType == "upload" {
+					applyUploadSecretMetadata(&page.Metadata, f.Metadata.Secret)
+				}
+				mu.Lock()
+				expandedPDFs = append(expandedPDFs, page)
+				mu.Unlock()
+			}
 		}(file)
 	}
 
@@ -358,9 +366,13 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *pk
 	// Re-extracting with the page path (pdf://...pdf/page/N) would produce wrong values
 	// because filepath.Base() returns the page number instead of the original filename.
 	if !fileInfo.IsPDF {
+		secret := fileInfo.Metadata.Secret
 		metadata, err := vs.metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
 		if err != nil {
 			return WrapError(err, pkgconfig.ErrorTypeMetadata, fileInfo.Path)
+		}
+		if fileInfo.SourceType == "upload" {
+			applyUploadSecretMetadata(metadata, secret)
 		}
 		fileInfo.Metadata = *metadata
 	}
@@ -521,6 +533,9 @@ func (vs *VectorizerService) dryRunProcessing(files []*pkgdomain.FileInfo) (*pkg
 		if err != nil {
 			log.Printf("  ERROR extracting metadata: %v", err)
 			continue
+		}
+		if file.SourceType == "upload" {
+			applyUploadSecretMetadata(metadata, file.Metadata.Secret)
 		}
 
 		log.Printf("  Title: %s", metadata.Title)

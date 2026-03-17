@@ -87,3 +87,64 @@ func TestBuildMatchPhraseQuerySingleFieldUsesMatchPhrase(t *testing.T) {
 		t.Fatalf("expected boost %.1f, got %v", phraseMatchBoost, boost)
 	}
 }
+
+func TestBuildBM25SearchBodyAppliesSecretExclusion(t *testing.T) {
+	client := &Client{}
+	query := &BM25Query{
+		Query:         "secret",
+		Fields:        []string{"title", "content"},
+		Size:          10,
+		ExcludeSecret: true,
+	}
+
+	body := client.buildBM25SearchBody(query)
+	querySection, ok := body["query"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("query section missing")
+	}
+
+	boolQuery, ok := querySection["bool"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("bool query missing")
+	}
+
+	mustNot, ok := boolQuery["must_not"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected must_not clause")
+	}
+	if len(mustNot) != 1 {
+		t.Fatalf("expected one must_not clause, got %d", len(mustNot))
+	}
+
+	termClause, ok := mustNot[0]["term"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected term in must_not")
+	}
+	if val, ok := termClause["secret"].(bool); !ok || val != true {
+		t.Fatalf("expected secret exclusion term to be true, got %#v", termClause["secret"])
+	}
+}
+
+func TestBuildBM25SearchBodyDoesNotAddSecretClauseWhenDisabled(t *testing.T) {
+	client := &Client{}
+	query := &BM25Query{
+		Query:         "secret",
+		Fields:        []string{"title", "content"},
+		Size:          10,
+		ExcludeSecret: false,
+	}
+
+	body := client.buildBM25SearchBody(query)
+	querySection, ok := body["query"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("query section missing")
+	}
+
+	boolQuery, ok := querySection["bool"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("bool query missing")
+	}
+	if _, ok := boolQuery["must_not"]; ok {
+		t.Fatalf("did not expect must_not clause when secret exclusion disabled")
+	}
+}

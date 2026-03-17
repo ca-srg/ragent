@@ -15,6 +15,14 @@
                    accept=".md,.csv,.pdf" style="display:none">
             <p class="upload-hint">対応形式: Markdown (.md), CSV (.csv), PDF (.pdf) — 最大 50MB/ファイル</p>
         </div>
+        <div id="upload-file-list" class="upload-file-list" style="display:none;"></div>
+        <div class="upload-controls" id="upload-controls" style="display:none;">
+            <label class="upload-secret-toggle">
+                <input type="checkbox" id="upload-secret" name="secret" value="true">
+                <span>シークレットとして登録</span>
+            </label>
+            <button type="button" class="btn btn-primary" id="upload-submit-btn">アップロード</button>
+        </div>
         <div id="upload-status"></div>
     </section>
     

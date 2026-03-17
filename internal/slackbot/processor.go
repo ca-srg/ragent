@@ -129,7 +129,11 @@ func (p *Processor) ProcessMessage(ctx context.Context, botUserID string, msg *s
 	}
 
 	// Perform search
-	result := p.search.Search(ctx, searchQuery, SearchOptions{ChannelID: msg.Channel, ThreadTimestamp: msg.ThreadTimestamp})
+	result := p.search.Search(ctx, searchQuery, SearchOptions{
+		ChannelID:       msg.Channel,
+		ThreadTimestamp: msg.ThreadTimestamp,
+		UserID:          msg.User,
+	})
 	if result != nil {
 		span.SetAttributes(
 			attribute.Int("slack.search.results", result.Total),

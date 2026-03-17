@@ -19,6 +19,7 @@ type DocumentMetadata struct {
 	Source       string                 `json:"source"`
 	FilePath     string                 `json:"file_path"`
 	WordCount    int                    `json:"word_count"`
+	Secret       bool                   `json:"secret"`
 	CustomFields map[string]interface{} `json:"custom_fields"`
 }
 

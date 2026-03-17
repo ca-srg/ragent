@@ -483,6 +483,38 @@ footer {
 .upload-result-item.rejected { background-color: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
 .upload-result-item.error { background-color: rgba(245, 158, 11, 0.1); color: var(--warning-color); }
 .upload-loading { text-align: center; color: var(--text-muted); padding: 1rem; }
+.upload-file-list {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+}
+.upload-file-list ul { list-style: none; }
+.upload-file-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0;
+    font-size: 0.875rem;
+}
+.upload-file-list li + li { border-top: 1px solid var(--border-color); }
+.upload-file-name { color: var(--text-color); word-break: break-all; }
+.upload-file-size { color: var(--text-muted); white-space: nowrap; margin-left: 1rem; }
+.upload-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+    gap: 1rem;
+}
+.upload-secret-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
 
 /* Responsive */
 @media (max-width: 768px) {

@@ -4,10 +4,11 @@ import "encoding/json"
 
 // TermQuery represents the parameters for executing an OpenSearch term query.
 type TermQuery struct {
-	Field  string   `json:"field"`
-	Values []string `json:"values"`
-	Size   int      `json:"size,omitempty"`
-	From   int      `json:"from,omitempty"`
+	Field         string   `json:"field"`
+	Values        []string `json:"values"`
+	ExcludeSecret bool     `json:"exclude_secret,omitempty"`
+	Size          int      `json:"size,omitempty"`
+	From          int      `json:"from,omitempty"`
 }
 
 // TermQueryResult captures a single OpenSearch hit returned from a term query.

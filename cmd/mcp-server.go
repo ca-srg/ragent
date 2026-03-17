@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ca-srg/ragent/internal/ingestion"
 	"github.com/ca-srg/ragent/internal/mcpserver"
 	"github.com/ca-srg/ragent/internal/webui"
 )
@@ -44,7 +45,6 @@ var (
 	mcpOnlySlack          bool
 	mcpExportEval         bool
 	mcpExportEvalPath     string
-	mcpEnableDashboard    bool
 	mcpDashboardDirectory string
 )
 
@@ -88,32 +88,27 @@ Examples:
 			ExportEvalPath:    mcpExportEvalPath,
 		}
 
-		if mcpEnableDashboard {
-			dashboardDir := mcpDashboardDirectory
-			if dashboardDir == "" {
-				dashboardDir = "./source"
-			}
-			dashboardCfg := &webui.ServerConfig{
-				Directory: dashboardDir,
-				BasePath:  "/dashboard",
-			}
-
-			deps, err := webui.BuildDashboardDeps()
-			if err != nil {
-				return fmt.Errorf("failed to build dashboard dependencies: %w", err)
-			}
-
-			srv, err := webui.NewServer(dashboardCfg, deps, log.New(os.Stdout, "[dashboard] ", log.LstdFlags))
-			if err != nil {
-				return fmt.Errorf("failed to create dashboard server: %w", err)
-			}
-			if err := srv.Initialize(context.Background()); err != nil {
-				return fmt.Errorf("failed to initialize dashboard: %w", err)
-			}
-			opts.DashboardHandler = srv.Handler()
-			opts.DashboardCleanup = srv.Cleanup
-			opts.DashboardBasePath = "/dashboard"
+		dashboardDir := mcpDashboardDirectory
+		if dashboardDir == "" {
+			dashboardDir = "./source"
 		}
+
+		fs, vec, err := ingestion.BuildDashboardDependencies()
+		if err != nil {
+			return fmt.Errorf("failed to build dashboard dependencies: %w", err)
+		}
+
+		handler, cleanup, err := webui.SetupDashboard(
+			&webui.ServerConfig{Directory: dashboardDir, BasePath: "/dashboard"},
+			&webui.Dependencies{FileScanner: fs, Vectorizer: vec},
+			log.New(os.Stdout, "[dashboard] ", log.LstdFlags),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to setup dashboard: %w", err)
+		}
+		opts.DashboardHandler = handler
+		opts.DashboardCleanup = cleanup
+		opts.DashboardBasePath = "/dashboard"
 
 		return mcpserver.RunMCPServer(context.Background(), cmd, opts)
 	},
@@ -156,6 +151,5 @@ func init() {
 	mcpServerCmd.Flags().BoolVar(&mcpExportEval, "export-eval", false, "Enable evaluation data export")
 	mcpServerCmd.Flags().StringVar(&mcpExportEvalPath, "export-eval-path", "./evaluation/exports/", "Output directory for JSONL evaluation data")
 
-	mcpServerCmd.Flags().BoolVar(&mcpEnableDashboard, "enable-dashboard", false, "Enable vectorization dashboard at /dashboard/")
 	mcpServerCmd.Flags().StringVar(&mcpDashboardDirectory, "dashboard-directory", "./source", "Source directory for dashboard vectorization")
 }

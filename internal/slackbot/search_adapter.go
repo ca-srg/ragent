@@ -93,6 +93,16 @@ func (h *HybridSearchAdapter) awsConfig(ctx context.Context) (aws.Config, error)
 	return *h.awsCfg, nil
 }
 
+func (h *HybridSearchAdapter) shouldExcludeSecret(opts SearchOptions) bool {
+	secretConfig, err := appconfig.LoadSlackSecretConfig("")
+	if err != nil {
+		return true
+	}
+
+	checker := appconfig.NewSecretAccessChecker(secretConfig)
+	return !checker.CanAccessSecret(false, opts.UserID)
+}
+
 func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts SearchOptions) *SearchResult {
 	start := time.Now()
 
@@ -161,6 +171,7 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		FusionMethod:   opensearch.FusionMethodRRF,
 		UseJapaneseNLP: true,
 		TimeoutSeconds: 10,
+		ExcludeSecret:  h.shouldExcludeSecret(opts),
 	})
 	if err != nil || res == nil || res.FusionResult == nil {
 		log.Printf("hybrid search failed: %v", err)
