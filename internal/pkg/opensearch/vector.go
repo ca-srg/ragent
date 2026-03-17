@@ -318,6 +318,22 @@ func (c *Client) IndexDocument(ctx context.Context, indexName, docID string, doc
 	return nil
 }
 
+func (c *Client) DeleteDocument(ctx context.Context, indexName, docID string) error {
+	if err := c.WaitForRateLimit(ctx); err != nil {
+		return fmt.Errorf("rate limit error: %w", err)
+	}
+
+	_, err := c.client.Document.Delete(ctx, opensearchapi.DocumentDeleteReq{
+		Index:      indexName,
+		DocumentID: docID,
+	})
+	if err != nil {
+		return ClassifyConnectionError(err)
+	}
+
+	return nil
+}
+
 func (c *Client) BulkIndexDocuments(ctx context.Context, indexName string, docs []map[string]interface{}) error {
 	if len(docs) == 0 {
 		return nil

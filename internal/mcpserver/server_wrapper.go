@@ -563,7 +563,7 @@ func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
 
 func (sw *ServerWrapper) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" {
+		if r.URL.Path == "/health" || strings.HasPrefix(r.URL.Path, "/dashboard") {
 			next.ServeHTTP(w, r)
 			return
 		}
