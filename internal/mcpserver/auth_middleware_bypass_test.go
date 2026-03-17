@@ -1,10 +1,12 @@
 package mcpserver
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // testSuccessHandler is a simple handler for testing that always returns OK
@@ -449,6 +451,122 @@ func TestUnifiedAuthMiddleware_NoBypassConfig(t *testing.T) {
 
 			if rr.Code != tt.expectStatus {
 				t.Errorf("Expected status %d, got %d", tt.expectStatus, rr.Code)
+			}
+		})
+	}
+}
+
+func TestUnifiedAuthMiddleware_BypassWithOIDCTokenEnrichesContext(t *testing.T) {
+	// Given: a mock OIDC middleware that accepts a known token
+	tokenStore := NewTokenStore()
+	storedToken := &TokenInfo{
+		Subject:   "bypass-user",
+		Email:     "bypass@example.com",
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+	}
+	tokenStore.mutex.Lock()
+	tokenStore.tokens["valid-oidc-token"] = storedToken
+	tokenStore.mutex.Unlock()
+
+	oidcMiddleware := &OIDCAuthMiddleware{
+		tokenStore:    tokenStore,
+		enableLogging: false,
+	}
+
+	config := &UnifiedAuthConfig{
+		AuthMethod: AuthMethodOIDC,
+		OIDCConfig: &OIDCConfig{
+			ClientID:         "test",
+			SkipDiscovery:    true,
+			AuthorizationURL: "https://example.com/auth",
+			TokenURL:         "https://example.com/token",
+		},
+		BypassConfig: &BypassIPConfig{
+			BypassIPRanges: []string{"10.0.0.0/8"},
+			AuditLogging:   false,
+		},
+	}
+
+	middleware, err := NewUnifiedAuthMiddleware(config)
+	if err != nil {
+		t.Fatalf("Failed to create middleware: %v", err)
+	}
+	middleware.oidcAuth = oidcMiddleware
+
+	tests := []struct {
+		name            string
+		clientIP        string
+		authHeader      string
+		wantStatus      int
+		wantUserContext bool
+		wantAuthMethod  string
+	}{
+		{
+			name:            "bypass IP with valid OIDC token sets user context",
+			clientIP:        "10.0.0.1",
+			authHeader:      "Bearer valid-oidc-token",
+			wantStatus:      http.StatusOK,
+			wantUserContext: true,
+			wantAuthMethod:  "bypass",
+		},
+		{
+			name:            "bypass IP without OIDC token still passes through",
+			clientIP:        "10.0.0.1",
+			authHeader:      "",
+			wantStatus:      http.StatusOK,
+			wantUserContext: false,
+			wantAuthMethod:  "bypass",
+		},
+		{
+			name:            "bypass IP with invalid OIDC token still passes through",
+			clientIP:        "10.0.0.1",
+			authHeader:      "Bearer invalid-token",
+			wantStatus:      http.StatusOK,
+			wantUserContext: false,
+			wantAuthMethod:  "bypass",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedCtx context.Context
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedCtx = r.Context()
+				w.WriteHeader(http.StatusOK)
+			})
+			wrappedHandler := middleware.Middleware(handler)
+
+			req := httptest.NewRequest("GET", "/api/test", nil)
+			req.RemoteAddr = tt.clientIP + ":12345"
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
+			}
+			rr := httptest.NewRecorder()
+
+			wrappedHandler.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("expected status %d, got %d", tt.wantStatus, rr.Code)
+			}
+
+			// Then: verify auth method context
+			if method := getAuthMethodFromContext(capturedCtx); method != tt.wantAuthMethod {
+				t.Errorf("expected auth method %q, got %q", tt.wantAuthMethod, method)
+			}
+
+			// Then: verify user context presence
+			tokenInfo, _ := capturedCtx.Value(userContextKey).(*TokenInfo)
+			if tt.wantUserContext && tokenInfo == nil {
+				t.Error("expected userContextKey to be set, but it was nil")
+			}
+			if !tt.wantUserContext && tokenInfo != nil {
+				t.Errorf("expected userContextKey to be nil, but got %+v", tokenInfo)
+			}
+
+			if tt.wantUserContext && tokenInfo != nil {
+				if tokenInfo.Email != storedToken.Email {
+					t.Errorf("expected email %q, got %q", storedToken.Email, tokenInfo.Email)
+				}
 			}
 		})
 	}

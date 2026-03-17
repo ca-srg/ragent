@@ -161,8 +161,23 @@ func (m *UnifiedAuthMiddleware) Middleware(next http.Handler) http.Handler {
 					log.Printf("Bypassing authentication for IP %s (matched bypass range)", clientIP)
 				}
 
-				// Skip all authentication and proceed to next handler
-				next.ServeHTTP(w, r)
+				// Bypass allows the request through without requiring authentication.
+				// However, if a valid OIDC token is present, we still process it to
+				// populate userContextKey so that secret documents become accessible.
+				ctx := r.Context()
+				ctx = context.WithValue(ctx, authMethodContextKey, "bypass")
+				ctx = context.WithValue(ctx, clientIPContextKey, clientIP)
+				if m.oidcAuth != nil {
+					if token := m.oidcAuth.extractToken(r); token != "" {
+						if tokenInfo, err := m.oidcAuth.validateToken(token); err == nil {
+							ctx = context.WithValue(ctx, userContextKey, tokenInfo)
+							if shouldLog && m.enableLogging {
+								log.Printf("Bypass + OIDC: enriched context with user %s for IP %s", tokenInfo.Email, clientIP)
+							}
+						}
+					}
+				}
+				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 		}
