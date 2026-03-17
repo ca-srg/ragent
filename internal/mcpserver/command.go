@@ -557,7 +557,7 @@ func BuildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 	toolCopy.Name = toolName
 
 	toolCopy.Description = fmt.Sprintf(
-		"ハイブリッド検索ツール。RAGent の OpenSearch (BM25) と Titan ベクトル検索を組み合わせ、最大 %d 件の候補を融合スコアで返します。日本語・英語いずれの自然文クエリにも対応し、手順書・設計資料・ナレッジノートを横断的に調べる用途を想定しています。必要に応じて `enable_slack_search` を true にすることで社内 Slack の会話も同時に検索できます。レスポンスは JSON テキストで、各ドキュメントのタイトル/抜粋/スコア/パス/メタデータ (任意) を含みます。\n\nEnglish: Run hybrid retrieval across the Markdown knowledge base by blending BM25 and Titan embeddings on Amazon OpenSearch. Returns up to %d ranked documents with fused scores plus optional metadata. Set `enable_slack_search` to true to enrich the response with Slack conversations.",
+		"ハイブリッド検索ツール。RAGent の OpenSearch (BM25) と Titan ベクトル検索を組み合わせ、最大 %d 件の候補を融合スコアで返します。日本語・英語いずれの自然文クエリにも対応し、手順書・設計資料・ナレッジノートを横断的に調べる用途を想定しています。必要に応じて `enable_slack_search` を true にすることで社内 Slack の会話も同時に検索できます。レスポンスは JSON テキストで、各ドキュメントのタイトル/抜粋/スコア/パス/メタデータ (任意) を含みます。\n\n**重要**: ユーザーが「Slack検索を利用して」「Slackも検索して」のように明示的に Slack 検索を要求した場合は `enable_slack_search` を true に、「Slack検索を利用せず」「Slack検索なしで」のように Slack 検索を除外する指示がある場合は `enable_slack_search` を false に設定してください。ユーザーの Slack 検索に関する明示的な指示を必ず尊重してください。\n\nEnglish: Run hybrid retrieval across the Markdown knowledge base by blending BM25 and Titan embeddings on Amazon OpenSearch. Returns up to %d ranked documents with fused scores plus optional metadata. Set `enable_slack_search` to true to enrich the response with Slack conversations. **Important**: Always respect the user's explicit instructions about Slack search (e.g. 'without slack search' → false, 'with slack search' → true).",
 		defaults.DefaultSize,
 		defaults.DefaultSize,
 	)
@@ -684,7 +684,7 @@ func BuildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 
 	slackToggleProp := ensureProperty("enable_slack_search", "boolean")
 	slackToggleProp.Title = "Enable Slack Search"
-	slackToggleProp.Description = "Slack のワークスペース会話を同時に検索する場合は true を指定します。サーバー側で Slack の資格情報が設定されている必要があります。"
+	slackToggleProp.Description = "Slack のワークスペース会話を同時に検索する場合は true を指定します。ユーザーが「Slack検索を利用せず」等と明示的に Slack 検索の除外を指示した場合は必ず false にしてください。サーバー側で Slack の資格情報が設定されている必要があります。"
 	slackToggleProp.Default = toRaw(false)
 
 	schema.Properties["query"] = queryProp

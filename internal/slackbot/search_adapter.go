@@ -224,9 +224,9 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 		}
 	}
 
-	// Execute Slack search BEFORE LLM call to include Slack context in prompt
 	var slackResult *SlackConversationResult
-	if h.slackSearch != nil {
+	directive := slacksearch.DetectSlackSearchDirective(query)
+	if h.slackSearch != nil && directive.Directive != slacksearch.SlackSearchExplicitDisable {
 		NotifyProgress(ctx, "Slackの会話を検索中...")
 		var err error
 		slackResult, err = h.slackSearch.SearchConversations(ctx, query, opts)
@@ -234,12 +234,13 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 			log.Printf("slack search error: %v", err)
 			slackResult = nil
 		}
-		// Add Slack context to prompt parts
 		if slackResult != nil {
 			if slackContext := slackResult.ForPrompt(); slackContext != "" {
 				contextParts = append(contextParts, slackContext)
 			}
 		}
+	} else if directive.Directive == slacksearch.SlackSearchExplicitDisable {
+		log.Printf("Slack search skipped: user explicitly disabled via query directive")
 	}
 
 	// Generate chat response using LLM (same as chat command)

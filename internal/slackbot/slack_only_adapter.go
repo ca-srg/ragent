@@ -11,6 +11,7 @@ import (
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
+	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 )
 
 // SlackOnlySearchAdapter uses only Slack search without OpenSearch
@@ -53,9 +54,9 @@ func (s *SlackOnlySearchAdapter) SetEvalWriter(w *evalexport.Writer) {
 func (s *SlackOnlySearchAdapter) Search(ctx context.Context, query string, opts SearchOptions) *SearchResult {
 	start := time.Now()
 
-	// Execute Slack search
 	var slackResult *SlackConversationResult
-	if s.slackSearch != nil {
+	directive := slacksearch.DetectSlackSearchDirective(query)
+	if s.slackSearch != nil && directive.Directive != slacksearch.SlackSearchExplicitDisable {
 		NotifyProgress(ctx, "Slackの会話を検索中...")
 		var err error
 		slackResult, err = s.slackSearch.SearchConversations(ctx, query, opts)
@@ -63,6 +64,8 @@ func (s *SlackOnlySearchAdapter) Search(ctx context.Context, query string, opts 
 			log.Printf("Slack search error: %v", err)
 			slackResult = nil
 		}
+	} else if directive.Directive == slacksearch.SlackSearchExplicitDisable {
+		log.Printf("Slack search skipped: user explicitly disabled via query directive")
 	}
 
 	// Build context from Slack results

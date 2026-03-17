@@ -54,6 +54,9 @@ func (e *MetadataExtractor) ExtractMetadata(filePath string, content string) (*p
 	// Set source as filename
 	metadata.Source = filepath.Base(filePath)
 
+	// Extract secret from front matter
+	metadata.Secret = e.extractSecret(frontMatter)
+
 	// Calculate word count
 	metadata.WordCount = e.calculateWordCount(cleanContent)
 
@@ -393,11 +396,27 @@ func (e *MetadataExtractor) cleanMarkdown(content string) string {
 	return content
 }
 
+func (e *MetadataExtractor) extractSecret(frontMatter map[string]interface{}) bool {
+	val, ok := frontMatter["secret"]
+	if !ok {
+		return false
+	}
+
+	switch v := val.(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true")
+	default:
+		return false
+	}
+}
+
 // isReservedField checks if a field name is reserved for specific metadata fields
 func (e *MetadataExtractor) isReservedField(fieldName string) bool {
 	reserved := []string{
 		"title", "category", "tags", "author", "date", "updated",
-		"created", "created_at", "updated_at", "reference",
+		"created", "created_at", "updated_at", "reference", "secret",
 	}
 
 	fieldLower := strings.ToLower(fieldName)
@@ -457,6 +476,7 @@ func (e *MetadataExtractor) ExtractGitHubMetadata(repoOwner, repoName, repoRelat
 	}
 
 	metadata.CreatedAt, metadata.UpdatedAt = e.extractDates(frontMatter, repoRelativePath)
+	metadata.Secret = e.extractSecret(frontMatter)
 	metadata.WordCount = e.calculateWordCount(cleanContent)
 
 	for key, value := range frontMatter {

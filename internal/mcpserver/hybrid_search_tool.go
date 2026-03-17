@@ -194,6 +194,17 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 		return CreateToolCallErrorResult(fmt.Sprintf("Invalid parameters: %v", err)), err
 	}
 	hsta.applySecretPolicyFromContext(ctx, searchRequest)
+
+	directive := slacksearch.DetectSlackSearchDirective(searchRequest.Query)
+	switch directive.Directive {
+	case slacksearch.SlackSearchExplicitDisable:
+		hsta.logger.Printf("Query contains explicit Slack search disable directive")
+		searchRequest.EnableSlackSearch = false
+	case slacksearch.SlackSearchExplicitEnable:
+		hsta.logger.Printf("Query contains explicit Slack search enable directive")
+		searchRequest.EnableSlackSearch = true
+	}
+
 	if searchRequest.EnableSlackSearch && hsta.slackService == nil {
 		err := fmt.Errorf("slack search requested but not configured")
 		return CreateToolCallErrorResult(err.Error()), err

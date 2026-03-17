@@ -203,9 +203,19 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 		span.SetAttributes(attribute.String("search.filters", formatFilters(request.Filters)))
 	}
 
-	if !request.EnableSlackSearch && queryMentionsSlack(request.Query) {
-		s.logger.Printf("Query contains 'Slack'; forcing Slack search enablement")
+	directive := slacksearch.DetectSlackSearchDirective(request.Query)
+	switch directive.Directive {
+	case slacksearch.SlackSearchExplicitDisable:
+		s.logger.Printf("Query contains explicit Slack search disable directive; skipping Slack search")
+		request.EnableSlackSearch = false
+	case slacksearch.SlackSearchExplicitEnable:
+		s.logger.Printf("Query contains explicit Slack search enable directive; enabling Slack search")
 		request.EnableSlackSearch = true
+	default:
+		if !request.EnableSlackSearch && queryMentionsSlack(request.Query) {
+			s.logger.Printf("Query contains 'Slack'; forcing Slack search enablement")
+			request.EnableSlackSearch = true
+		}
 	}
 
 	s.logger.Printf("Executing hybrid search: query='%s', index='%s'", request.Query, request.IndexName)
