@@ -22,7 +22,6 @@ func disableSecretsManager(t *testing.T) {
 }
 
 // setRequiredEnvVars sets the minimum required env vars to pass Load() validation.
-// OPENSEARCH_ENDPOINT and OPENSEARCH_INDEX remain required=true in the env tag.
 func setRequiredEnvVars(t *testing.T) {
 	t.Helper()
 	t.Setenv("OPENSEARCH_ENDPOINT", "http://localhost:9200")

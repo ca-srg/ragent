@@ -170,3 +170,8 @@ Local prefix: `github.com/ca-srg/ragent` (configured in `.golangci-lint.yml`).
 4. `zizmor` (GitHub Actions security — via pre-commit)
 5. Unit tests: `go test $(go list ./... | grep -v '/tests/') -timeout 120s`
 6. E2E tests: require OpenSearch (docker compose) + AWS credentials (OIDC)
+
+## When environment variables are added, deleted, or updated
+
+- Update @terraform/secret-template.json
+- Update @.env.example

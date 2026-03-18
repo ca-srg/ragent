@@ -22,8 +22,8 @@ type Config struct {
 	ExcludeCategoriesStr string        `json:"-" env:"EXCLUDE_CATEGORIES,default=日報"`
 	ExcludeCategories    []string      `json:"exclude_categories"`
 	// OpenSearch configuration
-	OpenSearchEndpoint          string        `json:"opensearch_endpoint" env:"OPENSEARCH_ENDPOINT,required=true"`
-	OpenSearchIndex             string        `json:"opensearch_index" env:"OPENSEARCH_INDEX,required=true"`
+	OpenSearchEndpoint          string        `json:"opensearch_endpoint" env:"OPENSEARCH_ENDPOINT"`
+	OpenSearchIndex             string        `json:"opensearch_index" env:"OPENSEARCH_INDEX"`
 	OpenSearchRegion            string        `json:"opensearch_region" env:"OPENSEARCH_REGION,default=us-east-1"`
 	OpenSearchInsecureSkipTLS   bool          `json:"opensearch_insecure_skip_tls" env:"OPENSEARCH_INSECURE_SKIP_TLS,default=false"`
 	OpenSearchRateLimit         float64       `json:"opensearch_rate_limit" env:"OPENSEARCH_RATE_LIMIT,default=10.0"`

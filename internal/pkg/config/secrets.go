@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -86,28 +88,44 @@ func loadSecretsOnce(ctx context.Context) error {
 	}
 
 	injected := 0
+	skipped := 0
 	for key, val := range secrets {
 		strVal, ok := val.(string)
 		if !ok {
 			// Skip non-string values (objects, arrays, numbers).
 			continue
 		}
-		if os.Getenv(key) != "" {
-			// Existing env var takes priority; never overwrite.
+		if existing, exists := os.LookupEnv(key); exists {
+			// Existing env var takes priority; never overwrite — even if empty.
+			skipped++
+			log.Printf("Secrets Manager: skipping %s (already set in environment to %q)", key, maskValue(key, existing))
 			continue
 		}
 		if err := os.Setenv(key, strVal); err != nil {
 			return fmt.Errorf("failed to set environment variable %s: %w", key, err)
 		}
+		log.Printf("Secrets Manager: injected %s", key)
 		injected++
 	}
 
-	// Log only the count of injected keys, never the values.
-	if injected > 0 {
-		fmt.Printf("loaded %d secret(s) from Secrets Manager into environment\n", injected)
-	}
+	log.Printf("Secrets Manager: injected %d key(s), skipped %d key(s) (already set in env)", injected, skipped)
 
 	return nil
+}
+
+var sensitiveKeySubstrings = []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "BEARER"}
+
+func maskValue(key, val string) string {
+	upper := strings.ToUpper(key)
+	for _, sub := range sensitiveKeySubstrings {
+		if strings.Contains(upper, sub) {
+			if len(val) <= 4 {
+				return "***"
+			}
+			return val[:4] + "***"
+		}
+	}
+	return val
 }
 
 // newDefaultSMClient builds a real AWS Secrets Manager client using the

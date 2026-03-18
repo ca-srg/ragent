@@ -118,17 +118,19 @@ func RunVectorize(cmd *cobra.Command, opts VectorizeOptions) error {
 func runVectorize(cmd *cobra.Command, args []string) error {
 	log.Println("Starting vectorization process...")
 
-	if err := validateOpenSearchFlags(); err != nil {
-		return fmt.Errorf("flag validation failed: %w", err)
-	}
-
 	if err := validateFollowModeFlags(cmd); err != nil {
 		return fmt.Errorf("follow mode flag validation failed: %w", err)
 	}
 
+	// Load config first so that LoadSecretsIntoEnv() injects Secrets Manager
+	// values before we validate environment variables like OPENSEARCH_ENDPOINT.
 	cfg, err := appconfig.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	if err := validateOpenSearchFlags(); err != nil {
+		return fmt.Errorf("flag validation failed: %w", err)
 	}
 
 	if concurrency > 0 {

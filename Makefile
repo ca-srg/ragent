@@ -30,7 +30,7 @@ build-linux-arm64:
 	@echo "==> GOOS=linux GOARCH=arm64 go build"
 	@GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64_BIN) .
 
-## ローカルビルド済みバイナリを指定EC2 (via SSM) の /root/ragent に配置
+## ローカルビルド済みバイナリを指定EC2 (via SSM) の /usr/local/bin/ragent に配置
 deploy-ec2: build-linux-arm64
 	@[ -n "$(INSTANCE_ID)" ] || { echo "INSTANCE_ID を指定してください (例: make deploy-ec2 INSTANCE_ID=i-xxxxxxxx)"; exit 1; }
 	@echo "==> Uploading binary to temporary storage"
@@ -38,7 +38,7 @@ deploy-ec2: build-linux-arm64
 	 if [ -z "$$tmp_url" ]; then echo "バイナリのアップロードに失敗しました"; exit 1; fi; \
 	 echo "Uploaded: $$tmp_url"; \
 	 backup_ts=$$(date +%s); \
-	 payload=$$(TMP_URL="$$tmp_url" INSTANCE_ID="$(INSTANCE_ID)" BACKUP_TS="$$backup_ts" python3 -c "import json, os;url=os.environ['TMP_URL'].strip();instance_id=os.environ['INSTANCE_ID'].strip();backup=os.environ['BACKUP_TS'].strip();command=('bash -lc \"set -euo pipefail; if [ -f /root/ragent ]; then mv /root/ragent /root/ragent.bak.{backup}; fi; curl -fL {url!r} -o /root/ragent; chmod +x /root/ragent\"').format(backup=backup, url=url);payload={'DocumentName':'AWS-RunShellScript','Targets':[{'Key':'instanceids','Values':[instance_id]}],'Comment':'deploy ragent binary','Parameters':{'commands':[command]}};print(json.dumps(payload))"); \
+	 payload=$$(TMP_URL="$$tmp_url" INSTANCE_ID="$(INSTANCE_ID)" BACKUP_TS="$$backup_ts" python3 -c "import json, os;url=os.environ['TMP_URL'].strip();instance_id=os.environ['INSTANCE_ID'].strip();backup=os.environ['BACKUP_TS'].strip();command=('bash -lc \"set -euo pipefail; if [ -f /usr/local/bin/ragent ]; then mv /usr/local/bin/ragent /usr/local/bin/ragent.bak.{backup}; fi; curl -fL {url!r} -o /usr/local/bin/ragent; chmod +x /usr/local/bin/ragent\"').format(backup=backup, url=url);payload={'DocumentName':'AWS-RunShellScript','Targets':[{'Key':'instanceids','Values':[instance_id]}],'Comment':'deploy ragent binary','Parameters':{'commands':[command]}};print(json.dumps(payload))"); \
 	 echo "==> Executing SSM send-command"; \
 	 cmd_id=$$(aws ssm send-command --cli-input-json "$$payload" --query 'Command.CommandId' --output text); \
 	 echo "SSM CommandId: $$cmd_id"; \
