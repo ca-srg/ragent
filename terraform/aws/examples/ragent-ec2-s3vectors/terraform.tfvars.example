@@ -1,0 +1,12 @@
+aws_region     = "us-east-1"
+ragent_version = "v1.0.0"
+vpc_id         = "vpc-xxxxxxxxx"
+subnet_ids     = ["subnet-xxxxxxxx", "subnet-yyyyyyyy"]
+
+s3vectors_bucket_name = "my-ragent-vectors"
+s3vectors_index_name  = "my-ragent-index"
+
+tags = {
+  Environment = "production"
+  Project     = "ragent"
+}

@@ -128,6 +128,32 @@ func TestLoadSecretsIntoEnv_ExistingEnvNotOverwritten(t *testing.T) {
 		"unset var should be injected from Secrets Manager")
 }
 
+func TestLoadSecretsIntoEnv_EmptyEnvVarNotOverwritten(t *testing.T) {
+	t.Cleanup(ResetSecretsLoaderForTest)
+	t.Setenv(envSecretManagerSecretID, "my-secret-id")
+	t.Setenv("EMPTY_VAR_SM", "")
+	unsetEnv(t, "UNSET_VAR_SM")
+
+	mock := newMockWithSecret(`{"EMPTY_VAR_SM":"sm-value","UNSET_VAR_SM":"sm-new"}`)
+	setupMockFactory(mock)
+
+	err := LoadSecretsIntoEnv(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "", os.Getenv("EMPTY_VAR_SM"),
+		"env var explicitly set to empty must NOT be overwritten by Secrets Manager")
+	assert.Equal(t, "sm-new", os.Getenv("UNSET_VAR_SM"),
+		"truly unset var should be injected from Secrets Manager")
+}
+
+func TestMaskValue(t *testing.T) {
+	assert.Equal(t, "***", maskValue("SLACK_BOT_TOKEN", "xo"))
+	assert.Equal(t, "xoxb***", maskValue("SLACK_BOT_TOKEN", "xoxb-long-value"))
+	assert.Equal(t, "sqlite", maskValue("VECTOR_DB_BACKEND", "sqlite"))
+	assert.Equal(t, "http://localhost:9200", maskValue("OPENSEARCH_ENDPOINT", "http://localhost:9200"))
+	assert.Equal(t, "AIza***", maskValue("GEMINI_API_KEY", "AIzaSyC9abcd"))
+	assert.Equal(t, "ghp_***", maskValue("GITHUB_TOKEN", "ghp_abcdef"))
+}
+
 // TestLoadSecretsIntoEnv_SMError_ReturnsFatal verifies that when the SM client
 // returns an error, LoadSecretsIntoEnv propagates it as a non-nil error.
 func TestLoadSecretsIntoEnv_SMError_ReturnsFatal(t *testing.T) {

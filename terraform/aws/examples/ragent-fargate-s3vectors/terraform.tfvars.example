@@ -1,0 +1,12 @@
+aws_region            = "us-east-1"
+container_image_uri   = "ghcr.io/ca-srg/ragent:latest"
+ragent_version        = "v1.0.0"
+vpc_id                = "vpc-0123456789abcdef0"
+subnet_ids            = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+s3vectors_bucket_name = "my-ragent-vectors"
+s3vectors_index_name  = "my-ragent-index"
+
+tags = {
+  Project     = "ragent"
+  Environment = "example"
+}
