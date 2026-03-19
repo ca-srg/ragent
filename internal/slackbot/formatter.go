@@ -85,7 +85,7 @@ func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.
 
 // BuildChatResponse formats LLM-generated response into blocks
 func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.MsgOption {
-	response := result.GeneratedResponse
+	response := slacksearch.EscapeSlackMentions(result.GeneratedResponse)
 	if response == "" {
 		response = "回答を生成できませんでした。"
 	}
@@ -390,7 +390,7 @@ func buildSlackResultBlocks(result *SlackConversationResult) []slack.Block {
 			slack.NewTextBlockObject(slack.MarkdownType, header, false, false),
 		))
 
-		body := strings.TrimSpace(msg.Text)
+		body := slacksearch.EscapeSlackMentions(strings.TrimSpace(msg.Text))
 		if body == "" {
 			body = "(本文なし)"
 		}
