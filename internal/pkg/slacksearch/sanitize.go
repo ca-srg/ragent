@@ -2,6 +2,7 @@ package slacksearch
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -45,6 +46,53 @@ func NormalizeSlackChannels(channels []string) []string {
 		}
 	}
 	return result
+}
+
+// Regex patterns for Slack mention markup: <@U123>, <@U123|name>, <!here>, <!subteam^S|@t>
+var (
+	slackUserMentionRe    = regexp.MustCompile(`<@([^>|]+)(?:\|([^>]*))?>`)
+	slackSpecialMentionRe = regexp.MustCompile(`<!(here|channel|everyone)(?:\|([^>]*))?>`)
+	slackSubteamMentionRe = regexp.MustCompile(`<!subteam\^[^|>]+(?:\|([^>]*))?>`)
+)
+
+// EscapeSlackMentions converts Slack mention markup to plain text so that
+// reposting the text does not trigger notifications.
+func EscapeSlackMentions(text string) string {
+	if text == "" {
+		return text
+	}
+
+	text = slackUserMentionRe.ReplaceAllStringFunc(text, func(match string) string {
+		subs := slackUserMentionRe.FindStringSubmatch(match)
+		if len(subs) >= 3 && subs[2] != "" {
+			return "@" + subs[2]
+		}
+		if len(subs) >= 2 {
+			return "@" + subs[1]
+		}
+		return match
+	})
+
+	text = slackSpecialMentionRe.ReplaceAllStringFunc(text, func(match string) string {
+		subs := slackSpecialMentionRe.FindStringSubmatch(match)
+		if len(subs) >= 3 && subs[2] != "" {
+			return "@" + subs[2]
+		}
+		if len(subs) >= 2 {
+			return "@" + subs[1]
+		}
+		return match
+	})
+
+	text = slackSubteamMentionRe.ReplaceAllStringFunc(text, func(match string) string {
+		subs := slackSubteamMentionRe.FindStringSubmatch(match)
+		if len(subs) >= 2 && subs[1] != "" {
+			return subs[1]
+		}
+		return match
+	})
+
+	return text
 }
 
 // PrintSlackResults prints Slack search results to stdout.

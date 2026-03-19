@@ -50,6 +50,41 @@ func TestNormalizeSlackChannels(t *testing.T) {
 	assert.Empty(t, NormalizeSlackChannels([]string{"", "   ", "#"}))
 }
 
+func TestEscapeSlackMentions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "empty string", input: "", expected: ""},
+		{name: "no mentions", input: "hello world", expected: "hello world"},
+		{name: "user mention without display name", input: "ping <@U05USBPDH24>", expected: "ping @U05USBPDH24"},
+		{name: "user mention with display name", input: "<@U05USBPDH24|aoto> please check", expected: "@aoto please check"},
+		{name: "multiple user mentions", input: "<@U111> and <@U222|bob>", expected: "@U111 and @bob"},
+		{name: "here mention", input: "<!here> check this", expected: "@here check this"},
+		{name: "channel mention", input: "<!channel> alert", expected: "@channel alert"},
+		{name: "everyone mention", input: "<!everyone> FYI", expected: "@everyone FYI"},
+		{name: "subteam mention with label", input: "<!subteam^S041HKFD3A8|@infra-team> deploy ready", expected: "@infra-team deploy ready"},
+		{name: "url preserved", input: "see <https://example.com>", expected: "see <https://example.com>"},
+		{name: "channel link preserved", input: "check <#C0840MF8JDD|general>", expected: "check <#C0840MF8JDD|general>"},
+		{
+			name:     "mixed content",
+			input:    "<@U111|alice> said <!here> check <https://slack.com> with <@U222>",
+			expected: "@alice said @here check <https://slack.com> with @U222",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, EscapeSlackMentions(tt.input))
+		})
+	}
+}
+
 func TestPrintSlackResults(t *testing.T) {
 	result := &SlackSearchResult{
 		IterationCount: 2,
