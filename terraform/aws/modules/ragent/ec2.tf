@@ -4,10 +4,10 @@ locals {
   })
 
   ragent_init_script_content = templatefile("${path.module}/templates/ragent-init.sh.tpl", {
-    is_docker_opensearch = local.is_docker_opensearch
-    opensearch_endpoint  = local.opensearch_endpoint
+    is_docker_opensearch  = local.is_docker_opensearch
+    opensearch_endpoint   = local.opensearch_endpoint
     opensearch_index_name = var.opensearch_index_name
-    embedding_dimension  = var.opensearch_embedding_dimension
+    embedding_dimension   = var.opensearch_embedding_dimension
   })
 
   ragent_init_service_content = templatefile("${path.module}/templates/ragent-init.service.tpl", {
@@ -93,6 +93,10 @@ resource "aws_instance" "ragent" {
   }
 
   tags = merge(local.common_tags, { Name = "ragent" })
+
+  lifecycle {
+    ignore_changes = [ami]
+  }
 
   depends_on = [
     aws_iam_role_policy.ragent_bedrock,
