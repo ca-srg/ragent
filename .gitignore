@@ -16,3 +16,4 @@ terraform/test/.terraform.lock.hcl
 terraform/test/terraform.tfstate
 terraform/test/terraform.tfstate.backup
 terraform/test/terraform.tfvars
+terraform/aws/modules/ragent/.terraform
