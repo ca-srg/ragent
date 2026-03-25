@@ -415,6 +415,19 @@ variable "certificate_arn" {
   }
 }
 
+variable "systemd_service_overrides" {
+  type        = map(string)
+  default     = {}
+  description = "Systemd drop-in override content per service unit. Key is the service name without '.service' suffix (e.g., 'ragent-mcp'), value is the override.conf content. Overrides are placed in /etc/systemd/system/<key>.service.d/override.conf"
+
+  validation {
+    condition = alltrue([
+      for key, value in var.systemd_service_overrides : trimspace(key) != "" && trimspace(value) != ""
+    ])
+    error_message = "systemd_service_overrides keys and values must be non-empty strings."
+  }
+}
+
 variable "tags" {
   type        = map(string)
   default     = {}

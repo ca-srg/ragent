@@ -31,6 +31,15 @@ module "ragent" {
 
   ragent_env = var.ragent_env
 
+  # Override systemd service units via drop-in files
+  # systemd_service_overrides = {
+  #   "ragent-mcp" = <<-EOT
+  #     [Service]
+  #     ExecStart=
+  #     ExecStart=/usr/local/bin/ragent mcp-server --host 0.0.0.0 --auth-method ip
+  #   EOT
+  # }
+
   tags = merge(var.tags, {
     Project     = "ragent"
     Environment = "production"

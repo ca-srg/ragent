@@ -14,6 +14,7 @@ run "invalid_compute_type" {
     vpc_id                = "vpc-12345678"
     subnet_ids            = ["subnet-12345678"]
     ragent_version        = "v1.0.0"
+    certificate_arn       = "arn:aws:acm:ap-northeast-1:123456789012:certificate/test"
     s3vectors_bucket_name = "test-vectors-bucket"
     s3vectors_index_name  = "test-vectors-index"
   }
@@ -31,6 +32,7 @@ run "invalid_vector_backend" {
     vpc_id                = "vpc-12345678"
     subnet_ids            = ["subnet-12345678"]
     ragent_version        = "v1.0.0"
+    certificate_arn       = "arn:aws:acm:ap-northeast-1:123456789012:certificate/test"
     s3vectors_bucket_name = "test-vectors-bucket"
     s3vectors_index_name  = "test-vectors-index"
   }
@@ -48,6 +50,7 @@ run "invalid_opensearch_mode" {
     vpc_id                = "vpc-12345678"
     subnet_ids            = ["subnet-12345678"]
     ragent_version        = "v1.0.0"
+    certificate_arn       = "arn:aws:acm:ap-northeast-1:123456789012:certificate/test"
     s3vectors_bucket_name = "test-vectors-bucket"
     s3vectors_index_name  = "test-vectors-index"
   }
@@ -67,6 +70,7 @@ run "fargate_sqlite_rejected" {
     vpc_id              = "vpc-12345678"
     subnet_ids          = ["subnet-12345678"]
     ragent_version      = "v1.0.0"
+    certificate_arn     = "arn:aws:acm:ap-northeast-1:123456789012:certificate/test"
   }
 
   expect_failures = [
@@ -84,6 +88,7 @@ run "fargate_docker_opensearch_rejected" {
     vpc_id                = "vpc-12345678"
     subnet_ids            = ["subnet-12345678"]
     ragent_version        = "v1.0.0"
+    certificate_arn       = "arn:aws:acm:ap-northeast-1:123456789012:certificate/test"
     s3vectors_bucket_name = "test-vectors-bucket"
     s3vectors_index_name  = "test-vectors-index"
   }
@@ -101,6 +106,7 @@ run "fargate_no_container_image_rejected" {
     vpc_id                = "vpc-12345678"
     subnet_ids            = ["subnet-12345678"]
     ragent_version        = "v1.0.0"
+    certificate_arn       = "arn:aws:acm:ap-northeast-1:123456789012:certificate/test"
     s3vectors_bucket_name = "test-vectors-bucket"
     s3vectors_index_name  = "test-vectors-index"
   }

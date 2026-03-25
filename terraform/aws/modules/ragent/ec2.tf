@@ -68,16 +68,17 @@ resource "aws_instance" "ragent" {
   associate_public_ip_address = false
 
   user_data = templatefile("${path.module}/templates/cloud-init.sh.tpl", {
-    ragent_binary_url        = local.ragent_binary_url
-    is_docker_opensearch     = local.is_docker_opensearch
-    ragent_env_file          = local.ragent_env_file_content
-    ragent_init_script       = local.ragent_init_script_content
-    ragent_init_service      = local.ragent_init_service_content
-    ragent_mcp_service       = local.ragent_mcp_service_content
-    slack_bot_enabled        = var.slack_bot_enabled
-    ragent_slack_service     = local.ragent_slack_service_content
-    vectorize_enabled        = var.vectorize_enabled
-    ragent_vectorize_service = local.ragent_vectorize_service_content
+    ragent_binary_url           = local.ragent_binary_url
+    is_docker_opensearch        = local.is_docker_opensearch
+    ragent_env_file             = local.ragent_env_file_content
+    ragent_init_script          = local.ragent_init_script_content
+    ragent_init_service         = local.ragent_init_service_content
+    ragent_mcp_service          = local.ragent_mcp_service_content
+    slack_bot_enabled           = var.slack_bot_enabled
+    ragent_slack_service        = local.ragent_slack_service_content
+    vectorize_enabled           = var.vectorize_enabled
+    ragent_vectorize_service    = local.ragent_vectorize_service_content
+    systemd_service_overrides   = var.systemd_service_overrides
   })
 
   metadata_options {
