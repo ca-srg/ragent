@@ -47,6 +47,13 @@ ${ragent_vectorize_service}
 VECUNIT
 %{ endif ~}
 
+%{ for service_name, override_content in systemd_service_overrides ~}
+mkdir -p /etc/systemd/system/${service_name}.service.d
+cat > /etc/systemd/system/${service_name}.service.d/override.conf <<'OVERRIDE'
+${override_content}
+OVERRIDE
+%{ endfor ~}
+
 systemctl daemon-reload
 systemctl enable --now ragent-init.service
 systemctl enable --now ragent-mcp.service

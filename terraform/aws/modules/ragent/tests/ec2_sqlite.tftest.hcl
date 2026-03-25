@@ -23,6 +23,7 @@ run "ec2_sqlite_docker_opensearch" {
     vpc_id          = "vpc-12345678"
     subnet_ids      = ["subnet-12345678"]
     ragent_version  = "v1.0.0"
+    certificate_arn = "arn:aws:acm:ap-northeast-1:123456789012:certificate/test"
   }
 
   assert {

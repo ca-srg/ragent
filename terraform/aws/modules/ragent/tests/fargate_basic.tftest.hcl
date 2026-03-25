@@ -17,6 +17,7 @@ run "fargate_s3vectors_aws_opensearch" {
     vpc_id                = "vpc-12345678"
     subnet_ids            = ["subnet-12345678"]
     ragent_version        = "v1.0.0"
+    certificate_arn       = "arn:aws:acm:ap-northeast-1:123456789012:certificate/test"
     s3vectors_bucket_name = "test-vectors-bucket"
     s3vectors_index_name  = "test-vectors-index"
   }
