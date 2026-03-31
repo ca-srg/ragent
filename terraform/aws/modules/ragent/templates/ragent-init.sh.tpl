@@ -10,12 +10,12 @@ echo "ragent-init: OpenSearch endpoint=${opensearch_endpoint} index=${opensearch
 %{ if is_docker_opensearch ~}
 # Docker mode: wait for OpenSearch container to be healthy
 echo "ragent-init: Waiting for Docker OpenSearch to be ready..."
-for attempt in $$(seq 1 90); do
+for attempt in $(seq 1 90); do
   if curl -sf "${opensearch_endpoint}/_cluster/health" > /dev/null 2>&1; then
     echo "ragent-init: OpenSearch is ready (after $${attempt} attempts)"
     break
   fi
-  if [ "$$attempt" -eq 90 ]; then
+  if [ "$attempt" -eq 90 ]; then
     echo "ragent-init: ERROR - OpenSearch did not become ready within 180s"
     exit 1
   fi
@@ -25,7 +25,7 @@ done
 
 # Create index with proper knn_vector mapping (idempotent)
 # If index already exists, OpenSearch returns 400 which we ignore.
-HTTP_CODE=$$(curl -s -o /tmp/ragent-init-response.json -w "%%{http_code}" \
+HTTP_CODE=$(curl -s -o /tmp/ragent-init-response.json -w "%%{http_code}" \
   -X PUT "${opensearch_endpoint}/${opensearch_index_name}" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -113,7 +113,7 @@ HTTP_CODE=$$(curl -s -o /tmp/ragent-init-response.json -w "%%{http_code}" \
   }
 }')
 
-case "$$HTTP_CODE" in
+case "$HTTP_CODE" in
   200|201)
     echo "ragent-init: Index '${opensearch_index_name}' created with knn_vector mapping (dimension=${embedding_dimension})"
     ;;
@@ -121,7 +121,7 @@ case "$$HTTP_CODE" in
     echo "ragent-init: Index '${opensearch_index_name}' already exists (skipped)"
     ;;
   *)
-    echo "ragent-init: WARNING - Index creation returned HTTP $$HTTP_CODE"
+    echo "ragent-init: WARNING - Index creation returned HTTP $HTTP_CODE"
     cat /tmp/ragent-init-response.json 2>/dev/null || true
     # Don't fail - let services start and handle errors themselves
     ;;
