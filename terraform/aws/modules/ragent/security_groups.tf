@@ -3,6 +3,10 @@ resource "aws_security_group" "alb" {
   vpc_id      = var.vpc_id
   description = "Security group for ${var.name_prefix} ALB"
   tags        = merge(local.common_tags, { Name = "${var.name_prefix}-alb" })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_https" {
@@ -37,6 +41,10 @@ resource "aws_security_group" "compute" {
   vpc_id      = var.vpc_id
   description = "Security group for ${var.name_prefix} compute instances"
   tags        = merge(local.common_tags, { Name = "${var.name_prefix}-compute" })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "compute_from_alb" {
@@ -61,6 +69,10 @@ resource "aws_security_group" "opensearch" {
   vpc_id      = var.vpc_id
   description = "Security group for ${var.name_prefix} OpenSearch domain"
   tags        = merge(local.common_tags, { Name = "${var.name_prefix}-opensearch" })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "opensearch_from_compute" {
