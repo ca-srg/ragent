@@ -1,8 +1,8 @@
 resource "aws_security_group" "alb" {
-  name_prefix = "ragent-alb-"
+  name_prefix = "${var.name_prefix}-alb-"
   vpc_id      = var.vpc_id
-  description = "Security group for RAGent ALB"
-  tags        = merge(local.common_tags, { Name = "ragent-alb" })
+  description = "Security group for ${var.name_prefix} ALB"
+  tags        = merge(local.common_tags, { Name = "${var.name_prefix}-alb" })
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_https" {
@@ -33,10 +33,10 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_compute" {
 }
 
 resource "aws_security_group" "compute" {
-  name_prefix = "ragent-compute-"
+  name_prefix = "${var.name_prefix}-compute-"
   vpc_id      = var.vpc_id
-  description = "Security group for RAGent compute instances"
-  tags        = merge(local.common_tags, { Name = "ragent-compute" })
+  description = "Security group for ${var.name_prefix} compute instances"
+  tags        = merge(local.common_tags, { Name = "${var.name_prefix}-compute" })
 }
 
 resource "aws_vpc_security_group_ingress_rule" "compute_from_alb" {
@@ -57,10 +57,10 @@ resource "aws_vpc_security_group_egress_rule" "compute_all" {
 
 resource "aws_security_group" "opensearch" {
   count       = local.is_aws_opensearch ? 1 : 0
-  name_prefix = "ragent-opensearch-"
+  name_prefix = "${var.name_prefix}-opensearch-"
   vpc_id      = var.vpc_id
-  description = "Security group for RAGent OpenSearch domain"
-  tags        = merge(local.common_tags, { Name = "ragent-opensearch" })
+  description = "Security group for ${var.name_prefix} OpenSearch domain"
+  tags        = merge(local.common_tags, { Name = "${var.name_prefix}-opensearch" })
 }
 
 resource "aws_vpc_security_group_ingress_rule" "opensearch_from_compute" {

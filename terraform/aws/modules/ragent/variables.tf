@@ -1,3 +1,14 @@
+variable "name_prefix" {
+  type        = string
+  default     = "ragent"
+  description = "Name prefix for all resources created by this module. Allows multiple instances to coexist without naming conflicts."
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]*$", var.name_prefix)) && length(var.name_prefix) <= 32
+    error_message = "name_prefix must start with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and be at most 32 characters."
+  }
+}
+
 variable "compute_type" {
   type        = string
   default     = "ec2"
