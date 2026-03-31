@@ -1,19 +1,19 @@
 resource "aws_ecs_cluster" "ragent" {
   count = local.is_fargate ? 1 : 0
-  name  = "ragent"
-  tags  = merge(local.common_tags, { Name = "ragent-cluster" })
+  name  = var.name_prefix
+  tags  = merge(local.common_tags, { Name = "${var.name_prefix}-cluster" })
 }
 
 resource "aws_cloudwatch_log_group" "ragent" {
   count             = local.is_fargate ? 1 : 0
-  name              = "/ecs/ragent"
+  name              = "/ecs/${var.name_prefix}"
   retention_in_days = 30
   tags              = local.common_tags
 }
 
 resource "aws_ecs_task_definition" "ragent" {
   count                    = local.is_fargate ? 1 : 0
-  family                   = "ragent"
+  family                   = var.name_prefix
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.cpu
@@ -24,7 +24,7 @@ resource "aws_ecs_task_definition" "ragent" {
   container_definitions = jsonencode(concat(
     [
       {
-        name      = "ragent-mcp"
+        name      = "${var.name_prefix}-mcp"
         image     = var.container_image_uri
         essential = true
         portMappings = [
@@ -57,7 +57,7 @@ resource "aws_ecs_task_definition" "ragent" {
     ],
     var.slack_bot_enabled ? [
       {
-        name        = "ragent-slack"
+        name        = "${var.name_prefix}-slack"
         image       = var.container_image_uri
         essential   = false
         command     = ["slack-bot", "--context-size", "10"]
@@ -74,7 +74,7 @@ resource "aws_ecs_task_definition" "ragent" {
     ] : [],
     var.vectorize_enabled ? [
       {
-        name      = "ragent-vectorize"
+        name      = "${var.name_prefix}-vectorize"
         image     = var.container_image_uri
         essential = false
         command = concat(
@@ -96,12 +96,12 @@ resource "aws_ecs_task_definition" "ragent" {
     ] : []
   ))
 
-  tags = merge(local.common_tags, { Name = "ragent-task" })
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-task" })
 }
 
 resource "aws_ecs_service" "ragent" {
   count           = local.is_fargate ? 1 : 0
-  name            = "ragent"
+  name            = var.name_prefix
   cluster         = aws_ecs_cluster.ragent[0].id
   task_definition = aws_ecs_task_definition.ragent[0].arn
   desired_count   = var.desired_count
@@ -115,9 +115,9 @@ resource "aws_ecs_service" "ragent" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.ragent_mcp.arn
-    container_name   = "ragent-mcp"
+    container_name   = "${var.name_prefix}-mcp"
     container_port   = 8080
   }
 
-  tags = merge(local.common_tags, { Name = "ragent-service" })
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-service" })
 }

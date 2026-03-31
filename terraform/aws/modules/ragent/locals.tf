@@ -10,9 +10,12 @@ locals {
 locals {
   opensearch_endpoint = local.is_aws_opensearch ? "https://${aws_opensearch_domain.ragent[0].endpoint}" : "http://localhost:9200"
 
+  # ALB/TG name_prefix has a 6-character limit
+  alb_name_prefix = substr(var.name_prefix, 0, 6)
+
   common_tags = merge(var.tags, {
     ManagedBy = "terraform"
-    Module    = "ragent"
+    Module    = var.name_prefix
   })
 
   ragent_version_trimmed = trimprefix(var.ragent_version, "v")

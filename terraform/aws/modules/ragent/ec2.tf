@@ -93,7 +93,7 @@ resource "aws_instance" "ragent" {
     encrypted   = true
   }
 
-  tags = merge(local.common_tags, { Name = "ragent" })
+  tags = merge(local.common_tags, { Name = var.name_prefix })
 
   lifecycle {
     ignore_changes = [ami]

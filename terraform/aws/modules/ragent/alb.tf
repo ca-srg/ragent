@@ -1,15 +1,15 @@
 resource "aws_lb" "ragent" {
-  name_prefix        = "ragent"
+  name_prefix        = local.alb_name_prefix
   internal           = var.alb_internal
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = var.subnet_ids
 
-  tags = merge(local.common_tags, { Name = "ragent-alb" })
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-alb" })
 }
 
 resource "aws_lb_target_group" "ragent_mcp" {
-  name_prefix = "ragent"
+  name_prefix = local.alb_name_prefix
   port        = 8080
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
@@ -28,7 +28,7 @@ resource "aws_lb_target_group" "ragent_mcp" {
 
   deregistration_delay = 300
 
-  tags = merge(local.common_tags, { Name = "ragent-mcp" })
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-mcp" })
 }
 
 resource "aws_lb_listener" "ragent_https" {
@@ -43,7 +43,7 @@ resource "aws_lb_listener" "ragent_https" {
     target_group_arn = aws_lb_target_group.ragent_mcp.arn
   }
 
-  tags = merge(local.common_tags, { Name = "ragent-https" })
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-https" })
 }
 
 resource "aws_lb_listener" "ragent_http_redirect" {
@@ -61,7 +61,7 @@ resource "aws_lb_listener" "ragent_http_redirect" {
     }
   }
 
-  tags = merge(local.common_tags, { Name = "ragent-http-redirect" })
+  tags = merge(local.common_tags, { Name = "${var.name_prefix}-http-redirect" })
 }
 
 resource "aws_lb_target_group_attachment" "ragent_ec2" {

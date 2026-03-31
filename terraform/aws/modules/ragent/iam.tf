@@ -138,22 +138,22 @@ data "aws_iam_policy_document" "ragent_s3_source" {
 resource "aws_iam_role" "ragent_ec2" {
   count = local.is_ec2 ? 1 : 0
 
-  name               = "ragent-ec2"
+  name               = "${var.name_prefix}-ec2"
   assume_role_policy = data.aws_iam_policy_document.ragent_ec2_assume_role[0].json
 
   tags = merge(local.common_tags, {
-    Name = "ragent-ec2"
+    Name = "${var.name_prefix}-ec2"
   })
 }
 
 resource "aws_iam_instance_profile" "ragent" {
   count = local.is_ec2 ? 1 : 0
 
-  name = "ragent"
+  name = var.name_prefix
   role = aws_iam_role.ragent_ec2[0].name
 
   tags = merge(local.common_tags, {
-    Name = "ragent"
+    Name = var.name_prefix
   })
 }
 
@@ -167,22 +167,22 @@ resource "aws_iam_role_policy_attachment" "ragent_ec2_ssm" {
 resource "aws_iam_role" "ragent_task" {
   count = local.is_fargate ? 1 : 0
 
-  name               = "ragent-task"
+  name               = "${var.name_prefix}-task"
   assume_role_policy = data.aws_iam_policy_document.ragent_task_assume_role[0].json
 
   tags = merge(local.common_tags, {
-    Name = "ragent-task"
+    Name = "${var.name_prefix}-task"
   })
 }
 
 resource "aws_iam_role" "ragent_execution" {
   count = local.is_fargate ? 1 : 0
 
-  name               = "ragent-execution"
+  name               = "${var.name_prefix}-execution"
   assume_role_policy = data.aws_iam_policy_document.ragent_execution_assume_role[0].json
 
   tags = merge(local.common_tags, {
-    Name = "ragent-execution"
+    Name = "${var.name_prefix}-execution"
   })
 }
 
@@ -194,7 +194,7 @@ resource "aws_iam_role_policy_attachment" "ragent_execution_managed" {
 }
 
 resource "aws_iam_role_policy" "ragent_bedrock" {
-  name   = "ragent-bedrock"
+  name   = "${var.name_prefix}-bedrock"
   role   = local.iam_runtime_role_name
   policy = data.aws_iam_policy_document.ragent_bedrock.json
 }
@@ -202,7 +202,7 @@ resource "aws_iam_role_policy" "ragent_bedrock" {
 resource "aws_iam_role_policy" "ragent_opensearch" {
   count = local.is_aws_opensearch ? 1 : 0
 
-  name   = "ragent-opensearch"
+  name   = "${var.name_prefix}-opensearch"
   role   = local.iam_runtime_role_name
   policy = data.aws_iam_policy_document.ragent_opensearch[0].json
 }
@@ -210,13 +210,13 @@ resource "aws_iam_role_policy" "ragent_opensearch" {
 resource "aws_iam_role_policy" "ragent_s3vectors" {
   count = local.is_s3_vectors ? 1 : 0
 
-  name   = "ragent-s3vectors"
+  name   = "${var.name_prefix}-s3vectors"
   role   = local.iam_runtime_role_name
   policy = data.aws_iam_policy_document.ragent_s3vectors[0].json
 }
 
 resource "aws_iam_role_policy" "ragent_secrets_manager" {
-  name   = "ragent-secrets-manager"
+  name   = "${var.name_prefix}-secrets-manager"
   role   = local.iam_runtime_role_name
   policy = data.aws_iam_policy_document.ragent_secrets_manager.json
 }
@@ -224,7 +224,7 @@ resource "aws_iam_role_policy" "ragent_secrets_manager" {
 resource "aws_iam_role_policy" "ragent_s3_source" {
   count = var.vectorize_s3_source_bucket != null ? 1 : 0
 
-  name   = "ragent-s3-source"
+  name   = "${var.name_prefix}-s3-source"
   role   = local.iam_runtime_role_name
   policy = data.aws_iam_policy_document.ragent_s3_source[0].json
 }
