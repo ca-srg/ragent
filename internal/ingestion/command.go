@@ -343,18 +343,34 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 		for _, f := range s3Files {
 			shouldDownload := !dryRun || f.IsCSV
 			if shouldDownload {
-				content, hash, err := s3Scanner.DownloadFileWithHash(ctx, f.Path)
-				if err != nil {
-					log.Printf("Warning: Failed to download S3 file %s: %v", f.Path, err)
-					if !dryRun {
-						continue
+				if f.IsPDF {
+					// PDF files: download as binary bytes to avoid corruption
+					data, err := s3Scanner.DownloadFileBytes(ctx, f.Path)
+					if err != nil {
+						log.Printf("Warning: Failed to download S3 PDF file %s: %v", f.Path, err)
+						if !dryRun {
+							continue
+						}
+					} else {
+						f.RawBytes = data
+						if f.ContentHash == "" {
+							f.ContentHash = scanner.ComputeMD5Hash(string(data))
+						}
 					}
-					// In dry-run, still add file but without content
 				} else {
-					f.Content = content
-					// Use computed hash if ETag was not available (multipart upload)
-					if f.ContentHash == "" {
-						f.ContentHash = hash
+					content, hash, err := s3Scanner.DownloadFileWithHash(ctx, f.Path)
+					if err != nil {
+						log.Printf("Warning: Failed to download S3 file %s: %v", f.Path, err)
+						if !dryRun {
+							continue
+						}
+						// In dry-run, still add file but without content
+					} else {
+						f.Content = content
+						// Use computed hash if ETag was not available (multipart upload)
+						if f.ContentHash == "" {
+							f.ContentHash = hash
+						}
 					}
 				}
 			}

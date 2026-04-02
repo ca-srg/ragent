@@ -21,6 +21,29 @@ for attempt in $(seq 1 90); do
   fi
   sleep 2
 done
+
+# Install analysis-kuromoji plugin if not already present
+if ! curl -sf "${opensearch_endpoint}/_cat/plugins" 2>/dev/null | grep -q "analysis-kuromoji"; then
+  echo "ragent-init: Installing analysis-kuromoji plugin..."
+  docker exec opensearch bin/opensearch-plugin install --batch analysis-kuromoji
+  echo "ragent-init: Restarting OpenSearch to activate plugin..."
+  docker restart opensearch
+
+  echo "ragent-init: Waiting for OpenSearch to restart..."
+  for attempt in $(seq 1 90); do
+    if curl -sf "${opensearch_endpoint}/_cluster/health" > /dev/null 2>&1; then
+      echo "ragent-init: OpenSearch restarted with kuromoji plugin (after $${attempt} attempts)"
+      break
+    fi
+    if [ "$attempt" -eq 90 ]; then
+      echo "ragent-init: ERROR - OpenSearch did not restart within 180s after plugin installation"
+      exit 1
+    fi
+    sleep 2
+  done
+else
+  echo "ragent-init: analysis-kuromoji plugin already installed"
+fi
 %{ endif ~}
 
 # Create index with proper knn_vector mapping (idempotent)
