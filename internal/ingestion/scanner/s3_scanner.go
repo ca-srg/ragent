@@ -124,6 +124,7 @@ func (s *S3Scanner) ScanBucket(ctx context.Context) ([]*pkgdomain.FileInfo, erro
 				ModTime:     modTime,
 				IsMarkdown:  s.IsMarkdownFile(key),
 				IsCSV:       s.IsCSVFile(key),
+				IsPDF:       s.IsPDFFile(key),
 				ContentHash: contentHash,
 				SourceType:  "s3",
 			}
@@ -176,6 +177,34 @@ func (s *S3Scanner) DownloadFileWithHash(ctx context.Context, s3Path string) (st
 	return content, hash, nil
 }
 
+// DownloadFileBytes downloads a file from S3 and returns raw bytes
+func (s *S3Scanner) DownloadFileBytes(ctx context.Context, s3Path string) ([]byte, error) {
+	key, err := s.parseS3Path(s3Path)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to download file from S3: %w", err)
+	}
+	defer func() {
+		if closeErr := result.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close S3 object body: %v", closeErr)
+		}
+	}()
+
+	data, err := io.ReadAll(result.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read S3 object content: %w", err)
+	}
+
+	return data, nil
+}
+
 // parseS3Path extracts the key from an S3 path (s3://bucket/key)
 func (s *S3Scanner) parseS3Path(s3Path string) (string, error) {
 	if !strings.HasPrefix(s3Path, "s3://") {
@@ -212,9 +241,15 @@ func (s *S3Scanner) IsCSVFile(filePath string) bool {
 	return ext == ".csv"
 }
 
-// IsSupportedFile checks if a file is a supported file type (markdown or CSV)
+// IsPDFFile checks if a file is a PDF file
+func (s *S3Scanner) IsPDFFile(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	return ext == ".pdf"
+}
+
+// IsSupportedFile checks if a file is a supported file type (markdown, CSV, or PDF)
 func (s *S3Scanner) IsSupportedFile(filePath string) bool {
-	return s.IsMarkdownFile(filePath) || s.IsCSVFile(filePath)
+	return s.IsMarkdownFile(filePath) || s.IsCSVFile(filePath) || s.IsPDFFile(filePath)
 }
 
 // ValidateBucket checks if the S3 bucket is accessible

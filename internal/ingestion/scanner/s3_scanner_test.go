@@ -15,6 +15,8 @@ import (
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	pkgdomain "github.com/ca-srg/ragent/internal/pkg/domain"
 )
 
 // setupFakeS3 creates a fake S3 server and returns an S3 client configured to use it
@@ -104,6 +106,7 @@ func TestS3Scanner_ScanBucket(t *testing.T) {
 	uploadTestFile(t, client, bucketName, "doc1.md", "# Document 1\nContent here")
 	uploadTestFile(t, client, bucketName, "doc2.markdown", "# Document 2\nMore content")
 	uploadTestFile(t, client, bucketName, "data.csv", "id,name\n1,test")
+	uploadTestFile(t, client, bucketName, "report.pdf", "%PDF-1.4 fake pdf content")
 	uploadTestFile(t, client, bucketName, "image.png", "binary data")
 	uploadTestFile(t, client, bucketName, "readme.txt", "text file")
 
@@ -113,16 +116,13 @@ func TestS3Scanner_ScanBucket(t *testing.T) {
 		files, err := scanner.ScanBucket(context.Background())
 		require.NoError(t, err)
 
-		// Should find 3 supported files (.md, .markdown, .csv)
-		assert.Len(t, files, 3)
+		assert.Len(t, files, 4)
 
-		// Verify file paths are in s3:// format
 		for _, f := range files {
 			assert.Contains(t, f.Path, "s3://"+bucketName+"/")
 		}
 
-		// Verify file types
-		var mdCount, csvCount int
+		var mdCount, csvCount, pdfCount int
 		for _, f := range files {
 			if f.IsMarkdown {
 				mdCount++
@@ -130,9 +130,13 @@ func TestS3Scanner_ScanBucket(t *testing.T) {
 			if f.IsCSV {
 				csvCount++
 			}
+			if f.IsPDF {
+				pdfCount++
+			}
 		}
 		assert.Equal(t, 2, mdCount)
 		assert.Equal(t, 1, csvCount)
+		assert.Equal(t, 1, pdfCount)
 	})
 
 	t.Run("scan with prefix", func(t *testing.T) {
@@ -208,14 +212,17 @@ func TestS3Scanner_IsSupportedFile(t *testing.T) {
 		{"markdown .md", "doc.md", true},
 		{"markdown .markdown", "doc.markdown", true},
 		{"csv file", "data.csv", true},
+		{"pdf file", "report.pdf", true},
 		{"uppercase MD", "DOC.MD", true},
 		{"uppercase CSV", "DATA.CSV", true},
+		{"uppercase PDF", "REPORT.PDF", true},
 		{"text file", "readme.txt", false},
 		{"json file", "config.json", false},
 		{"image file", "image.png", false},
 		{"no extension", "README", false},
 		{"path with .md", "path/to/doc.md", true},
 		{"path with .csv", "data/export.csv", true},
+		{"path with .pdf", "docs/report.pdf", true},
 	}
 
 	for _, tt := range tests {
@@ -271,6 +278,60 @@ func TestS3Scanner_IsCSVFile(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestS3Scanner_IsPDFFile(t *testing.T) {
+	scanner := &S3Scanner{}
+
+	tests := []struct {
+		name     string
+		filePath string
+		expected bool
+	}{
+		{"lowercase .pdf", "report.pdf", true},
+		{"uppercase .PDF", "REPORT.PDF", true},
+		{"mixed case .Pdf", "Report.Pdf", true},
+		{"markdown file", "doc.md", false},
+		{"csv file", "data.csv", false},
+		{"no extension", "report", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := scanner.IsPDFFile(tt.filePath)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestS3Scanner_DownloadFileBytes(t *testing.T) {
+	client, server := setupFakeS3(t)
+	defer server.Close()
+
+	bucketName := "download-bytes-test-bucket"
+	createTestBucket(t, client, bucketName)
+
+	expectedContent := "%PDF-1.4 fake binary content"
+	uploadTestFile(t, client, bucketName, "test.pdf", expectedContent)
+
+	scanner := newS3ScannerWithClient(client, bucketName, "")
+
+	t.Run("download existing file as bytes", func(t *testing.T) {
+		data, err := scanner.DownloadFileBytes(context.Background(), "s3://"+bucketName+"/test.pdf")
+		require.NoError(t, err)
+		assert.Equal(t, []byte(expectedContent), data)
+	})
+
+	t.Run("download non-existent file", func(t *testing.T) {
+		_, err := scanner.DownloadFileBytes(context.Background(), "s3://"+bucketName+"/nonexistent.pdf")
+		assert.Error(t, err)
+	})
+
+	t.Run("invalid S3 path format", func(t *testing.T) {
+		_, err := scanner.DownloadFileBytes(context.Background(), "invalid-path")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid S3 path format")
+	})
 }
 
 func TestS3Scanner_ValidateBucket(t *testing.T) {
@@ -361,22 +422,42 @@ func TestS3Scanner_FileInfoProperties(t *testing.T) {
 	content := "# Test Document\n\nSome content here."
 	uploadTestFile(t, client, bucketName, "test-doc.md", content)
 
+	pdfContent := "%PDF-1.4 fake pdf"
+	uploadTestFile(t, client, bucketName, "report.pdf", pdfContent)
+
 	scanner := newS3ScannerWithClient(client, bucketName, "")
 
 	files, err := scanner.ScanBucket(context.Background())
 	require.NoError(t, err)
-	require.Len(t, files, 1)
+	require.Len(t, files, 2)
 
-	fileInfo := files[0]
+	var mdFile, pdfFile *pkgdomain.FileInfo
+	for _, f := range files {
+		if f.IsMarkdown {
+			mdFile = f
+		}
+		if f.IsPDF {
+			pdfFile = f
+		}
+	}
 
-	// Verify FileInfo properties
-	assert.Equal(t, "s3://"+bucketName+"/test-doc.md", fileInfo.Path)
-	assert.Equal(t, "test-doc.md", fileInfo.Name)
-	assert.True(t, fileInfo.IsMarkdown)
-	assert.False(t, fileInfo.IsCSV)
-	assert.Equal(t, int64(len(content)), fileInfo.Size)
-	assert.False(t, fileInfo.ModTime.IsZero())
-	assert.True(t, fileInfo.ModTime.Before(time.Now().Add(time.Minute)))
+	require.NotNil(t, mdFile)
+	assert.Equal(t, "s3://"+bucketName+"/test-doc.md", mdFile.Path)
+	assert.Equal(t, "test-doc.md", mdFile.Name)
+	assert.True(t, mdFile.IsMarkdown)
+	assert.False(t, mdFile.IsCSV)
+	assert.False(t, mdFile.IsPDF)
+	assert.Equal(t, int64(len(content)), mdFile.Size)
+	assert.False(t, mdFile.ModTime.IsZero())
+	assert.True(t, mdFile.ModTime.Before(time.Now().Add(time.Minute)))
+
+	require.NotNil(t, pdfFile)
+	assert.Equal(t, "s3://"+bucketName+"/report.pdf", pdfFile.Path)
+	assert.Equal(t, "report.pdf", pdfFile.Name)
+	assert.False(t, pdfFile.IsMarkdown)
+	assert.False(t, pdfFile.IsCSV)
+	assert.True(t, pdfFile.IsPDF)
+	assert.Equal(t, int64(len(pdfContent)), pdfFile.Size)
 }
 
 func TestS3Scanner_ReadFileContent(t *testing.T) {
