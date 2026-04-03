@@ -1223,6 +1223,7 @@ RAGent vectorize
 - `--s3-vector-region`: S3 Vectorバケット用AWSリージョン（S3_VECTOR_REGION を上書き、デフォルト: us-east-1）
 - `--s3-source-region`: ソースファイル用S3バケットのAWSリージョン（S3_SOURCE_REGION を上書き、デフォルト: us-east-1）
 - `--github-repos`: クローンしてベクトル化するGitHubリポジトリのカンマ区切りリスト（形式: `owner/repo`）
+- `--ocr-prompt-file`: カスタムOCRプロンプトファイルのパス（ベースプロンプトを置き換えず、末尾に追記されます）
 
 **S3ソースの使用例:**
 ```bash
@@ -1261,6 +1262,33 @@ RAGent vectorize --follow --github-repos "owner/repo"
 メタデータはリポジトリ構造から自動生成されます: オーナー名が著者、リポジトリ名がソース、親ディレクトリがカテゴリ、GitHub URLが参照先として設定されます。
 
 GitHubデータソース機能の詳細については [doc/github.md](doc/github.md) を参照してください。
+
+**カスタムOCRプロンプト:**
+
+PDF処理時に、OCRモデルへの追加指示を記述したカスタムプロンプトファイルを指定できます。カスタムプロンプトの内容はベースプロンプトを**置き換えるのではなく、末尾に追記**されます。
+
+リポジトリにテンプレートファイル `ocr-prompt-template.md` が含まれています。コピーして独自のプロンプトを作成してください：
+
+```bash
+# テンプレートをコピー
+cp ocr-prompt-template.md ocr-prompt.md
+
+# カスタム指示を編集
+vi ocr-prompt.md
+
+# カスタムOCRプロンプトを指定してベクトル化を実行
+RAGent vectorize --ocr-prompt-file ocr-prompt.md
+```
+
+> **重要**: ベースのOCRプロンプトは **JSON配列** を出力形式として想定しています。Markdownコードフェンスの追加や自由文の説明など、出力形式を変更する指示は入れないでください。
+
+カスタムプロンプトで `secret` メタデータフィールドを制御することもできます。例えば、1on1ミーティングのドキュメントをシークレットとしてマークする場合：
+
+```markdown
+## 追加指示
+
+ドキュメントの内容が 1on1 の場合は `secret: true` を設定してください。
+```
 
 **機能:**
 - markdownおよびCSVファイルの再帰的スキャン

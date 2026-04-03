@@ -1262,6 +1262,7 @@ RAGent vectorize
 - `--s3-vector-region`: AWS region for S3 Vector bucket (overrides S3_VECTOR_REGION, default: us-east-1)
 - `--s3-source-region`: AWS region for source S3 bucket (overrides S3_SOURCE_REGION, default: us-east-1)
 - `--github-repos`: Comma-separated list of GitHub repositories to clone and vectorize (format: `owner/repo`)
+- `--ocr-prompt-file`: Path to custom OCR prompt file (content is appended to the base prompt, not replacing it)
 
 **S3 Source Examples:**
 ```bash
@@ -1300,6 +1301,33 @@ For private repositories, set the `GITHUB_TOKEN` environment variable.
 Metadata is auto-generated from the repository structure: owner name as author, repository name as source, parent directory as category, and a GitHub URL as reference.
 
 For detailed documentation on the GitHub data source feature, see [doc/github.md](doc/github.md).
+
+**Custom OCR Prompt:**
+
+When processing PDFs, you can provide a custom prompt file to give additional instructions to the OCR model. The custom prompt content is **appended** to the built-in base prompt — it does not replace it.
+
+A template file `ocr-prompt-template.md` is included in the repository. Copy it to create your own prompt:
+
+```bash
+# Copy the template
+cp ocr-prompt-template.md ocr-prompt.md
+
+# Edit with your custom instructions
+vi ocr-prompt.md
+
+# Run vectorize with the custom OCR prompt
+RAGent vectorize --ocr-prompt-file ocr-prompt.md
+```
+
+> **Important**: The base OCR prompt expects a **JSON array** as output. Do not include instructions that change the output format (e.g., adding markdown code fences or free-text explanations).
+
+The custom prompt can also control the `secret` metadata field. For example, to mark 1-on-1 meeting documents as secret:
+
+```markdown
+## Additional Instructions
+
+If the document content is about a 1-on-1 meeting, set `secret: true`.
+```
 
 **Features:**
 - Recursive scanning of markdown and CSV files
