@@ -23,6 +23,7 @@ var (
 	s3VectorRegion        string
 	s3SourceRegion        string
 	githubRepos           string
+	ocrPromptFile         string
 )
 
 var vectorizeCmd = &cobra.Command{
@@ -58,6 +59,7 @@ and data files for RAG (Retrieval Augmented Generation) applications.
 			S3VectorRegion:        s3VectorRegion,
 			S3SourceRegion:        s3SourceRegion,
 			GitHubRepos:           githubRepos,
+			OCRPromptFile:         ocrPromptFile,
 		})
 	},
 }
@@ -87,4 +89,6 @@ func init() {
 
 	// GitHub source options
 	vectorizeCmd.Flags().StringVar(&githubRepos, "github-repos", "", "Comma-separated list of GitHub repositories to clone and vectorize (format: owner/repo)")
+
+	vectorizeCmd.Flags().StringVar(&ocrPromptFile, "ocr-prompt-file", "", "Path to custom OCR prompt file (content is appended to base prompt)")
 }

@@ -61,6 +61,8 @@ var (
 	// GitHub source mode
 	githubRepos string
 
+	ocrPromptFile string
+
 	// Incremental processing options
 	forceProcess bool // Force re-vectorization of all files
 	pruneDeleted bool // Remove vectors for deleted files
@@ -92,6 +94,7 @@ type VectorizeOptions struct {
 	GitHubRepos           string
 	ForceProcess          bool
 	PruneDeleted          bool
+	OCRPromptFile         string
 }
 
 // RunVectorize is the exported entry point called from cmd/vectorize.go.
@@ -112,6 +115,7 @@ func RunVectorize(cmd *cobra.Command, opts VectorizeOptions) error {
 	githubRepos = opts.GitHubRepos
 	forceProcess = opts.ForceProcess
 	pruneDeleted = opts.PruneDeleted
+	ocrPromptFile = opts.OCRPromptFile
 	return runVectorize(cmd, nil)
 }
 
@@ -279,7 +283,19 @@ func executeVectorizationOnceWithProgress(ctx context.Context, cfg *appconfig.Co
 		log.Println("CSV configuration loaded successfully")
 	}
 
-	service, err := createVectorizerServiceWithCSVConfig(cfg, csvCfg)
+	var customPrompt string
+	if ocrPromptFile != "" {
+		var err error
+		customPrompt, err = pdf.LoadOCRPromptFile(ocrPromptFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load OCR prompt file: %w", err)
+		}
+		if customPrompt != "" {
+			log.Printf("Custom OCR prompt loaded: %s (%d bytes)", ocrPromptFile, len(customPrompt))
+		}
+	}
+
+	service, err := createVectorizerServiceWithCSVConfig(cfg, csvCfg, customPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vectorizer service: %w", err)
 	}
@@ -787,11 +803,15 @@ func runFollowCycleWithIPC(ctx context.Context, cfg *appconfig.Config, ipcServer
 
 // createVectorizerService creates a vectorizer service with concrete implementations
 func createVectorizerService(cfg *appconfig.Config) (*vectorizer.VectorizerService, error) {
-	return createVectorizerServiceWithCSVConfig(cfg, nil)
+	return createVectorizerServiceWithCSVConfig(cfg, nil, "")
 }
 
 // createVectorizerServiceWithCSVConfig creates a vectorizer service with CSV configuration
-func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Config) (*vectorizer.VectorizerService, error) {
+func createVectorizerServiceWithCSVConfig(
+	cfg *appconfig.Config,
+	csvCfg *csv.Config,
+	customPrompt string,
+) (*vectorizer.VectorizerService, error) {
 	embeddingClient, err := embedding.NewEmbeddingClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create embedding client: %w", err)
@@ -818,7 +838,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 		return nil, fmt.Errorf("OpenSearch index name is not set")
 	}
 
-	pdfReader := pdf.NewReaderFromConfig(cfg, "")
+	pdfReader := pdf.NewReaderFromConfig(cfg, customPrompt)
 
 	// Create vectorizer service with all dependencies including CSV config
 	return serviceFactory.CreateVectorizerServiceWithCSVConfig(
