@@ -52,10 +52,18 @@ type BedrockOCRClient struct {
 	timeout       time.Duration
 	maxTokens     int32
 	concurrency   int
+	customPrompt  string
 }
 
 // NewBedrockOCRClient creates a new BedrockOCRClient.
-func NewBedrockOCRClient(awsConfig aws.Config, model string, timeout time.Duration, maxTokens int, concurrency int) (*BedrockOCRClient, error) {
+func NewBedrockOCRClient(
+	awsConfig aws.Config,
+	model string,
+	timeout time.Duration,
+	maxTokens int,
+	concurrency int,
+	customPrompt string,
+) (*BedrockOCRClient, error) {
 	if model == "" {
 		model = defaultModel
 	}
@@ -78,6 +86,7 @@ func NewBedrockOCRClient(awsConfig aws.Config, model string, timeout time.Durati
 		timeout:       timeout,
 		maxTokens:     int32(maxTokens),
 		concurrency:   concurrency,
+		customPrompt:  customPrompt,
 	}, nil
 }
 
@@ -275,7 +284,7 @@ func (c *BedrockOCRClient) callBedrock(ctx context.Context, pdfData []byte, file
 						},
 					},
 					&brtypes.ContentBlockMemberText{
-						Value: ocrPrompt,
+						Value: composeOCRPrompt(c.customPrompt),
 					},
 				},
 			},

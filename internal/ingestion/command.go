@@ -818,7 +818,7 @@ func createVectorizerServiceWithCSVConfig(cfg *appconfig.Config, csvCfg *csv.Con
 		return nil, fmt.Errorf("OpenSearch index name is not set")
 	}
 
-	pdfReader := pdf.NewReaderFromConfig(cfg)
+	pdfReader := pdf.NewReaderFromConfig(cfg, "")
 
 	// Create vectorizer service with all dependencies including CSV config
 	return serviceFactory.CreateVectorizerServiceWithCSVConfig(
