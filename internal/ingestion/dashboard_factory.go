@@ -61,7 +61,7 @@ func BuildDashboardDependencies() (pkgdomain.FileScanner, pkgdomain.Vectorizer, 
 		FileScanner:         fileScanner,
 		EnableOpenSearch:    osIndexer != nil,
 		OpenSearchIndexName: appCfg.OpenSearchIndex,
-		PDFReader:           pdf.NewReaderFromConfig(appCfg),
+		PDFReader:           pdf.NewReaderFromConfig(appCfg, ""),
 	}
 
 	vec, err := vectorizer.NewVectorizerService(serviceConfig)

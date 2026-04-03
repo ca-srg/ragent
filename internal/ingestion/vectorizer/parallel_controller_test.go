@@ -78,6 +78,10 @@ func (m *MockVectorStore) ListVectors(ctx context.Context, prefix string) ([]str
 	return []string{}, nil
 }
 
+func (m *MockVectorStore) ListVectorsWithMetadata(ctx context.Context, prefix string) ([]pkgdomain.VectorListItem, error) {
+	return []pkgdomain.VectorListItem{}, nil
+}
+
 func (m *MockVectorStore) DeleteVector(ctx context.Context, vectorID string) error {
 	return nil
 }

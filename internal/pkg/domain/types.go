@@ -48,6 +48,18 @@ type VectorData struct {
 	CreatedAt time.Time        `json:"created_at"`
 }
 
+type VectorListItem struct {
+	Key         string                 `json:"key"`
+	Title       string                 `json:"title,omitempty"`
+	Category    string                 `json:"category,omitempty"`
+	FilePath    string                 `json:"file_path,omitempty"`
+	Reference   string                 `json:"reference,omitempty"`
+	Author      string                 `json:"author,omitempty"`
+	WordCount   int                    `json:"word_count,omitempty"`
+	CreatedAt   string                 `json:"created_at,omitempty"`
+	RawMetadata map[string]interface{} `json:"raw_metadata,omitempty"`
+}
+
 type ProcessingResult struct {
 	ProcessedFiles           int               `json:"processed_files"`
 	SuccessCount             int               `json:"success_count"`

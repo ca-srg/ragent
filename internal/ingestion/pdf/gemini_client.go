@@ -22,11 +22,12 @@ const (
 
 // GeminiOCRClient implements the OCRClient interface using Google Gemini API.
 type GeminiOCRClient struct {
-	genaiClient *genai.Client
-	model       string
-	timeout     time.Duration
-	maxTokens   int32
-	concurrency int
+	genaiClient  *genai.Client
+	model        string
+	timeout      time.Duration
+	maxTokens    int32
+	concurrency  int
+	customPrompt string
 }
 
 // NewGeminiOCRClient creates a new GeminiOCRClient.
@@ -34,7 +35,16 @@ type GeminiOCRClient struct {
 // backend with Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS) is
 // used, requiring gcpProject and gcpLocation (or their environment variable equivalents
 // GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION).
-func NewGeminiOCRClient(apiKey string, gcpProject string, gcpLocation string, model string, timeout time.Duration, maxTokens int, concurrency int) (*GeminiOCRClient, error) {
+func NewGeminiOCRClient(
+	apiKey string,
+	gcpProject string,
+	gcpLocation string,
+	model string,
+	timeout time.Duration,
+	maxTokens int,
+	concurrency int,
+	customPrompt string,
+) (*GeminiOCRClient, error) {
 	if model == "" {
 		model = defaultGeminiModel
 	}
@@ -74,11 +84,12 @@ func NewGeminiOCRClient(apiKey string, gcpProject string, gcpLocation string, mo
 	}
 
 	return &GeminiOCRClient{
-		genaiClient: client,
-		model:       model,
-		timeout:     timeout,
-		maxTokens:   int32(maxTokens),
-		concurrency: concurrency,
+		genaiClient:  client,
+		model:        model,
+		timeout:      timeout,
+		maxTokens:    int32(maxTokens),
+		concurrency:  concurrency,
+		customPrompt: customPrompt,
 	}, nil
 }
 
@@ -260,7 +271,7 @@ func (c *GeminiOCRClient) extractPagesFromLargePDF(ctx context.Context, pdfData 
 func (c *GeminiOCRClient) callGemini(ctx context.Context, pdfData []byte, filename string) ([]*PageResult, error) {
 	parts := []*genai.Part{
 		{InlineData: &genai.Blob{MIMEType: "application/pdf", Data: pdfData}},
-		{Text: ocrPrompt},
+		{Text: composeOCRPrompt(c.customPrompt)},
 	}
 	contents := []*genai.Content{{Parts: parts}}
 

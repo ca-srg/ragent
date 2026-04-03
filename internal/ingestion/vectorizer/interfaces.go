@@ -30,6 +30,9 @@ type VectorStore interface {
 	// ListVectors returns a list of stored vector keys (optional, for debugging)
 	ListVectors(ctx context.Context, prefix string) ([]string, error)
 
+	// ListVectorsWithMetadata returns vector keys together with their metadata
+	ListVectorsWithMetadata(ctx context.Context, prefix string) ([]pkgdomain.VectorListItem, error)
+
 	// DeleteVector removes a vector from the store (optional, for cleanup)
 	DeleteVector(ctx context.Context, vectorID string) error
 

@@ -6,6 +6,8 @@ markdown/*.md
 /ragent
 .spec-workflow
 opencode.json
+# User OCR prompt file (copy from ocr-prompt-template.md)
+ocr-prompt.md
 doc/debug.md
 # Added by goreleaser init:
 dist/
