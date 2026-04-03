@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockOCRClient implements OCRClient for testing.
@@ -176,4 +177,37 @@ func TestParsePageResults_MarkdownCodeBlock(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, "content", results[0].Text)
+}
+
+func TestParsePageResults_SecretField(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantSecret bool
+	}{
+		{
+			name:       "secret true",
+			input:      `[{"page_index": 1, "text": "confidential", "secret": true}]`,
+			wantSecret: true,
+		},
+		{
+			name:       "secret false",
+			input:      `[{"page_index": 1, "text": "public", "secret": false}]`,
+			wantSecret: false,
+		},
+		{
+			name:       "secret omitted defaults to false",
+			input:      `[{"page_index": 1, "text": "no secret field"}]`,
+			wantSecret: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results, err := parsePageResults(tt.input)
+			assert.NoError(t, err)
+			require.Len(t, results, 1)
+			assert.Equal(t, tt.wantSecret, results[0].Secret)
+		})
+	}
 }

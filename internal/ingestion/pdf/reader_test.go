@@ -274,6 +274,37 @@ func TestReader_ReadFileFromBytes_PassesFilenameToClient(t *testing.T) {
 	assert.Equal(t, "document.pdf", receivedFilename)
 }
 
+func TestReader_PageExpansion_SecretMetadata(t *testing.T) {
+	tests := []struct {
+		name       string
+		secret     bool
+		wantSecret bool
+	}{
+		{"secret true propagated", true, true},
+		{"secret false propagated", false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := &MockOCRClient{
+				ExtractPagesFunc: func(ctx context.Context, pdfData []byte, filename string) ([]*PageResult, error) {
+					return []*PageResult{
+						{PageIndex: 1, Text: "1on1 meeting notes", Title: "1on1", Secret: tt.secret},
+					}, nil
+				},
+			}
+			reader := NewReader(mockClient, newTestReaderConfig())
+
+			files, err := reader.ReadFileFromBytes([]byte("fake pdf"), "/docs/1on1.pdf")
+			require.NoError(t, err)
+			require.Len(t, files, 1)
+
+			assert.Equal(t, tt.wantSecret, files[0].Metadata.Secret, "Metadata.Secret should match OCR result")
+			assert.Equal(t, tt.wantSecret, files[0].Metadata.CustomFields["secret"], "CustomFields[secret] should match OCR result")
+		})
+	}
+}
+
 func TestReader_ReadFileFromBytes_SizeIsTextLength(t *testing.T) {
 	mockClient := &MockOCRClient{
 		ExtractPagesFunc: func(ctx context.Context, pdfData []byte, filename string) ([]*PageResult, error) {

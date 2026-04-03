@@ -2,6 +2,7 @@ package ingestion
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -35,15 +36,13 @@ func RunList(prefix string) error {
 		return fmt.Errorf("vector store access validation failed: %w", err)
 	}
 
-	// List vectors
 	log.Printf("Fetching vectors with prefix: '%s'", prefix)
-	vectors, err := service.ListVectors(ctx, prefix)
+	items, err := service.ListVectorsWithMetadata(ctx, prefix)
 	if err != nil {
 		return fmt.Errorf("failed to list vectors: %w", err)
 	}
 
-	// Display results
-	fmt.Printf("\nFound %d vectors in vector store:\n", len(vectors))
+	fmt.Printf("\nFound %d vectors in vector store:\n", len(items))
 	info, err := service.GetBackendInfo(ctx)
 	if err == nil {
 		for k, v := range info {
@@ -55,12 +54,18 @@ func RunList(prefix string) error {
 		fmt.Printf("Prefix filter: %s\n", prefix)
 	}
 
-	fmt.Println("\nVector Keys:")
-	if len(vectors) == 0 {
+	fmt.Println("\nVectors:")
+	if len(items) == 0 {
 		fmt.Println("  (no vectors found)")
 	} else {
-		for i, key := range vectors {
-			fmt.Printf("  %d. %s\n", i+1, key)
+		for i, item := range items {
+			fmt.Printf("  %d. %s\n", i+1, item.Key)
+			if item.RawMetadata != nil {
+				raw, err := json.MarshalIndent(item.RawMetadata, "     ", "  ")
+				if err == nil {
+					fmt.Printf("     _source: %s\n", raw)
+				}
+			}
 		}
 	}
 

@@ -42,9 +42,15 @@ CREATE TABLE IF NOT EXISTS vectors (
     author TEXT,
     word_count INTEGER DEFAULT 0,
     content_excerpt TEXT,
-    created_at TEXT
+    created_at TEXT,
+    secret INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_vectors_key ON vectors(key);`
+
+// migrateAddSecretColumn adds the secret column to existing databases.
+// ALTER TABLE ADD COLUMN is a no-op when the column already exists in
+// SQLite 3.35+; for older versions we silently ignore the error.
+const migrateAddSecretColumn = `ALTER TABLE vectors ADD COLUMN secret INTEGER DEFAULT 0`
 
 // SqliteVecStore stores embedding vectors in a local SQLite database.
 type SqliteVecStore struct {
@@ -112,6 +118,8 @@ func (s *SqliteVecStore) initSchema(ctx context.Context) error {
 		return fmt.Errorf("failed to create vectors table: %w", err)
 	}
 
+	_, _ = s.db.ExecContext(ctx, migrateAddSecretColumn)
+
 	return nil
 }
 
@@ -147,11 +155,16 @@ func (s *SqliteVecStore) StoreVector(ctx context.Context, vectorData *domain.Vec
 		contentExcerpt = contentExcerpt[:500]
 	}
 
+	secretInt := 0
+	if vectorData.Metadata.Secret {
+		secretInt = 1
+	}
+
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO vectors
-			(key, embedding, title, category, file_path, reference, author, word_count, content_excerpt, created_at)
+			(key, embedding, title, category, file_path, reference, author, word_count, content_excerpt, created_at, secret)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		vectorData.ID,
 		embeddingBytes,
 		vectorData.Metadata.Title,
@@ -162,6 +175,7 @@ func (s *SqliteVecStore) StoreVector(ctx context.Context, vectorData *domain.Vec
 		vectorData.Metadata.WordCount,
 		contentExcerpt,
 		vectorData.CreatedAt.Format(time.RFC3339),
+		secretInt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert vector %q: %w", vectorData.ID, err)
@@ -215,6 +229,73 @@ func (s *SqliteVecStore) ListVectors(ctx context.Context, prefix string) ([]stri
 		keys = append(keys, key)
 	}
 	return keys, rows.Err()
+}
+
+// ListVectorsWithMetadata returns vector keys together with their metadata,
+// optionally filtered by a key prefix.
+func (s *SqliteVecStore) ListVectorsWithMetadata(
+	ctx context.Context, prefix string,
+) ([]domain.VectorListItem, error) {
+	const baseCols = "key, title, category, file_path, reference, author, word_count, created_at, secret"
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	if prefix == "" {
+		rows, err = s.db.QueryContext(ctx, "SELECT "+baseCols+" FROM vectors ORDER BY key")
+	} else {
+		escapedPrefix := escapeLIKE(prefix)
+		rows, err = s.db.QueryContext(ctx,
+			"SELECT "+baseCols+" FROM vectors WHERE key LIKE ? ESCAPE '\\' ORDER BY key",
+			escapedPrefix+"%")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list vectors with metadata: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	items := []domain.VectorListItem{}
+	for rows.Next() {
+		var item domain.VectorListItem
+		var (
+			title     sql.NullString
+			category  sql.NullString
+			filePath  sql.NullString
+			reference sql.NullString
+			author    sql.NullString
+			wordCount sql.NullInt64
+			createdAt sql.NullString
+			secret    sql.NullInt64
+		)
+		if err := rows.Scan(
+			&item.Key, &title, &category, &filePath,
+			&reference, &author, &wordCount, &createdAt, &secret,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan vector metadata: %w", err)
+		}
+		item.Title = title.String
+		item.Category = category.String
+		item.FilePath = filePath.String
+		item.Reference = reference.String
+		item.Author = author.String
+		item.WordCount = int(wordCount.Int64)
+		item.CreatedAt = createdAt.String
+
+		item.RawMetadata = map[string]interface{}{
+			"title":      title.String,
+			"category":   category.String,
+			"file_path":  filePath.String,
+			"reference":  reference.String,
+			"author":     author.String,
+			"word_count": int(wordCount.Int64),
+			"created_at": createdAt.String,
+			"secret":     secret.Int64 == 1,
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 // escapeLIKE escapes the three special LIKE characters (%, _, \) so a raw

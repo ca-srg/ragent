@@ -340,6 +340,53 @@ func (s *S3VectorService) ListVectors(ctx context.Context, prefix string) ([]str
 	return keys, nil
 }
 
+func (s *S3VectorService) ListVectorsWithMetadata(
+	ctx context.Context, prefix string,
+) ([]domain.VectorListItem, error) {
+	keys, err := s.ListVectors(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return []domain.VectorListItem{}, nil
+	}
+
+	result, err := s.client.GetVectors(ctx, &s3vectors.GetVectorsInput{
+		VectorBucketName: aws.String(s.vectorBucketName),
+		IndexName:        aws.String(s.indexName),
+		Keys:             keys,
+		ReturnMetadata:   true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vector metadata: %w", err)
+	}
+
+	items := make([]domain.VectorListItem, 0, len(result.Vectors))
+	for _, v := range result.Vectors {
+		item := domain.VectorListItem{}
+		if v.Key != nil {
+			item.Key = *v.Key
+		}
+		if v.Metadata != nil {
+			var md map[string]interface{}
+			if unmarshalErr := v.Metadata.UnmarshalSmithyDocument(&md); unmarshalErr == nil {
+				item.Title, _ = md["title"].(string)
+				item.Category, _ = md["category"].(string)
+				item.FilePath, _ = md["file_path"].(string)
+				item.Reference, _ = md["reference"].(string)
+				item.Author, _ = md["author"].(string)
+				item.CreatedAt, _ = md["created_at"].(string)
+				if wc, ok := md["word_count"].(float64); ok {
+					item.WordCount = int(wc)
+				}
+				item.RawMetadata = md
+			}
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 // DeleteVector removes a vector from S3 Vectors
 func (s *S3VectorService) DeleteVector(ctx context.Context, vectorID string) error {
 	if vectorID == "" {

@@ -146,8 +146,10 @@ func (r *Reader) pageToFileInfo(page *PageResult, filePath string, fileTime time
 			FilePath:  filePath,
 			Reference: filePath,
 			WordCount: len(strings.Fields(page.Text)),
+			Secret:    page.Secret,
 			CustomFields: map[string]interface{}{
 				"summary": page.Summary,
+				"secret":  page.Secret,
 			},
 		},
 	}

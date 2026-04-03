@@ -24,6 +24,7 @@ type PageResult struct {
 	Tags      []string `json:"tags"`
 	Summary   string   `json:"summary"`
 	Author    string   `json:"author"`
+	Secret    bool     `json:"secret"`
 }
 
 // PDFReaderConfig holds configuration for the PDF Reader.

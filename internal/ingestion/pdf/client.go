@@ -40,8 +40,9 @@ For EVERY page, extract these metadata fields from the page content:
 - tags: relevant keywords from the page content
 - summary: a brief one-line summary of the page content
 - author: the document author or creator if visible on the page (e.g. from headers, footers, or cover page)
-If a metadata field cannot be determined from the page content, use an empty string or empty array.
-Structure: [{"page_index": 1, "text": "...", "title": "...", "category": "...", "tags": [...], "summary": "...", "author": "..."}]
+- secret: whether this document contains confidential or sensitive information (boolean, default false; set true only when explicitly instructed by additional prompt)
+If a metadata field cannot be determined from the page content, use an empty string, empty array, or false for booleans.
+Structure: [{"page_index": 1, "text": "...", "title": "...", "category": "...", "tags": [...], "summary": "...", "author": "...", "secret": false}]
 Return ONLY the JSON array, no markdown code fences, no other text.`
 )
 
