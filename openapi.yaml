@@ -1,0 +1,1254 @@
+openapi: 3.1.0
+info:
+  title: RAGent API
+  description: |
+    RAGent - Markdown ドキュメントから RAG (Retrieval-Augmented Generation) システムを構築する CLI ツールの API 仕様。
+
+    ## アーキテクチャ概要
+    RAGent は以下のコンポーネントで構成されます:
+    - **MCP Server**: Model Context Protocol サーバー (Claude Desktop 等との連携)
+    - **WebUI**: ベクトル化プロセスの監視・制御用 Web ダッシュボード
+
+    ## 認証方式
+    MCP Server は以下の認証方式をサポート:
+    - **IP ベース**: 許可された IP アドレスからのアクセス
+    - **OIDC**: OpenID Connect による OAuth2 認証
+    - **Both**: IP と OIDC の両方を要求
+    - **Either**: IP と OIDC のどちらかを要求
+
+    ## Slack Bot
+    Slack Bot は HTTP エンドポイントではなく、Slack Socket Mode または RTM を使用します。
+    Slack からの HTTP Webhook / Event Subscription は処理しません。
+  version: 1.0.0
+  contact:
+    name: RAGent
+    url: https://github.com/ca-srg/ragent
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: MCP Server (デフォルト)
+  - url: http://localhost:8081
+    description: WebUI サーバー (スタンドアロン)
+  - url: http://localhost:8080/dashboard
+    description: MCP Server に組み込まれた WebUI
+
+tags:
+  - name: MCP
+    description: Model Context Protocol サーバー
+  - name: Authentication
+    description: 認証エンドポイント
+  - name: WebUI
+    description: Web ダッシュボード (ページ/パーシャル)
+  - name: WebUI-API
+    description: WebUI JSON API
+  - name: WebUI-SSE
+    description: WebUI Server-Sent Events
+  - name: Health
+    description: ヘルスチェック
+
+paths:
+  # =========================================================================
+  # MCP Server Endpoints
+  # =========================================================================
+  /:
+    post:
+      tags: [MCP]
+      summary: MCP Streamable HTTP エンドポイント
+      description: |
+        JSON-RPC 2.0 による MCP プロトコルリクエストを処理します。
+        MCP SDK の StreamableHTTPHandler が処理します。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/MCPToolListRequest'
+                - $ref: '#/components/schemas/MCPToolCallRequest'
+      responses:
+        '200':
+          description: JSON-RPC 2.0 レスポンス
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MCPToolListResponse'
+                  - $ref: '#/components/schemas/MCPToolCallResponse'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+        - IPAuth: []
+    get:
+      tags: [MCP]
+      summary: MCP サーバー情報
+      description: MCP サーバーの基本情報を返します。
+      responses:
+        '200':
+          description: サーバー情報
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /mcp:
+    post:
+      tags: [MCP]
+      summary: MCP Streamable HTTP エンドポイント (エイリアス)
+      description: ルートパスと同じ MCP エンドポイントです。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/MCPToolListRequest'
+                - $ref: '#/components/schemas/MCPToolCallRequest'
+      responses:
+        '200':
+          description: JSON-RPC 2.0 レスポンス
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MCPToolListResponse'
+                  - $ref: '#/components/schemas/MCPToolCallResponse'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+        - IPAuth: []
+
+  /sse:
+    get:
+      tags: [MCP]
+      summary: MCP SSE トランスポート
+      description: |
+        Server-Sent Events を使用した MCP トランスポート。
+        MCP SDK の SSEHandler が処理します。
+      responses:
+        '200':
+          description: SSE ストリーム
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE イベントストリーム
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+        - IPAuth: []
+
+  /health:
+    get:
+      tags: [Health]
+      summary: ヘルスチェック
+      description: サーバーの稼働状態を確認します。
+      security: []
+      responses:
+        '200':
+          description: サーバーは正常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /login:
+    get:
+      tags: [Authentication]
+      summary: OIDC ログイン
+      description: |
+        OIDC プロバイダーへの認証フローを開始します。
+        認証後、`/callback` にリダイレクトされます。
+      security: []
+      responses:
+        '302':
+          description: OIDC プロバイダーへリダイレクト
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: OIDC 認証 URL
+
+  /callback:
+    get:
+      tags: [Authentication]
+      summary: OIDC コールバック
+      description: |
+        OIDC プロバイダーからの認証コールバックを処理します。
+        認証成功後、MCP サーバー追加コマンドが含まれた HTML を返します。
+      security: []
+      parameters:
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+          description: CSRF 保護用の state パラメータ
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 認可コード
+        - name: error
+          in: query
+          schema:
+            type: string
+          description: エラーメッセージ (認証失敗時)
+      responses:
+        '200':
+          description: 認証成功
+          content:
+            text/html:
+              schema:
+                type: string
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: mcp_auth_token クッキー
+        '400':
+          description: 不正なリクエスト
+        '500':
+          description: トークン交換/検証エラー
+
+  # =========================================================================
+  # WebUI Endpoints (スタンドアロン: /, MCP 組み込み: /dashboard)
+  # =========================================================================
+  /dashboard:
+    get:
+      tags: [WebUI]
+      summary: ダッシュボードページ
+      description: ベクトル化の進捗状況、最近のエラー、最終実行結果を表示するダッシュボード。
+      security: []
+      responses:
+        '200':
+          description: HTML ダッシュボード
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /dashboard/files:
+    get:
+      tags: [WebUI]
+      summary: ファイル一覧ページ
+      description: ソースディレクトリ内のファイル一覧を表示するページ。
+      security: []
+      responses:
+        '200':
+          description: HTML ファイル一覧
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /dashboard/history:
+    get:
+      tags: [WebUI]
+      summary: 履歴ページ
+      description: 過去のベクトル化実行履歴を表示するページ。
+      security: []
+      responses:
+        '200':
+          description: HTML 履歴ページ
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /dashboard/static/{path}:
+    get:
+      tags: [WebUI]
+      summary: 静的ファイル
+      description: CSS、JavaScript、画像などの静的ファイルを提供します。
+      security: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 静的ファイルのパス
+      responses:
+        '200':
+          description: 静的ファイル
+          content:
+            text/css:
+              schema:
+                type: string
+            application/javascript:
+              schema:
+                type: string
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: ファイルが見つかりません
+
+  /dashboard/api/status:
+    get:
+      tags: [WebUI-API]
+      summary: ベクトル化ステータス取得
+      description: |
+        現在のベクトル化プロセスのステータスと、
+        外部プロセスの状態を返します。
+      security: []
+      responses:
+        '200':
+          description: ステータス情報
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIStatusResponse'
+        '405':
+          description: GET 以外のメソッド
+
+  /dashboard/api/upload:
+    post:
+      tags: [WebUI-API]
+      summary: ファイルアップロード
+      description: |
+        ソースファイルをアップロードします。
+        アップロード後、自動的にベクトル化が開始されます。
+        対応形式: .md, .csv, .pdf
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: アップロードするファイル
+                secret:
+                  type: string
+                  description: "true を指定すると、マークダウンファイルのフロントマターに secret: true を挿入"
+                  enum: ["true", "false"]
+      responses:
+        '200':
+          description: アップロード結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: 不正なリクエスト
+        '405':
+          description: POST 以外のメソッド
+
+  /dashboard/api/files:
+    get:
+      tags: [WebUI-API]
+      summary: ファイル一覧取得
+      description: ソースディレクトリ内のファイル一覧を JSON で返します。
+      security: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: ファイル名でフィルタリングする検索クエリ
+      responses:
+        '200':
+          description: ファイル一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileListItem'
+        '405':
+          description: GET 以外のメソッド
+
+  /dashboard/api/history:
+    get:
+      tags: [WebUI-API]
+      summary: 実行履歴取得
+      description: 過去のベクトル化実行履歴を JSON で返します。
+      security: []
+      responses:
+        '200':
+          description: 実行履歴
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RunInfo'
+        '405':
+          description: GET 以外のメソッド
+
+  /dashboard/api/errors:
+    get:
+      tags: [WebUI-API]
+      summary: エラー一覧取得
+      description: 最近発生したエラーの一覧を JSON で返します。
+      security: []
+      responses:
+        '200':
+          description: エラー一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ErrorInfo'
+        '405':
+          description: GET 以外のメソッド
+
+  /dashboard/sse/events:
+    get:
+      tags: [WebUI-SSE]
+      summary: SSE イベントストリーム
+      description: |
+        ベクトル化の進捗、完了、エラーなどのリアルタイムイベントを配信します。
+      security: []
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            type: string
+          description: イベントタイプでフィルタリング
+      responses:
+        '200':
+          description: SSE イベントストリーム
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  イベントタイプ:
+                  - vectorize_started
+                  - vectorize_progress
+                  - vectorize_completed
+                  - vectorize_failed
+                  - file_processed
+                  - file_error
+                  - heartbeat
+
+  /dashboard/partials/progress:
+    get:
+      tags: [WebUI]
+      summary: 進捗パーシャル
+      description: HTMX 用のベクトル化進捗パーシャル HTML。
+      security: []
+      responses:
+        '200':
+          description: HTML パーシャル
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /dashboard/partials/file-list:
+    get:
+      tags: [WebUI]
+      summary: ファイル一覧パーシャル
+      description: HTMX 用のファイル一覧パーシャル HTML。
+      security: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: ファイル名でフィルタリング
+      responses:
+        '200':
+          description: HTML パーシャル
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /dashboard/partials/error-list:
+    get:
+      tags: [WebUI]
+      summary: エラー一覧パーシャル
+      description: HTMX 用のエラー一覧パーシャル HTML。
+      security: []
+      responses:
+        '200':
+          description: HTML パーシャル
+          content:
+            text/html:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OIDC ID トークン (JWT)
+
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: mcp_auth_token
+      description: OIDC 認証後に設定されるクッキー
+
+    IPAuth:
+      type: apiKey
+      in: header
+      name: X-Forwarded-For
+      description: |
+        IP ベース認証。クライアントの IP アドレスが許可リストに含まれている必要があります。
+        X-Forwarded-For ヘッダーまたは X-Real-IP ヘッダーで指定可能。
+
+  responses:
+    AuthenticationRequired:
+      description: 認証が必要
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthenticationErrorResponse'
+
+  schemas:
+    # =========================================================================
+    # MCP JSON-RPC 2.0 スキーマ
+    # =========================================================================
+    MCPToolListRequest:
+      type: object
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc:
+          type: string
+          const: "2.0"
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+          description: リクエスト ID
+        method:
+          type: string
+          const: "tools/list"
+          description: ツール一覧を取得するメソッド
+
+    MCPToolCallRequest:
+      type: object
+      required: [jsonrpc, method, params]
+      properties:
+        jsonrpc:
+          type: string
+          const: "2.0"
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+          description: リクエスト ID
+        method:
+          type: string
+          const: "tools/call"
+          description: ツールを実行するメソッド
+        params:
+          $ref: '#/components/schemas/MCPToolCallParams'
+
+    MCPToolCallParams:
+      type: object
+      required: [name, arguments]
+      properties:
+        name:
+          type: string
+          description: "ツール名。例: hybrid_search"
+        arguments:
+          $ref: '#/components/schemas/HybridSearchRequest'
+
+    MCPToolListResponse:
+      type: object
+      required: [jsonrpc, result]
+      properties:
+        jsonrpc:
+          type: string
+          const: "2.0"
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+        result:
+          type: object
+          properties:
+            tools:
+              type: array
+              items:
+                $ref: '#/components/schemas/MCPToolDefinition'
+
+    MCPToolCallResponse:
+      type: object
+      required: [jsonrpc, result]
+      properties:
+        jsonrpc:
+          type: string
+          const: "2.0"
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+        result:
+          $ref: '#/components/schemas/MCPToolCallResult'
+
+    MCPToolDefinition:
+      type: object
+      required: [name, description, inputSchema]
+      properties:
+        name:
+          type: string
+          description: ツール名
+        description:
+          type: string
+          description: ツールの説明
+        inputSchema:
+          type: object
+          description: ツールの入力スキーマ (JSON Schema)
+
+    MCPToolCallResult:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPContent'
+        isError:
+          type: boolean
+          description: エラーかどうか
+
+    MCPContent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+          description: コンテンツのテキスト
+
+    # =========================================================================
+    # Hybrid Search スキーマ
+    # =========================================================================
+    HybridSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          description: 検索クエリテキスト
+          minLength: 1
+        top_k:
+          type: integer
+          description: 返す結果の数
+          minimum: 1
+          maximum: 100
+          default: 10
+        filters:
+          type: object
+          additionalProperties:
+            type: string
+          description: 検索に適用するキーバリューフィルター
+        search_mode:
+          type: string
+          description: "検索モード: hybrid (BM25 + ベクトル), bm25, vector"
+          enum: [hybrid, bm25, vector]
+          default: hybrid
+        bm25_weight:
+          type: number
+          format: double
+          description: ハイブリッドモードでの BM25 スコアの重み
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.5
+        vector_weight:
+          type: number
+          format: double
+          description: ハイブリッドモードでのベクトルスコアの重み
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.5
+        min_score:
+          type: number
+          format: double
+          description: 結果の最小スコア閾値
+          minimum: 0.0
+          default: 0.0
+        include_metadata:
+          type: boolean
+          description: 検索実行メタデータをレスポンスに含めるか
+          default: false
+        fusion_method:
+          type: string
+          description: BM25 とベクトル結果の統合方法
+          enum: [weighted_sum, rrf]
+          default: weighted_sum
+        use_japanese_nlp:
+          type: boolean
+          description: 日本語テキストマッチングのための日本語 NLP 処理を有効にするか
+          default: true
+        enable_slack_search:
+          type: boolean
+          description: Slack ワークスペースの会話をレスポンスに含めるか (サーバーの Slack 設定が必要)
+          default: false
+        slack_channels:
+          type: array
+          description: 検索対象の Slack チャンネル名 (# なし)
+          items:
+            type: string
+            minLength: 1
+
+    HybridSearchResponse:
+      type: object
+      required: [query, total, search_mode, search_method, results]
+      properties:
+        query:
+          type: string
+          description: 検索クエリ
+        total:
+          type: integer
+          description: マッチした合計結果数
+        search_mode:
+          type: string
+          description: 使用された検索モード
+          enum: [hybrid, bm25, vector]
+        search_method:
+          type: string
+          description: 実際の検索方法 (url_exact_match, hybrid_search 等)
+        url_detected:
+          type: boolean
+          description: クエリ内に URL が検出されたか
+        fallback_reason:
+          type: string
+          description: フォールバックが発生した理由
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/HybridSearchResultItem'
+        metadata:
+          $ref: '#/components/schemas/HybridSearchMetadata'
+        slack_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/HybridSearchSlackResult'
+          description: Slack 検索結果
+        referenced_slack_urls:
+          type: array
+          items:
+            $ref: '#/components/schemas/HybridSearchSlackResult'
+          description: クエリ内の URL で参照された Slack メッセージ
+        search_sources:
+          type: array
+          items:
+            type: string
+          description: 検索ソース (documents, slack, slack_urls 等)
+
+    HybridSearchResultItem:
+      type: object
+      required: [id, title, content, score, source, path]
+      properties:
+        id:
+          type: string
+          description: ドキュメント ID
+        title:
+          type: string
+          description: ドキュメントタイトル
+        content:
+          type: string
+          description: ドキュメント本文
+        score:
+          type: number
+          format: double
+          description: ハイブリッド検索後の統合スコア
+        source:
+          type: string
+          description: 検索ソース
+          enum: [hybrid, bm25, vector]
+        path:
+          type: string
+          description: ファイルパス
+        category:
+          type: string
+          description: カテゴリ
+        tags:
+          type: array
+          items:
+            type: string
+          description: タグ
+        created_at:
+          type: string
+          format: date-time
+          description: 作成日時
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新日時
+        metadata:
+          type: object
+          additionalProperties: true
+          description: ドキュメントメタデータ (include_metadata=true 時)
+
+    HybridSearchMetadata:
+      type: object
+      properties:
+        s3_vector_results:
+          type: integer
+          description: S3 Vector 検索結果数
+        opensearch_results:
+          type: integer
+          description: OpenSearch 検索結果数
+        execution_time_ms:
+          type: integer
+          format: int64
+          description: 実行時間 (ミリ秒)
+        bm25_weight:
+          type: number
+          format: double
+          description: BM25 重み
+        vector_weight:
+          type: number
+          format: double
+          description: ベクトル重み
+
+    HybridSearchSlackResult:
+      type: object
+      required: [message, timestamp, user, channel]
+      properties:
+        message:
+          type: string
+          description: メッセージ本文
+        timestamp:
+          type: string
+          description: タイムスタンプ (Slack 形式)
+        user:
+          type: string
+          description: ユーザー名またはユーザー ID
+        channel:
+          type: string
+          description: チャンネル名
+        permalink:
+          type: string
+          format: uri
+          description: メッセージへのパーマリンク
+
+    # =========================================================================
+    # 認証スキーマ
+    # =========================================================================
+    AuthenticationErrorResponse:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          const: "2.0"
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              const: -32001
+              description: 認証エラーコード
+            message:
+              type: string
+              const: "Authentication required"
+            data:
+              type: object
+              properties:
+                auth_url:
+                  type: string
+                  format: uri
+                  description: OIDC 認証 URL
+
+    HealthResponse:
+      type: object
+      required: [status, server_type, sdk_version, running, address]
+      properties:
+        status:
+          type: string
+          const: "healthy"
+        server_type:
+          type: string
+          const: "SDK-based"
+        sdk_version:
+          type: string
+          const: "v0.4.0"
+        running:
+          type: boolean
+        address:
+          type: string
+          description: サーバーアドレス (host:port)
+
+    # =========================================================================
+    # WebUI スキーマ
+    # =========================================================================
+    APIStatusResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/VectorizeStatus'
+        external_process:
+          $ref: '#/components/schemas/ExternalProcessStatus'
+
+    VectorizeStatus:
+      type: string
+      description: ベクトル化の現在の状態
+      enum: [idle, running, error, stopping]
+
+    ExternalProcessStatus:
+      type: object
+      required: [running, state]
+      properties:
+        running:
+          type: boolean
+          description: 外部プロセスが実行中か
+        state:
+          type: string
+          description: プロセスの状態
+          enum: [idle, running, waiting, error]
+        pid:
+          type: integer
+          description: プロセス ID
+        total_files:
+          type: integer
+          description: 処理対象ファイル数
+        processed:
+          type: integer
+          description: 処理済みファイル数
+        percentage:
+          type: number
+          format: double
+          description: 進捗パーセンテージ
+
+    FileListItem:
+      type: object
+      required: [path, name, size, mod_time, is_markdown, is_csv, processed]
+      properties:
+        path:
+          type: string
+          description: ファイルの相対パス
+        name:
+          type: string
+          description: ファイル名
+        size:
+          type: integer
+          format: int64
+          description: ファイルサイズ (バイト)
+        mod_time:
+          type: string
+          format: date-time
+          description: 最終更新日時
+        is_markdown:
+          type: boolean
+          description: Markdown ファイルかどうか
+        is_csv:
+          type: boolean
+          description: CSV ファイルかどうか
+        processed:
+          type: boolean
+          description: ベクトル化済みかどうか
+
+    RunInfo:
+      type: object
+      required: [id, start_time, status, total_files, processed_files, success_count, failed_count, dry_run]
+      properties:
+        id:
+          type: string
+          description: 実行 ID
+        start_time:
+          type: string
+          format: date-time
+          description: 開始日時
+        end_time:
+          type: string
+          format: date-time
+          description: 終了日時
+        status:
+          $ref: '#/components/schemas/VectorizeStatus'
+        total_files:
+          type: integer
+          description: 処理対象ファイル数
+        processed_files:
+          type: integer
+          description: 処理済みファイル数
+        success_count:
+          type: integer
+          description: 成功ファイル数
+        failed_count:
+          type: integer
+          description: 失敗ファイル数
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorInfo'
+          description: エラー一覧
+        dry_run:
+          type: boolean
+          description: ドライランかどうか
+
+    ErrorInfo:
+      type: object
+      required: [timestamp, file_path, error_type, message, retryable]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: エラー発生日時
+        file_path:
+          type: string
+          description: エラーが発生したファイルパス
+        error_type:
+          type: string
+          description: |
+            エラータイプ
+            - file_read: ファイル読み込みエラー
+            - metadata_extraction: メタデータ抽出エラー
+            - embedding_generation: 埋め込み生成エラー
+            - s3_upload: S3 アップロードエラー
+            - network_timeout: ネットワークタイムアウト
+            - timeout: タイムアウト
+            - rate_limit: レート制限
+            - validation: バリデーションエラー
+            - authentication: 認証エラー
+            - unknown: 不明なエラー
+            - ocr: OCR 処理エラー
+            - opensearch_connection: OpenSearch 接続エラー
+            - opensearch_mapping: OpenSearch マッピングエラー
+            - opensearch_indexing: OpenSearch インデックスエラー
+            - opensearch_bulk_index: OpenSearch バルクインデックスエラー
+            - opensearch_query: OpenSearch クエリエラー
+            - opensearch_index: OpenSearch インデックスエラー
+          enum:
+            - file_read
+            - metadata_extraction
+            - embedding_generation
+            - s3_upload
+            - network_timeout
+            - timeout
+            - rate_limit
+            - validation
+            - authentication
+            - unknown
+            - ocr
+            - opensearch_connection
+            - opensearch_mapping
+            - opensearch_indexing
+            - opensearch_bulk_index
+            - opensearch_query
+            - opensearch_index
+        message:
+          type: string
+          description: エラーメッセージ
+        retryable:
+          type: boolean
+          description: リトライ可能かどうか
+
+    # =========================================================================
+    # Slack Search ツール (--only-slack モード)
+    # =========================================================================
+    SlackSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          description: 検索クエリテキスト
+          minLength: 1
+        channels:
+          type: array
+          items:
+            type: string
+          description: 検索対象の Slack チャンネル名
+        max_results:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+          description: 返す結果の最大数
+
+    SlackSearchResponse:
+      type: object
+      required: [query, total, results]
+      properties:
+        query:
+          type: string
+          description: 検索クエリ
+        total:
+          type: integer
+          description: マッチした合計結果数
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlackSearchResultItem'
+        metadata:
+          $ref: '#/components/schemas/SlackSearchMetadata'
+
+    SlackSearchResultItem:
+      type: object
+      required: [channel, timestamp, user, text]
+      properties:
+        channel:
+          type: string
+          description: チャンネル名
+        timestamp:
+          type: string
+          description: メッセージタイムスタンプ
+        user:
+          type: string
+          description: ユーザー ID
+        text:
+          type: string
+          description: メッセージ本文
+        permalink:
+          type: string
+          format: uri
+          description: メッセージへのパーマリンク
+        thread_replies:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlackThreadReplyItem'
+          description: スレッド返信一覧
+
+    SlackThreadReplyItem:
+      type: object
+      required: [timestamp, user, text]
+      properties:
+        timestamp:
+          type: string
+          description: 返信タイムスタンプ
+        user:
+          type: string
+          description: ユーザー ID
+        text:
+          type: string
+          description: 返信本文
+
+    SlackSearchMetadata:
+      type: object
+      properties:
+        execution_time_ms:
+          type: integer
+          format: int64
+          description: 実行時間 (ミリ秒)
+        iteration_count:
+          type: integer
+          description: 反復検索回数
+        queries_used:
+          type: array
+          items:
+            type: string
+          description: 使用されたクエリ一覧
+        is_sufficient:
+          type: boolean
+          description: 十分な情報が得られたか
+        missing_info:
+          type: array
+          items:
+            type: string
+          description: 不足している情報
+
+    # =========================================================================
+    # SSE イベントスキーマ
+    # =========================================================================
+    SSEVectorizeStartedEvent:
+      type: object
+      properties:
+        run_id:
+          type: string
+          description: 実行 ID
+        total_files:
+          type: integer
+          description: 処理対象ファイル数
+        dry_run:
+          type: boolean
+          description: ドライランかどうか
+
+    SSEVectorizeProgressEvent:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/VectorizeStatus'
+        total_files:
+          type: integer
+        processed_files:
+          type: integer
+        success_count:
+          type: integer
+        failed_count:
+          type: integer
+        percent_complete:
+          type: number
+          format: double
+          description: 進捗率 (0-100)
+        current_file:
+          type: string
+          description: 現在処理中のファイル
+        start_time:
+          type: string
+          format: date-time
+        elapsed_time:
+          type: string
+          description: "経過時間 (例: 1m30s)"
+        estimated_remain:
+          type: string
+          description: 残り推定時間
+
+    SSEVectorizeFailedEvent:
+      type: object
+      properties:
+        error:
+          type: string
+          description: エラーメッセージ
+
+    SSEFileErrorEvent:
+      $ref: '#/components/schemas/ErrorInfo'
+
+    UploadResponse:
+      type: object
+      required: [results, saved_count, rejected_count, vectorize_triggered]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UploadResult'
+          description: アップロード結果一覧
+        saved_count:
+          type: integer
+          description: 保存成功ファイル数
+        rejected_count:
+          type: integer
+          description: 拒否ファイル数
+        vectorize_triggered:
+          type: boolean
+          description: ベクトル化が開始されたか
+
+    UploadResult:
+      type: object
+      required: [file_name, status, message, size]
+      properties:
+        file_name:
+          type: string
+          description: ファイル名
+        status:
+          type: string
+          description: ステータス
+          enum: [saved, rejected, error]
+        message:
+          type: string
+          description: 結果メッセージ
+        size:
+          type: integer
+          format: int64
+          description: ファイルサイズ (バイト)
