@@ -655,6 +655,9 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *HybridSearchR
 		if category, ok := source["category"].(string); ok {
 			item.Category = category
 		}
+		if author, ok := source["author"].(string); ok {
+			item.Author = author
+		}
 		if createdAt, ok := source["created_at"].(string); ok {
 			item.CreatedAt = createdAt
 		}

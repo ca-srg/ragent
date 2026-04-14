@@ -181,18 +181,7 @@ func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directo
 	}
 	log.Printf("Found %d files to process (%d markdown, %d CSV)", len(files), mdCount, csvCount)
 
-	// Expand CSV files into individual rows
-	expandedFiles, err := vs.expandCSVFiles(files)
-	if err != nil {
-		return nil, fmt.Errorf("failed to expand CSV files: %w", err)
-	}
-
-	// Expand PDF files into individual pages (handled in VectorizeFiles)
-	if len(expandedFiles) != len(files) {
-		log.Printf("After CSV expansion: %d total documents to process", len(expandedFiles))
-	}
-
-	return vs.VectorizeFiles(ctx, expandedFiles, dryRun)
+	return vs.VectorizeFiles(ctx, files, dryRun)
 }
 
 // expandCSVFiles expands CSV files into individual FileInfo entries (one per row)
@@ -201,16 +190,20 @@ func (vs *VectorizerService) expandCSVFiles(files []*pkgdomain.FileInfo) ([]*pkg
 
 	for _, file := range files {
 		if file.IsCSV {
-			// Expand CSV file into rows
 			log.Printf("Expanding CSV file: %s", file.Path)
-			csvFiles, err := vs.csvReader.ReadFile(file.Path)
+			var csvFiles []*pkgdomain.FileInfo
+			var err error
+			if file.Content != "" {
+				csvFiles, err = vs.csvReader.ReadContent(file.Content, file.Path)
+			} else {
+				csvFiles, err = vs.csvReader.ReadFile(file.Path)
+			}
 			if err != nil {
 				return nil, fmt.Errorf("failed to read CSV file %s: %w", file.Path, err)
 			}
 			log.Printf("  Expanded to %d rows", len(csvFiles))
 			result = append(result, csvFiles...)
 		} else {
-			// Keep markdown files as-is
 			result = append(result, file)
 		}
 	}
@@ -325,8 +318,18 @@ func (vs *VectorizerService) VectorizeFiles(ctx context.Context, files []*pkgdom
 
 	log.Printf("Processing %d files", len(files))
 
+	// Expand CSV files into individual rows (each row becomes a separate document)
+	expandedFiles, err := vs.expandCSVFiles(files)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand CSV files: %w", err)
+	}
+	if len(expandedFiles) != len(files) {
+		log.Printf("After CSV expansion: %d total documents to process", len(expandedFiles))
+	}
+	files = expandedFiles
+
 	// Expand PDF files into individual pages (for S3/GitHub sources with RawBytes, and local files)
-	expandedFiles, err := vs.expandPDFFiles(files)
+	expandedFiles, err = vs.expandPDFFiles(files)
 	if err != nil {
 		return nil, fmt.Errorf("failed to expand PDF files: %w", err)
 	}
@@ -362,10 +365,10 @@ func (vs *VectorizerService) ProcessSingleFile(ctx context.Context, fileInfo *pk
 		fileInfo.Content = content
 	}
 
-	// Extract metadata: skip for PDF files since pdf.Reader already sets correct metadata.
-	// Re-extracting with the page path (pdf://...pdf/page/N) would produce wrong values
-	// because filepath.Base() returns the page number instead of the original filename.
-	if !fileInfo.IsPDF {
+	// Skip metadata re-extraction for PDF and CSV files: their dedicated readers
+	// already set correct metadata. The generic extractor would overwrite those
+	// values with wrong path-derived defaults.
+	if !fileInfo.IsPDF && !fileInfo.IsCSV {
 		secret := fileInfo.Metadata.Secret
 		metadata, err := vs.metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
 		if err != nil {

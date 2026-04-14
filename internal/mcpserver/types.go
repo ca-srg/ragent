@@ -112,6 +112,7 @@ type HybridSearchResultItem struct {
 	Source    string                 `json:"source"` // "s3vector", "opensearch", "hybrid"
 	Path      string                 `json:"path"`   // File path
 	Category  string                 `json:"category,omitempty"`
+	Author    string                 `json:"author,omitempty"`
 	Tags      []string               `json:"tags,omitempty"`
 	CreatedAt string                 `json:"created_at,omitempty"`
 	UpdatedAt string                 `json:"updated_at,omitempty"`

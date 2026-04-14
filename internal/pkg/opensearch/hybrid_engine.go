@@ -356,7 +356,7 @@ func (hse *HybridSearchEngine) validateQuery(query *HybridQuery) error {
 	}
 
 	if len(query.Fields) == 0 {
-		query.Fields = []string{"title", "content", "body"}
+		query.Fields = []string{"title", "content", "body", "author"}
 	}
 
 	if query.BM25Weight == 0 && query.VectorWeight == 0 {

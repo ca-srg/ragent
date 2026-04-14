@@ -265,7 +265,8 @@ func (s *HybridSearchService) Search(ctx context.Context, request *SearchRequest
 				continue
 			}
 			if content, ok := source["content"].(string); ok && content != "" {
-				resp.ContextParts = append(resp.ContextParts, content)
+				contextText := buildContextText(source, content)
+				resp.ContextParts = append(resp.ContextParts, contextText)
 			}
 			var title, reference string
 			if t, ok := source["title"].(string); ok {
@@ -494,6 +495,23 @@ func (s *HybridSearchService) GetHybridEngine() *opensearch.HybridSearchEngine {
 }
 
 // HealthCheck checks if the service and its dependencies are healthy
+func buildContextText(source map[string]interface{}, content string) string {
+	var header strings.Builder
+	if title, ok := source["title"].(string); ok && title != "" {
+		fmt.Fprintf(&header, "タイトル: %s\n", title)
+	}
+	if author, ok := source["author"].(string); ok && author != "" {
+		fmt.Fprintf(&header, "著者: %s\n", author)
+	}
+	if category, ok := source["category"].(string); ok && category != "" {
+		fmt.Fprintf(&header, "カテゴリ: %s\n", category)
+	}
+	if header.Len() == 0 {
+		return content
+	}
+	return header.String() + "\n" + content
+}
+
 func (s *HybridSearchService) HealthCheck(ctx context.Context) error {
 	if s.osClient == nil {
 		return fmt.Errorf("OpenSearch client not initialized")

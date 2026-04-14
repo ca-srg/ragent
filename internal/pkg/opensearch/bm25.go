@@ -70,7 +70,7 @@ func (c *Client) SearchBM25(ctx context.Context, indexName string, query *BM25Qu
 		query.Size = 1000
 	}
 	if len(query.Fields) == 0 {
-		query.Fields = []string{"title", "content", "body"}
+		query.Fields = []string{"title", "content", "body", "author"}
 	}
 
 	startTime := time.Now()
