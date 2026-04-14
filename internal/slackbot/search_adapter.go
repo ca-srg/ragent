@@ -200,9 +200,8 @@ func (h *HybridSearchAdapter) Search(ctx context.Context, query string, opts Sea
 			continue // Skip this document if we can't unmarshal
 		}
 
-		// Extract content
 		if content, ok := source["content"].(string); ok && content != "" {
-			contextParts = append(contextParts, content)
+			contextParts = append(contextParts, buildContextText(source, content))
 		}
 
 		// Extract title and reference
@@ -543,4 +542,21 @@ func convertGitHubPathToURL(path string) string {
 		return path
 	}
 	return fmt.Sprintf("https://github.com/%s/%s/blob/main/%s", parts[0], parts[1], parts[2])
+}
+
+func buildContextText(source map[string]interface{}, content string) string {
+	var header strings.Builder
+	if title, ok := source["title"].(string); ok && title != "" {
+		fmt.Fprintf(&header, "タイトル: %s\n", title)
+	}
+	if author, ok := source["author"].(string); ok && author != "" {
+		fmt.Fprintf(&header, "著者: %s\n", author)
+	}
+	if category, ok := source["category"].(string); ok && category != "" {
+		fmt.Fprintf(&header, "カテゴリ: %s\n", category)
+	}
+	if header.Len() == 0 {
+		return content
+	}
+	return header.String() + "\n" + content
 }
