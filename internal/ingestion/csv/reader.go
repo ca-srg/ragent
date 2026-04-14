@@ -245,6 +245,11 @@ func extractMetadata(row []string, headers []string, detector *ColumnDetector, f
 		metadata.Reference = getColumnValue(row, headers, cfg.Reference)
 	}
 
+	// Author
+	if cfg.Author != "" {
+		metadata.Author = getColumnValue(row, headers, cfg.Author)
+	}
+
 	// CreatedAt
 	if cfg.CreatedAt != "" {
 		dateStr := getColumnValue(row, headers, cfg.CreatedAt)
@@ -263,6 +268,14 @@ func extractMetadata(row []string, headers []string, detector *ColumnDetector, f
 				metadata.UpdatedAt = parsedTime
 			}
 		}
+	}
+
+	now := time.Now()
+	if metadata.CreatedAt.IsZero() {
+		metadata.CreatedAt = now
+	}
+	if metadata.UpdatedAt.IsZero() {
+		metadata.UpdatedAt = now
 	}
 
 	return metadata
@@ -366,6 +379,17 @@ func sanitizeID(id string) string {
 	id = strings.ReplaceAll(id, "/", "_")
 	id = strings.ReplaceAll(id, "\\", "_")
 	return id
+}
+
+// ReadContent reads CSV content from a string and returns FileInfo slice (one per row).
+// This is used when the CSV content is already loaded (e.g., from S3 or GitHub sources).
+func (r *Reader) ReadContent(content string, sourcePath string) ([]*pkgdomain.FileInfo, error) {
+	fileConfig := r.config.GetConfigForFile(sourcePath)
+	if fileConfig == nil {
+		return nil, fmt.Errorf("no configuration found for CSV file: %s (no pattern matches)", sourcePath)
+	}
+
+	return r.readWithConfig(strings.NewReader(content), sourcePath, fileConfig)
 }
 
 // GetDetectedColumns returns information about detected columns for a CSV file

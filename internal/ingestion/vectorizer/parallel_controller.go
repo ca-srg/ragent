@@ -207,10 +207,10 @@ func (pc *ParallelController) processFile(
 		fileInfo.Content = string(content)
 	}
 
-	// Extract metadata: skip for PDF files since pdf.Reader already sets correct metadata.
-	// Re-extracting with the page path (pdf://...pdf/page/N) would produce wrong values
-	// because filepath.Base() returns the page number instead of the original filename.
-	if !fileInfo.IsPDF {
+	// Skip metadata re-extraction for PDF and CSV files: their dedicated readers
+	// already set correct metadata. The generic extractor would overwrite those
+	// values with wrong path-derived defaults.
+	if !fileInfo.IsPDF && !fileInfo.IsCSV {
 		secret := fileInfo.Metadata.Secret
 		metadata, err := metadataExtractor.ExtractMetadata(fileInfo.Path, fileInfo.Content)
 		if err != nil {

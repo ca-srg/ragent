@@ -90,6 +90,9 @@ type MetadataMapping struct {
 
 	// Reference column name for reference information
 	Reference string `yaml:"reference"`
+
+	// Author column name for document author
+	Author string `yaml:"author"`
 }
 
 // LoadConfig loads and validates CSV configuration from a YAML file
