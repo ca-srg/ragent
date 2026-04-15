@@ -17,10 +17,10 @@ import sys
 
 
 def main() -> None:
-    server_url = os.environ.get("RAGENT_SERVER_URL", "http://localhost:8080/sse")
+    server_url = os.environ.get("RAGENT_SERVER_URL", "http://localhost:8080/mcp")
     try:
         subprocess.run(
-            ["uvx", "mcp-proxy", server_url],
+            ["uvx", "mcp-proxy", "--transport", "streamablehttp", server_url],
             check=True,
         )
     except FileNotFoundError:

@@ -22,6 +22,8 @@
       "command": "uvx",
       "args": [
         "mcp-proxy",
+        "--transport",
+        "streamablehttp",
         "${user_config.server_url}"
       ]
     }
@@ -36,8 +38,8 @@
     "server_url": {
       "type": "string",
       "title": "Server URL",
-      "description": "SSE endpoint URL of your running RAGent MCP server (e.g., http://localhost:8080/sse)",
-      "default": "http://localhost:8080/sse",
+      "description": "Streamable HTTP endpoint URL of your running RAGent MCP server (e.g., http://localhost:8080/mcp)",
+      "default": "http://localhost:8080/mcp",
       "required": true
     }
   },
