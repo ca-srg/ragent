@@ -5,8 +5,7 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
@@ -14,6 +13,8 @@ concurrency:
 
 jobs:
   goreleaser:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -36,3 +37,29 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  mcpb:
+    needs: goreleaser
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build MCPB bundle
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd mcpb
+          jq --arg v "$VERSION" '.version = $v' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+          zip -r "../ragent-${VERSION}.mcpb" manifest.json proxy.py
+
+      - name: Upload MCPB to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release upload "${GITHUB_REF_NAME}" "ragent-${VERSION}.mcpb" --clobber

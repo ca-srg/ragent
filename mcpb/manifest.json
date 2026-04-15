@@ -1,0 +1,61 @@
+{
+  "manifest_version": "0.3",
+  "name": "ragent",
+  "display_name": "RAGent - Hybrid Search",
+  "version": "0.0.0",
+  "description": "Connect Claude Desktop to RAGent's hybrid search MCP server. Combines BM25 keyword matching and vector embeddings on Amazon OpenSearch for high-quality document retrieval.",
+  "long_description": "RAGent is a CLI tool for building RAG (Retrieval-Augmented Generation) systems from Markdown documents using hybrid search (BM25 + vector) with Amazon S3 Vectors and OpenSearch.\n\nThis MCPB package connects Claude Desktop to a running RAGent MCP server via mcp-proxy, bridging stdio transport to RAGent's SSE endpoint.\n\n**Prerequisites:**\n- A running RAGent MCP server (`ragent mcp-server`)\n- [uv](https://docs.astral.sh/uv/) installed for the `uvx` command",
+  "author": {
+    "name": "ca-srg",
+    "url": "https://github.com/ca-srg"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ca-srg/ragent.git"
+  },
+  "homepage": "https://github.com/ca-srg/ragent",
+  "support": "https://github.com/ca-srg/ragent/issues",
+  "server": {
+    "type": "python",
+    "entry_point": "proxy.py",
+    "mcp_config": {
+      "command": "uvx",
+      "args": [
+        "mcp-proxy",
+        "--sse-url",
+        "${user_config.server_url}"
+      ]
+    }
+  },
+  "tools": [
+    {
+      "name": "hybrid_search",
+      "description": "Run hybrid retrieval across the knowledge base by blending BM25 keyword matching and vector embeddings on Amazon OpenSearch. Returns fused results with relevance scores and source references."
+    }
+  ],
+  "user_config": {
+    "server_url": {
+      "type": "string",
+      "title": "Server URL",
+      "description": "SSE endpoint URL of your running RAGent MCP server (e.g., http://localhost:8080/sse)",
+      "default": "http://localhost:8080/sse",
+      "required": true
+    }
+  },
+  "keywords": [
+    "rag",
+    "search",
+    "opensearch",
+    "hybrid-search",
+    "bedrock",
+    "aws"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ]
+  }
+}
