@@ -46,3 +46,51 @@ changelog:
 release:
   draft: false
   prerelease: auto
+  header: |
+    ## Claude Desktop Integration (MCPB)
+
+    This release includes `ragent-{{ .Version }}.mcpb` — a ready-to-use package for connecting [Claude Desktop](https://claude.ai/download) to your RAGent MCP server.
+
+    ### What is MCPB?
+
+    MCPB (MCP Bundle) is an installable package format for Claude Desktop. Instead of manually editing JSON config files, you simply open the `.mcpb` file and Claude Desktop registers the MCP server automatically.
+
+    ### Quick Start
+
+    1. **Download** `ragent-{{ .Version }}.mcpb` from the Assets below
+    2. **Open** the file — Claude Desktop will prompt you to install it
+    3. **Configure** the server URL when prompted (default: `http://localhost:8080/mcp`)
+    4. **Start** your RAGent MCP server: `ragent mcp-server`
+    5. **Use** the `hybrid_search` tool in Claude Desktop to search your knowledge base
+
+    ### Prerequisites
+
+    - [Claude Desktop](https://claude.ai/download)
+    - [uv](https://docs.astral.sh/uv/) (required for the `uvx` command used internally)
+    - A running RAGent MCP server (`ragent mcp-server`)
+
+    ---
+
+    ## Claude Desktop 連携（MCPB）
+
+    このリリースには `ragent-{{ .Version }}.mcpb` が含まれています。Claude Desktop から RAGent MCP サーバーへ簡単に接続するためのパッケージです。
+
+    ### MCPB とは？
+
+    MCPB（MCP Bundle）は Claude Desktop 向けのインストール可能なパッケージ形式です。JSON 設定ファイルを手動で編集する必要はありません。`.mcpb` ファイルを開くだけで、Claude Desktop が MCP サーバーを自動的に登録します。
+
+    ### クイックスタート
+
+    1. 下の Assets から `ragent-{{ .Version }}.mcpb` を**ダウンロード**
+    2. ファイルを**開く** — Claude Desktop がインストールを促します
+    3. サーバー URL を**設定**（デフォルト: `http://localhost:8080/mcp`）
+    4. RAGent MCP サーバーを**起動**: `ragent mcp-server`
+    5. Claude Desktop で `hybrid_search` ツールを使ってナレッジベースを**検索**
+
+    ### 前提条件
+
+    - [Claude Desktop](https://claude.ai/download)
+    - [uv](https://docs.astral.sh/uv/)（内部で使用する `uvx` コマンドに必要）
+    - 起動済みの RAGent MCP サーバー（`ragent mcp-server`）
+
+    ---
