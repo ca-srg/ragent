@@ -22,7 +22,6 @@
       "command": "uvx",
       "args": [
         "mcp-proxy",
-        "--sse-url",
         "${user_config.server_url}"
       ]
     }
