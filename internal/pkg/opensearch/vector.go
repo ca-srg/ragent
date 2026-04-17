@@ -214,6 +214,9 @@ func (c *Client) buildVectorSearchBody(query *VectorQuery) map[string]interface{
 			applySecretExclusion(boolClause, true)
 		}
 	}
+	body["_source"] = map[string]interface{}{
+		"excludes": []string{"embedding"},
+	}
 
 	return body
 }

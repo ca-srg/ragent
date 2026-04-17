@@ -15,6 +15,16 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
+// sourceExcludeFields lists fields that must never appear in MCP tool responses.
+var sourceExcludeFields = []string{"embedding"}
+
+// sanitizeSourceFields removes fields that should never be exposed in MCP responses.
+func sanitizeSourceFields(source map[string]interface{}) {
+	for _, field := range sourceExcludeFields {
+		delete(source, field)
+	}
+}
+
 type SearchClient interface {
 	opensearch.SearchClient
 	HealthCheck(ctx context.Context) error
@@ -676,8 +686,9 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *HybridSearchR
 			}
 		}
 
-		// Include metadata if requested
+		// Include metadata if requested (with sensitive fields stripped)
 		if request.IncludeMetadata {
+			sanitizeSourceFields(source)
 			item.Metadata = source
 		}
 

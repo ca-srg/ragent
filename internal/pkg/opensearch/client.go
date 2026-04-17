@@ -344,6 +344,9 @@ func BuildTermQueryBody(query *TermQuery) map[string]interface{} {
 			"bool": boolQuery,
 		}
 	}
+	body["_source"] = map[string]interface{}{
+		"excludes": []string{"embedding"},
+	}
 
 	return body
 }
