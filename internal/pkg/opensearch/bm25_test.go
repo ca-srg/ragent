@@ -148,3 +148,27 @@ func TestBuildBM25SearchBodyDoesNotAddSecretClauseWhenDisabled(t *testing.T) {
 		t.Fatalf("did not expect must_not clause when secret exclusion disabled")
 	}
 }
+
+func TestBuildBM25SearchBodyExcludesEmbedding(t *testing.T) {
+	client := &Client{}
+	query := &BM25Query{
+		Query:  "hello",
+		Fields: []string{"title", "content"},
+		Size:   10,
+	}
+
+	body := client.buildBM25SearchBody(query)
+	source, ok := body["_source"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected _source section")
+	}
+
+	excludes, ok := source["excludes"].([]string)
+	if !ok {
+		t.Fatalf("expected excludes to be []string")
+	}
+
+	if len(excludes) != 1 || excludes[0] != "embedding" {
+		t.Fatalf("expected excludes to contain embedding, got %#v", excludes)
+	}
+}
