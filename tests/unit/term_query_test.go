@@ -22,6 +22,9 @@ func TestBuildTermQueryBody(t *testing.T) {
 	expectedSingle := map[string]interface{}{
 		"size": float64(5),
 		"from": float64(0),
+		"_source": map[string]interface{}{
+			"excludes": []interface{}{"embedding"},
+		},
 		"query": map[string]interface{}{
 			"terms": map[string]interface{}{
 				"reference": []interface{}{"https://example.com"},
@@ -40,6 +43,9 @@ func TestBuildTermQueryBody(t *testing.T) {
 	expectedMultiple := map[string]interface{}{
 		"size": float64(10),
 		"from": float64(2),
+		"_source": map[string]interface{}{
+			"excludes": []interface{}{"embedding"},
+		},
 		"query": map[string]interface{}{
 			"terms": map[string]interface{}{
 				"reference": []interface{}{"https://example.com", "http://test.com"},
@@ -83,6 +89,31 @@ func TestBuildTermQueryResponse(t *testing.T) {
 			assert.Equal(t, json.RawMessage(`{"reference":"https://example.com"}`), result.Results[0].Source)
 		}
 	}
+}
+
+func TestBuildTermQueryBodyExcludesEmbedding(t *testing.T) {
+	t.Parallel()
+
+	query := &opensearch.TermQuery{
+		Field:  "reference",
+		Values: []string{"https://example.com"},
+		Size:   5,
+	}
+	body := opensearch.BuildTermQueryBody(query)
+	expected := map[string]interface{}{
+		"size": float64(5),
+		"from": float64(0),
+		"query": map[string]interface{}{
+			"terms": map[string]interface{}{
+				"reference": []interface{}{"https://example.com"},
+			},
+		},
+		"_source": map[string]interface{}{
+			"excludes": []interface{}{"embedding"},
+		},
+	}
+
+	assert.Equal(t, expected, normalize(body))
 }
 
 func normalize(body map[string]interface{}) map[string]interface{} {
