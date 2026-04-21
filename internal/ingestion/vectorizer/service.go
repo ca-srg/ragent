@@ -2,6 +2,7 @@ package vectorizer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -184,28 +185,42 @@ func (vs *VectorizerService) VectorizeMarkdownFiles(ctx context.Context, directo
 	return vs.VectorizeFiles(ctx, files, dryRun)
 }
 
-// expandCSVFiles expands CSV files into individual FileInfo entries (one per row)
+// expandCSVFiles expands CSV files into individual FileInfo entries (one per row).
+// CSV files without a matching csv-config entry are logged as a warning and
+// skipped so that a single misconfigured file does not fail the entire
+// vectorization cycle.
 func (vs *VectorizerService) expandCSVFiles(files []*pkgdomain.FileInfo) ([]*pkgdomain.FileInfo, error) {
 	var result []*pkgdomain.FileInfo
+	skipped := 0
 
 	for _, file := range files {
-		if file.IsCSV {
-			log.Printf("Expanding CSV file: %s", file.Path)
-			var csvFiles []*pkgdomain.FileInfo
-			var err error
-			if file.Content != "" {
-				csvFiles, err = vs.csvReader.ReadContent(file.Content, file.Path)
-			} else {
-				csvFiles, err = vs.csvReader.ReadFile(file.Path)
-			}
-			if err != nil {
-				return nil, fmt.Errorf("failed to read CSV file %s: %w", file.Path, err)
-			}
-			log.Printf("  Expanded to %d rows", len(csvFiles))
-			result = append(result, csvFiles...)
-		} else {
+		if !file.IsCSV {
 			result = append(result, file)
+			continue
 		}
+
+		log.Printf("Expanding CSV file: %s", file.Path)
+		var csvFiles []*pkgdomain.FileInfo
+		var err error
+		if file.Content != "" {
+			csvFiles, err = vs.csvReader.ReadContent(file.Content, file.Path)
+		} else {
+			csvFiles, err = vs.csvReader.ReadFile(file.Path)
+		}
+		if err != nil {
+			if errors.Is(err, csv.ErrNoCSVConfig) {
+				log.Printf("Warning: Skipping CSV file %s: no matching csv-config pattern (continuing)", file.Path)
+				skipped++
+				continue
+			}
+			return nil, fmt.Errorf("failed to read CSV file %s: %w", file.Path, err)
+		}
+		log.Printf("  Expanded to %d rows", len(csvFiles))
+		result = append(result, csvFiles...)
+	}
+
+	if skipped > 0 {
+		log.Printf("CSV expansion skipped %d file(s) without matching csv-config pattern", skipped)
 	}
 
 	return result, nil
