@@ -32,7 +32,7 @@ func (r *Reader) ReadFile(filePath string) ([]*pkgdomain.FileInfo, error) {
 	// Get configuration for this file
 	fileConfig := r.config.GetConfigForFile(filePath)
 	if fileConfig == nil {
-		return nil, fmt.Errorf("no configuration found for CSV file: %s (no pattern matches)", filePath)
+		return nil, fmt.Errorf("%w: %s", ErrNoCSVConfig, filePath)
 	}
 
 	file, err := os.Open(filePath)
@@ -386,7 +386,7 @@ func sanitizeID(id string) string {
 func (r *Reader) ReadContent(content string, sourcePath string) ([]*pkgdomain.FileInfo, error) {
 	fileConfig := r.config.GetConfigForFile(sourcePath)
 	if fileConfig == nil {
-		return nil, fmt.Errorf("no configuration found for CSV file: %s (no pattern matches)", sourcePath)
+		return nil, fmt.Errorf("%w: %s", ErrNoCSVConfig, sourcePath)
 	}
 
 	return r.readWithConfig(strings.NewReader(content), sourcePath, fileConfig)
@@ -398,7 +398,7 @@ func (r *Reader) GetDetectedColumns(filePath string) (*DetectedColumnsInfo, erro
 	// Get configuration for this file
 	fileConfig := r.config.GetConfigForFile(filePath)
 	if fileConfig == nil {
-		return nil, fmt.Errorf("no configuration found for CSV file: %s (no pattern matches)", filePath)
+		return nil, fmt.Errorf("%w: %s", ErrNoCSVConfig, filePath)
 	}
 
 	file, err := os.Open(filePath)
@@ -500,7 +500,7 @@ func (r *Reader) GetDetectedColumnsFromContent(filePath string, content string) 
 	// Get configuration for this file
 	fileConfig := r.config.GetConfigForFile(filePath)
 	if fileConfig == nil {
-		return nil, fmt.Errorf("no configuration found for CSV file: %s (no pattern matches)", filePath)
+		return nil, fmt.Errorf("%w: %s", ErrNoCSVConfig, filePath)
 	}
 
 	csvReader := csv.NewReader(strings.NewReader(content))

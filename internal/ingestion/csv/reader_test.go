@@ -1,6 +1,7 @@
 package csv
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -262,8 +263,11 @@ func TestReader_ReadFile_NoMatchingPattern(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for no matching pattern")
 	}
-	if !strings.Contains(err.Error(), "no configuration found") {
-		t.Errorf("expected 'no configuration found' error, got: %v", err)
+	if !errors.Is(err, ErrNoCSVConfig) {
+		t.Errorf("expected ErrNoCSVConfig, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), csvPath) {
+		t.Errorf("expected error to reference the file path %q, got: %v", csvPath, err)
 	}
 }
 
