@@ -33,12 +33,17 @@ func TestThreadContextBuilder_BuildFormatsHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	expected := "[過去の会話]\nユーザー: second message\nBOT: Thanks for the update.\n\n[現在の質問]\n" + current
+	// Bot-authored messages are intentionally excluded from history to
+	// prevent reply loops where the bot's own past output reseeds the query.
+	expected := "[過去の会話]\nユーザー: second message\n\n[現在の質問]\n" + current
 	if result != expected {
 		t.Fatalf("unexpected formatted result:\nwant: %q\ngot : %q", expected, result)
 	}
 	if strings.Contains(result, "first message") {
 		t.Fatalf("result should respect maxMessages limit: %s", result)
+	}
+	if strings.Contains(result, "Thanks for the update") {
+		t.Fatalf("bot-authored messages must be skipped: %s", result)
 	}
 }
 
@@ -121,12 +126,14 @@ func TestThreadContextBuilder_ReturnsCurrentQueryForEmptyThread(t *testing.T) {
 	}
 }
 
-func TestThreadContextBuilder_TruncatesBotMessages(t *testing.T) {
+func TestThreadContextBuilder_SkipsBotMessages(t *testing.T) {
 	longText := strings.Repeat("甲", 250)
 	mock := &mockSlackClient{
 		repliesFunc: func(params *slack.GetConversationRepliesParameters) ([]slack.Message, bool, string, error) {
 			return []slack.Message{
 				{Msg: slack.Msg{BotID: "B1", Text: longText}},
+				{Msg: slack.Msg{SubType: "bot_message", Text: "subtype bot reply"}},
+				{Msg: slack.Msg{Username: "RAGent", Text: "username bot reply"}},
 			}, false, "", nil
 		},
 	}
@@ -136,17 +143,21 @@ func TestThreadContextBuilder_TruncatesBotMessages(t *testing.T) {
 	}
 	builder := NewThreadContextBuilder(mock, cfg, log.New(io.Discard, "", 0))
 
-	current := "truncation test"
+	current := "skip-bot test"
 	result, err := builder.Build(context.Background(), "C1", "999", current)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	expectedBotText := strings.Repeat("甲", 200)
-	if !strings.Contains(result, "BOT: "+expectedBotText) {
-		t.Fatalf("expected truncated bot text (%d chars), got %q", len(expectedBotText), result)
+	// With only bot messages in the thread, history should be empty and the
+	// builder must return the current query unchanged.
+	if result != current {
+		t.Fatalf("expected current query when only bot messages exist, got %q", result)
 	}
-	if strings.Contains(result, strings.Repeat("甲", 201)) {
-		t.Fatalf("bot text should be truncated to 200 characters")
+	if strings.ContainsRune(result, '甲') {
+		t.Fatalf("bot text must not appear in history: %q", result)
+	}
+	if strings.Contains(result, "subtype bot reply") || strings.Contains(result, "username bot reply") {
+		t.Fatalf("bot-authored messages must be skipped: %q", result)
 	}
 }
 

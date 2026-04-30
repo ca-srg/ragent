@@ -55,8 +55,16 @@ func (p *Processor) ProcessMessage(ctx context.Context, botUserID string, msg *s
 	if msg == nil {
 		return nil
 	}
-	// Ignore messages from the bot itself
-	if msg.User == botUserID {
+	// Ignore messages from any bot (including ourselves) and synthetic events
+	// without an authoring user. This is a safety net in addition to the
+	// transport-level guards in Bot/SocketBot.
+	if msg.BotID != "" {
+		return nil
+	}
+	if msg.User == "" || msg.User == botUserID {
+		return nil
+	}
+	if msg.SubType == "bot_message" {
 		return nil
 	}
 

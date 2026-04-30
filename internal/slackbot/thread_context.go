@@ -113,16 +113,14 @@ func (b *ThreadContextBuilder) formatThreadHistory(messages []slack.Message) str
 			continue
 		}
 
-		role := "ユーザー"
+		// Skip bot-authored messages entirely. Including our own past replies
+		// in the search query amplifies reply loops and rarely adds signal
+		// the user did not already provide.
 		if msg.BotID != "" || msg.SubType == "bot_message" || strings.EqualFold(msg.Username, "RAGent") {
-			role = "BOT"
-			if len([]rune(text)) > 200 {
-				text = string([]rune(text)[:200])
-			}
+			continue
 		}
 
-		buf.WriteString(role)
-		buf.WriteString(": ")
+		buf.WriteString("ユーザー: ")
 		buf.WriteString(text)
 		buf.WriteString("\n")
 	}
