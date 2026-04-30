@@ -37,11 +37,13 @@ type Bot struct {
 	processor     *Processor
 	logger        *log.Logger
 	botUserID     string
+	botID         string
 	shutdownHooks []func()
 	enableThread  bool
 	rate          *RateLimiter
 	metrics       Metrics
 	reporter      ErrorReporter
+	dedup         *eventDedup
 }
 
 // NewBot constructs a Slack Bot
@@ -61,7 +63,9 @@ func NewBot(client SlackClient, processor *Processor, logger *log.Logger) (*Bot,
 		processor: processor,
 		logger:    logger,
 		botUserID: auth.UserID,
+		botID:     auth.BotID,
 		reporter:  &noopReporter{},
+		dedup:     newEventDedup(5*time.Minute, 4096),
 	}
 	// initialize RTM
 	rtm := client.NewRTM()
@@ -81,6 +85,7 @@ func NewBotWithRTM(client SlackClient, rtm RTMClient, processor *Processor, logg
 		logger:    logger,
 		botUserID: botUserID,
 		reporter:  &noopReporter{},
+		dedup:     newEventDedup(5*time.Minute, 4096),
 	}
 }
 
@@ -124,8 +129,20 @@ func (b *Bot) handleEvent(ctx context.Context, ev slack.RTMEvent) {
 		if data.SubType != "" { // ignore bot_message, message_changed, etc.
 			return
 		}
+		// Defense-in-depth: skip events authored by a bot (including ourselves).
+		if b.isBotOrigin(data.BotID, data.User) {
+			return
+		}
 		// gate: mention/DM + rate limit
 		if !b.processor.IsMentionOrDM(b.botUserID, data) {
+			return
+		}
+		// Dedup against duplicate RTM deliveries (e.g. reconnect backlog).
+		dedupKey := data.ClientMsgID
+		if dedupKey == "" {
+			dedupKey = "rtm:" + data.Channel + ":" + data.Timestamp
+		}
+		if b.dedup.markSeen(dedupKey) {
 			return
 		}
 		if b.rate != nil && !b.rate.Allow(data.User, data.Channel) {
@@ -191,3 +208,21 @@ func (w *rtmWrapper) Typing(channel string) { w.rtm.SendMessage(w.rtm.NewTypingM
 // Option setters
 func (b *Bot) SetEnableThreading(v bool)      { b.enableThread = v }
 func (b *Bot) SetRateLimiter(rl *RateLimiter) { b.rate = rl }
+
+// isBotOrigin reports whether an inbound message was authored by a bot
+// (including ourselves), so it should be ignored to prevent reply loops.
+func (b *Bot) isBotOrigin(botID, userID string) bool {
+	if botID != "" {
+		return true
+	}
+	if userID == "" {
+		return true
+	}
+	if userID == b.botUserID {
+		return true
+	}
+	if b.botID != "" && botID == b.botID {
+		return true
+	}
+	return false
+}
