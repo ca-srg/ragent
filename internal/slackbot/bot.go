@@ -122,7 +122,7 @@ func (b *Bot) Start(ctx context.Context) error {
 }
 
 func (b *Bot) handleEvent(ctx context.Context, ev slack.RTMEvent) {
-	fmt.Printf("handleEvent: %+v\n", ev)
+	b.logger.Printf("handleEvent type=%s", ev.Type)
 
 	switch data := ev.Data.(type) {
 	case *slack.MessageEvent:

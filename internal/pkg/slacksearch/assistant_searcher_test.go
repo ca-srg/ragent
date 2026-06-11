@@ -116,6 +116,121 @@ func TestAssistantSearcher_SearchSuccess(t *testing.T) {
 	client.AssertExpectations(t)
 }
 
+func TestAssistantSearcher_BotAuthoredResultsAreMarkedForFilter(t *testing.T) {
+	client := &mockAssistantSearchClient{}
+	s := newTestAssistantSearcher(client)
+
+	client.On("SearchAssistantContextContext", mock.Anything, mock.AnythingOfType("slack.AssistantSearchContextParameters")).
+		Return(&slack.AssistantSearchContextResponse{
+			SlackResponse: slack.SlackResponse{Ok: true},
+			Results: slack.AssistantSearchContextResults{
+				Messages: []slack.AssistantSearchContextMessage{
+					{
+						ChannelID:    "C_HIT",
+						AuthorUserID: "B123",
+						AuthorName:   "deploy-bot",
+						MessageTS:    "1700000000.000100",
+						Content:      "bot result",
+						IsAuthorBot:  true,
+					},
+					{
+						ChannelID:    "C_HIT",
+						AuthorUserID: "U1",
+						AuthorName:   "alice",
+						MessageTS:    "1700000000.000200",
+						Content:      "human result",
+					},
+				},
+			},
+		}, nil).Once()
+
+	resp, err := s.Search(context.Background(), &SearchRequest{Query: "deployment", ActionToken: "TK123", MaxResults: 5})
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 2)
+	assert.True(t, isBotMessage(resp.Messages[0]))
+
+	filteredMessages, filteredEnriched, dropped := filterBotSearchResults(resp.Messages, resp.EnrichedMessages)
+	require.Equal(t, 1, dropped)
+	require.Len(t, filteredMessages, 1)
+	assert.Equal(t, "human result", filteredMessages[0].Text)
+	require.Len(t, filteredEnriched, 1)
+	assert.Equal(t, "human result", filteredEnriched[0].OriginalMessage.Text)
+	client.AssertExpectations(t)
+}
+
+func TestAssistantSearcher_BotAuthoredContextExcludedFromPrompt(t *testing.T) {
+	client := &mockAssistantSearchClient{}
+	s := newTestAssistantSearcher(client)
+
+	client.On("SearchAssistantContextContext", mock.Anything, mock.AnythingOfType("slack.AssistantSearchContextParameters")).
+		Return(&slack.AssistantSearchContextResponse{
+			SlackResponse: slack.SlackResponse{Ok: true},
+			Results: slack.AssistantSearchContextResults{
+				Messages: []slack.AssistantSearchContextMessage{
+					{
+						ChannelID:    "C_HIT",
+						AuthorUserID: "U1",
+						AuthorName:   "alice",
+						MessageTS:    "1700000000.000100",
+						Content:      "deployment completed",
+						ContextMessages: &slack.AssistantSearchContextMessageContext{
+							Before: []slack.AssistantSearchContextMessage{
+								{
+									ChannelID:    "C_HIT",
+									AuthorUserID: "B123",
+									AuthorName:   "deploy-bot",
+									MessageTS:    "1700000000.000000",
+									Content:      "bot before context",
+									IsAuthorBot:  true,
+								},
+								{
+									ChannelID:    "C_HIT",
+									AuthorUserID: "U2",
+									AuthorName:   "bob",
+									MessageTS:    "1700000000.000050",
+									Content:      "human before context",
+								},
+							},
+							After: []slack.AssistantSearchContextMessage{
+								{
+									ChannelID:    "C_HIT",
+									AuthorUserID: "B456",
+									AuthorName:   "deploy-bot",
+									MessageTS:    "1700000000.000150",
+									Content:      "bot after context",
+									IsAuthorBot:  true,
+								},
+								{
+									ChannelID:    "C_HIT",
+									AuthorUserID: "U3",
+									AuthorName:   "carol",
+									MessageTS:    "1700000000.000200",
+									Content:      "human after context",
+								},
+							},
+						},
+					},
+				},
+			},
+		}, nil).Once()
+
+	resp, err := s.Search(context.Background(), &SearchRequest{Query: "deployment", ActionToken: "TK123", MaxResults: 5})
+	require.NoError(t, err)
+	require.Len(t, resp.EnrichedMessages, 1)
+	enriched := resp.EnrichedMessages[0]
+	require.Len(t, enriched.PreviousMessages, 1)
+	require.Len(t, enriched.NextMessages, 1)
+	assert.Equal(t, "human before context", enriched.PreviousMessages[0].Text)
+	assert.Equal(t, "human after context", enriched.NextMessages[0].Text)
+
+	prompt := (&SlackSearchResult{EnrichedMessages: resp.EnrichedMessages}).ForPrompt()
+	assert.NotContains(t, prompt, "bot before context")
+	assert.NotContains(t, prompt, "bot after context")
+	assert.Contains(t, prompt, "human before context")
+	assert.Contains(t, prompt, "human after context")
+	client.AssertExpectations(t)
+}
+
 func TestAssistantSearcher_ClampsLimitToAssistantMaximum(t *testing.T) {
 	client := &mockAssistantSearchClient{}
 	s := newTestAssistantSearcher(client)

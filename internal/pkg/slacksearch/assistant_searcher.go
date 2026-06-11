@@ -301,7 +301,7 @@ func (s *AssistantSearcher) recordFailure() {
 }
 
 func convertAssistantSearchMessage(m slack.AssistantSearchContextMessage) slack.Message {
-	return slack.Message{
+	msg := slack.Message{
 		Msg: slack.Msg{
 			Channel:   m.ChannelID,
 			User:      m.AuthorUserID,
@@ -312,6 +312,10 @@ func convertAssistantSearchMessage(m slack.AssistantSearchContextMessage) slack.
 			Blocks:    m.Blocks,
 		},
 	}
+	if m.IsAuthorBot {
+		msg.SubType = "bot_message"
+	}
+	return msg
 }
 
 func convertAssistantSearchEnrichedMessage(m slack.AssistantSearchContextMessage) EnrichedMessage {
@@ -333,6 +337,9 @@ func convertAssistantSearchContextMessages(messages []slack.AssistantSearchConte
 	}
 	converted := make([]slack.Message, 0, len(messages))
 	for _, msg := range messages {
+		if msg.IsAuthorBot {
+			continue
+		}
 		converted = append(converted, convertAssistantSearchMessage(msg))
 	}
 	return converted

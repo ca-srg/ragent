@@ -87,8 +87,8 @@ func (b *SocketBot) Start(ctx context.Context) error {
 }
 
 func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
-	// lightweight diagnostics similar to RTM path
-	fmt.Printf("handleEvent: {Type:%s Data:%v}\n", ev.Type, ev.Data)
+	// Log only the event type; ev.Data may contain short-lived action_token values.
+	b.logger.Printf("handleEvent type=%s", ev.Type)
 
 	switch ev.Type {
 	case socketmode.EventTypeConnecting:
