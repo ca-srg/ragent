@@ -2,6 +2,7 @@ package slackbot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,11 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/observability"
 )
+
+const slackSearchTokenConfigError = "RTM path requires SLACK_USER_TOKEN; otherwise enable Socket Mode with " +
+	"SLACK_APP_TOKEN for assistant.search.context"
+
+var errSlackSearchTokenConfig = errors.New(slackSearchTokenConfigError)
 
 // SlackBotOptions holds the command-line options for the slack-bot command.
 type SlackBotOptions struct {
@@ -58,15 +64,16 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 	if err != nil {
 		return fmt.Errorf("failed to load slack config: %w", err)
 	}
-	if strings.TrimSpace(cfg.SlackUserToken) == "" {
-		logger.Printf("SLACK_USER_TOKEN is not configured; slack-bot Slack search requires event action_token and uses assistant.search.context")
+	if err := validateSlackSearchTokenConfig(cfg.SlackUserToken, scfg); err != nil {
+		return err
 	}
+	socketModeAppToken := slackSocketModeAppToken(scfg)
 
 	// Slack client
 	// For Socket Mode, the app-level token must be supplied to the client options
 	var clientOpts []slack.Option
-	if scfg.SocketMode && scfg.AppToken != "" {
-		clientOpts = append(clientOpts, slack.OptionAppLevelToken(scfg.AppToken))
+	if socketModeAppToken != "" {
+		clientOpts = append(clientOpts, slack.OptionAppLevelToken(socketModeAppToken))
 	}
 	client := slack.New(scfg.BotToken, clientOpts...)
 
@@ -146,8 +153,8 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if scfg.SocketMode && scfg.AppToken != "" {
-		sbot, err := NewSocketBot(client, scfg.AppToken, processor, logger)
+	if socketModeAppToken != "" {
+		sbot, err := NewSocketBot(client, socketModeAppToken, processor, logger)
 		if err != nil {
 			return err
 		}
@@ -176,4 +183,18 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 	// Run
 	logger.Printf("Starting Slack Bot (RTM) (max_results=%d)...", scfg.MaxResults)
 	return bot.Start(ctx)
+}
+
+func validateSlackSearchTokenConfig(userToken string, scfg *appcfg.SlackConfig) error {
+	if strings.TrimSpace(userToken) != "" || slackSocketModeAppToken(scfg) != "" {
+		return nil
+	}
+	return errSlackSearchTokenConfig
+}
+
+func slackSocketModeAppToken(scfg *appcfg.SlackConfig) string {
+	if scfg == nil || !scfg.SocketMode {
+		return ""
+	}
+	return strings.TrimSpace(scfg.AppToken)
 }
