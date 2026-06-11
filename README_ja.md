@@ -789,7 +789,17 @@ EXCLUDE_CATEGORIES=個人メモ,日報  # 検索から除外するカテゴリ
 
 # Slack Bot設定
 SLACK_BOT_TOKEN=xoxb-your-bot-token
-SLACK_USER_TOKEN=xoxp-your-user-token-with-search-read
+# SLACK_USER_TOKEN は任意。設定状況によって利用できる経路が変わります。
+# - 設定する場合 (xoxp): slack-bot / query CLI / mcp-server すべての経路で
+#   `search.messages` API を使用 (user scope `search:read`)。
+#   public / private / DM / MPIM を user の権限範囲で横断検索できる。
+# - 未設定の場合: slack-bot のメンション応答経路のみ Slack 検索が動作する。
+#   Real-time Search API (`assistant.search.context`) を Bot Token と
+#   `app_mention` / DM `message` イベント由来の `action_token` で呼び出し、
+#   Bot 未参加の public channel まで検索可能 (`search:read.public` 要)。
+#   query CLI / mcp-server は action_token を取得できないため Slack 検索を
+#   skip する。
+SLACK_USER_TOKEN=
 SLACK_RESPONSE_TIMEOUT=5s
 SLACK_MAX_RESULTS=5
 SLACK_ENABLE_THREADING=false
@@ -862,7 +872,12 @@ export GEMINI_GCP_LOCATION=us-central1
 
 `gemini-embedding-2-preview` などのモデルは出力次元数を変更できます。`EMBEDDING_DIMENSION` でベクトルストアのインデックスに合わせてください。例えば、1024次元で作成された OpenSearch インデックスには `EMBEDDING_DIMENSION=1024` を指定します。省略時はモデルのデフォルト次元数が使用されます。
 
-Slack検索を利用する場合は、`SLACK_SEARCH_ENABLED=true`・`SLACK_BOT_TOKEN` に加えて、`search:read` や `channels:history` / `groups:history` など必要なスコープを付与した `SLACK_USER_TOKEN` を同じワークスペースで設定してください。Slack検索用の環境変数でスループットや動作を調整できます。
+Slack検索を利用する場合は、`SLACK_SEARCH_ENABLED=true` と `SLACK_BOT_TOKEN` を必ず設定してください。`SLACK_USER_TOKEN`（`xoxp-`）の有無で使える経路が変わります。
+
+- **`SLACK_USER_TOKEN` を設定する場合** — `slack-bot` / `query` CLI / `mcp-server` すべての経路で従来の `search.messages` API (`search:read` user scope) を使用。public / private / DM / MPIM をユーザー権限の範囲で横断検索できる。
+- **`SLACK_USER_TOKEN` を設定しない場合** — `slack-bot` のメンション応答経路のみ Slack 検索が動作。Real-time Search API (`assistant.search.context`) を Bot Token と `app_mention` / DM `message` イベントに同梱される短命の `action_token` で呼び出し、`search:read.public` スコープがあれば Bot 未参加の public channel まで検索できる。`query` CLI と `mcp-server` は `action_token` を取得する手段がないため Slack 検索を skip する (他の RAGent 機能は引き続き動作)。
+
+Slack検索用の環境変数でスループットや動作を調整できます。User Token がなぜ必要かの詳細は [`docs/slack-user-token.md`](docs/slack-user-token.md) を参照してください。
 
 ### MCPバイパス設定（任意）
 

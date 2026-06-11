@@ -471,7 +471,9 @@ func (s *HybridSearchService) executeSlackSearch(ctx context.Context, request *S
 	defer cancel()
 
 	channels := slacksearch.SanitizeSlackChannels(request.SlackChannels)
-	return s.slackService.Search(slackCtx, request.Query, channels)
+	// CLI/MCP callers have no Slack event action_token, so the slacksearch
+	// service falls back to the user-token (search.messages) backend.
+	return s.slackService.Search(slackCtx, request.Query, channels, slacksearch.SearchOptions{})
 }
 
 func queryMentionsSlack(query string) bool {

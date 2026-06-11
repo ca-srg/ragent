@@ -283,7 +283,9 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 			timeout = 10
 		}
 		slackCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-		slackResult, err = hsta.slackService.Search(slackCtx, searchRequest.Query, searchRequest.SlackChannels)
+		// MCP callers do not supply a Slack event action_token, so slacksearch
+		// uses the legacy user-token (search.messages) backend.
+		slackResult, err = hsta.slackService.Search(slackCtx, searchRequest.Query, searchRequest.SlackChannels, slacksearch.SearchOptions{})
 		cancel()
 
 		// Clear progress handler after search

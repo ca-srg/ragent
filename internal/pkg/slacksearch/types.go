@@ -32,6 +32,11 @@ type SearchOptions struct {
 	ChannelID       string
 	ThreadTimestamp string
 	UserID          string
+	// ActionToken is the short-lived token surfaced by Slack on app_mention /
+	// message events under `event.assistant_thread.action_token`. It enables the
+	// Real-time Search API (`assistant.search.context`) on the bot token only
+	// when the legacy SLACK_USER_TOKEN search backend is unavailable.
+	ActionToken string
 }
 
 // EnrichedMessage combines a Slack message with additional contextual data.
@@ -71,11 +76,25 @@ func (r *SlackSearchResult) ForPrompt() string {
 			FormatSlackUser(orig.User, orig.Username),
 			strings.TrimSpace(orig.Text),
 		)
+		for _, prev := range msg.PreviousMessages {
+			fmt.Fprintf(&sb, "    • Previous at %s by %s: %s\n",
+				FormatSlackTimestamp(prev.Timestamp),
+				FormatSlackUser(prev.User, prev.Username),
+				strings.TrimSpace(prev.Text),
+			)
+		}
 		for _, reply := range msg.ThreadMessages {
 			fmt.Fprintf(&sb, "    • Reply at %s by %s: %s\n",
 				FormatSlackTimestamp(reply.Timestamp),
 				FormatSlackUser(reply.User, reply.Username),
 				strings.TrimSpace(reply.Text),
+			)
+		}
+		for _, next := range msg.NextMessages {
+			fmt.Fprintf(&sb, "    • Next at %s by %s: %s\n",
+				FormatSlackTimestamp(next.Timestamp),
+				FormatSlackUser(next.User, next.Username),
+				strings.TrimSpace(next.Text),
 			)
 		}
 	}
@@ -92,8 +111,12 @@ func (c *SlackSearchConfig) Validate() error {
 		return nil
 	}
 
-	if strings.TrimSpace(c.UserToken) == "" {
-		return fmt.Errorf("user_token must be provided when Slack search is enabled")
+	// At least one of BotToken or UserToken must be available when Slack
+	// search is enabled. The UserToken (xoxp) backs legacy search.messages;
+	// the BotToken (xoxb) backs assistant.search.context only when a Slack
+	// event action_token is provided per request.
+	if strings.TrimSpace(c.BotToken) == "" && strings.TrimSpace(c.UserToken) == "" {
+		return fmt.Errorf("either bot_token or user_token must be provided when Slack search is enabled")
 	}
 
 	if c.MaxResults <= 0 || c.MaxResults > 100 {

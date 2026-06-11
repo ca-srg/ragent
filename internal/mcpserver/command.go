@@ -340,10 +340,18 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 			}
 			logger.Printf("Slack search disabled: SLACK_BOT_TOKEN is not configured")
 		} else if strings.TrimSpace(cfg.SlackUserToken) == "" {
+			// MCP server has no Slack event surface, so it cannot obtain an
+			// action_token for assistant.search.context. Without a user token
+			// there is no viable Slack search backend; skip initialization
+			// instead of failing to be tolerant for setups that intentionally
+			// run RAGent without Slack search.
 			if opts.OnlySlack {
-				return fmt.Errorf("SLACK_USER_TOKEN is required in --only-slack mode")
+				return fmt.Errorf(
+					"SLACK_USER_TOKEN is required in --only-slack mode " +
+						"(assistant.search.context needs a Slack event action_token, which the MCP server cannot provide)")
 			}
-			logger.Printf("Slack search disabled: SLACK_USER_TOKEN is not configured")
+			logger.Printf("Slack search disabled: SLACK_USER_TOKEN is not configured; " +
+				"the MCP server cannot supply an action_token for assistant.search.context")
 		} else {
 			slackClient := slack.New(slackCfg.BotToken)
 			service, serr := slacksearch.NewSlackSearchService(cfg, slackClient, slackBedrockClient, logger)

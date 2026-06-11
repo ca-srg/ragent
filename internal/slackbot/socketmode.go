@@ -2,6 +2,7 @@ package slackbot
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -86,8 +87,8 @@ func (b *SocketBot) Start(ctx context.Context) error {
 }
 
 func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
-	// lightweight diagnostics similar to RTM path
-	fmt.Printf("handleEvent: {Type:%s Data:%v}\n", ev.Type, ev.Data)
+	// Log only the event type; ev.Data may contain short-lived action_token values.
+	b.logger.Printf("handleEvent type=%s", ev.Type)
 
 	switch ev.Type {
 	case socketmode.EventTypeConnecting:
@@ -103,7 +104,9 @@ func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
 	case socketmode.EventTypeEventsAPI:
 		// Ack first to avoid Slack retries.
 		if ev.Request != nil {
-			b.sm.Ack(*ev.Request)
+			if err := b.sm.Ack(*ev.Request); err != nil {
+				b.logger.Printf("event=events_api ack_error=%v envelope_id=%s", err, ev.Request.EnvelopeID)
+			}
 			if ev.Request.RetryAttempt > 0 {
 				b.logger.Printf("event=events_api retry_attempt=%d retry_reason=%s envelope_id=%s",
 					ev.Request.RetryAttempt, ev.Request.RetryReason, ev.Request.EnvelopeID)
@@ -121,14 +124,31 @@ func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
 		// observed in time, when the websocket reconnects, or when multiple
 		// event subscriptions overlap. Process each event_id only once.
 		var eventID string
+		var rawInnerEvent json.RawMessage
 		if cb, ok := payload.Data.(*slackevents.EventsAPICallbackEvent); ok && cb != nil {
 			eventID = cb.EventID
+			if cb.InnerEvent != nil {
+				rawInnerEvent = *cb.InnerEvent
+			}
 		}
 		if eventID != "" {
 			if b.dedup.markSeen(eventID) {
 				b.logger.Printf("event=events_api status=duplicate event_id=%s", eventID)
 				return
 			}
+		}
+
+		// Probe the raw inner event JSON for action_token because the public
+		// docs and JS examples (https://docs.slack.dev/ai/developing-agents)
+		// surface `event.action_token` at the top level, while slack-go
+		// v0.23.1 only models the nested `event.assistant_thread.action_token`
+		// path. We log both so the operator can see exactly which shape Slack
+		// is sending in their workspace, and fall back to the top-level value
+		// when slack-go fails to populate AssistantThread.
+		probeToken, probeHasNested, probeHasTop := probeActionToken(rawInnerEvent)
+		if len(rawInnerEvent) > 0 {
+			b.logger.Printf("event=events_api action_token_probe top_level=%t assistant_thread=%t",
+				probeHasTop, probeHasNested)
 		}
 
 		inner := payload.InnerEvent
@@ -156,7 +176,21 @@ func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
 					BotID:           data.BotID,
 				},
 			}
-			b.processMessage(ctx, msg)
+			// Surface the short-lived action_token (Real-time Search API) so
+			// the search adapter can use assistant.search.context on a bot
+			// token, which lets the bot reach public channels it is not in.
+			msgCtx := ctx
+			token := ""
+			if data.AssistantThread != nil && data.AssistantThread.ActionToken != "" {
+				token = data.AssistantThread.ActionToken
+			}
+			if token == "" {
+				token = probeToken
+			}
+			if token != "" {
+				msgCtx = ContextWithActionToken(msgCtx, token)
+			}
+			b.processMessage(msgCtx, msg)
 		case *slackevents.MessageEvent:
 			// Only process plain user messages.
 			if data.SubType != "" { // ignore bot_message, message_changed, etc.
@@ -185,13 +219,59 @@ func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
 					BotID:           data.BotID,
 				},
 			}
-			b.processMessage(ctx, msg)
+			msgCtx := ctx
+			token := ""
+			if data.AssistantThread != nil && data.AssistantThread.ActionToken != "" {
+				token = data.AssistantThread.ActionToken
+			}
+			if token == "" {
+				token = probeToken
+			}
+			if token != "" {
+				msgCtx = ContextWithActionToken(msgCtx, token)
+			}
+			b.processMessage(msgCtx, msg)
 		default:
 			// ignore other events
 		}
 	default:
 		// ignore
 	}
+}
+
+// probeActionToken extracts the Slack Real-time Search API action_token from
+// the raw inner event JSON. Slack publishes it either at top-level
+// (`event.action_token`, used by some official examples) or nested under
+// `event.assistant_thread.action_token` (the shape slack-go models on the
+// AppMentionEvent / MessageEvent structs). Both shapes are accepted so we
+// can hand the token to assistant.search.context regardless of which form
+// the workspace happens to deliver.
+func probeActionToken(raw json.RawMessage) (token string, hasNested, hasTop bool) {
+	if len(raw) == 0 {
+		return "", false, false
+	}
+	var probe struct {
+		ActionToken     string `json:"action_token"`
+		AssistantThread *struct {
+			ActionToken string `json:"action_token"`
+		} `json:"assistant_thread"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return "", false, false
+	}
+	if probe.AssistantThread != nil {
+		hasNested = true
+		if strings.TrimSpace(probe.AssistantThread.ActionToken) != "" {
+			token = probe.AssistantThread.ActionToken
+		}
+	}
+	if strings.TrimSpace(probe.ActionToken) != "" {
+		hasTop = true
+		if token == "" {
+			token = probe.ActionToken
+		}
+	}
+	return token, hasNested, hasTop
 }
 
 // isBotOrigin reports whether an inbound event was authored by a bot

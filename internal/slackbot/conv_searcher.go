@@ -14,7 +14,12 @@ import (
 )
 
 type SlackConversationService interface {
-	Search(ctx context.Context, query string, channels []string) (*slacksearch.SlackSearchResult, error)
+	Search(
+		ctx context.Context,
+		query string,
+		channels []string,
+		opts slacksearch.SearchOptions,
+	) (*slacksearch.SlackSearchResult, error)
 }
 
 type botSlackSearcher struct {
@@ -54,7 +59,10 @@ func (b *botSlackSearcher) SearchConversations(ctx context.Context, query string
 		return nil, nil
 	}
 	channels := b.channelFilter(opts.ChannelID)
-	result, err := b.service.Search(ctx, query, channels)
+	// Propagate the full SearchOptions (most importantly opts.ActionToken
+	// surfaced from the originating Slack event) to the slacksearch service
+	// so it can switch to assistant.search.context when available.
+	result, err := b.service.Search(ctx, query, channels, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +112,16 @@ func ConvertSlackSearchResult(src *slacksearch.SlackSearchResult) *SlackConversa
 			Text:      msg.OriginalMessage.Text,
 			Permalink: msg.Permalink,
 			Thread:    make([]SlackThreadMessage, 0, len(msg.ThreadMessages)),
+			Previous:  make([]SlackThreadMessage, 0, len(msg.PreviousMessages)),
+			Next:      make([]SlackThreadMessage, 0, len(msg.NextMessages)),
+		}
+		for _, prev := range msg.PreviousMessages {
+			conv.Previous = append(conv.Previous, SlackThreadMessage{
+				Timestamp: prev.Timestamp,
+				User:      prev.User,
+				Username:  prev.Username,
+				Text:      prev.Text,
+			})
 		}
 		for _, reply := range msg.ThreadMessages {
 			conv.Thread = append(conv.Thread, SlackThreadMessage{
@@ -111,6 +129,14 @@ func ConvertSlackSearchResult(src *slacksearch.SlackSearchResult) *SlackConversa
 				User:      reply.User,
 				Username:  reply.Username,
 				Text:      reply.Text,
+			})
+		}
+		for _, next := range msg.NextMessages {
+			conv.Next = append(conv.Next, SlackThreadMessage{
+				Timestamp: next.Timestamp,
+				User:      next.User,
+				Username:  next.Username,
+				Text:      next.Text,
 			})
 		}
 		dst.Messages = append(dst.Messages, conv)

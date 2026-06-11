@@ -574,8 +574,13 @@ func defaultSlackSearch(
 	if slackCfg.BotToken == "" {
 		return nil, fmt.Errorf("slack bot token (SLACK_BOT_TOKEN) not configured")
 	}
+	// The CLI/query path has no Slack event → no action_token, so the
+	// assistant.search.context backend is unavailable. We must have a user
+	// token (xoxp) to talk to legacy search.messages.
 	if strings.TrimSpace(cfg.SlackUserToken) == "" {
-		return nil, fmt.Errorf("slack user token (SLACK_USER_TOKEN) not configured")
+		return nil, fmt.Errorf(
+			"slack search from the query CLI requires SLACK_USER_TOKEN " +
+				"(assistant.search.context needs a Slack event action_token, which the CLI cannot provide)")
 	}
 
 	slackClient := slack.New(slackCfg.BotToken)
@@ -593,7 +598,7 @@ func defaultSlackSearch(
 	}
 
 	sanitized := slacksearch.SanitizeSlackChannels(channels)
-	return slackService.Search(ctx, userQuery, sanitized)
+	return slackService.Search(ctx, userQuery, sanitized, slacksearch.SearchOptions{})
 }
 
 func defaultSlackOnlySearch(
@@ -611,8 +616,12 @@ func defaultSlackOnlySearch(
 	if slackCfg.BotToken == "" {
 		return nil, fmt.Errorf("slack bot token (SLACK_BOT_TOKEN) not configured")
 	}
+	// Slack-only mode is invoked from the CLI; same constraint as above —
+	// assistant.search.context needs an action_token we cannot obtain here.
 	if strings.TrimSpace(cfg.SlackUserToken) == "" {
-		return nil, fmt.Errorf("slack user token (SLACK_USER_TOKEN) not configured")
+		return nil, fmt.Errorf(
+			"--only-slack from the query CLI requires SLACK_USER_TOKEN " +
+				"(assistant.search.context needs a Slack event action_token, which the CLI cannot provide)")
 	}
 
 	slackClient := slack.New(slackCfg.BotToken)
@@ -634,7 +643,7 @@ func defaultSlackOnlySearch(
 	}
 
 	sanitized := slacksearch.SanitizeSlackChannels(channels)
-	return slackService.Search(ctx, userQuery, sanitized)
+	return slackService.Search(ctx, userQuery, sanitized, slacksearch.SearchOptions{})
 }
 
 func defaultFetchSlackURLContext(

@@ -170,10 +170,17 @@ type stubSlackService struct {
 	result       *slacksearch.SlackSearchResult
 	lastQuery    string
 	lastChannels []string
+	lastOpts     slacksearch.SearchOptions
 }
 
-func (s *stubSlackService) Search(ctx context.Context, query string, channels []string) (*slacksearch.SlackSearchResult, error) {
+func (s *stubSlackService) Search(
+	ctx context.Context,
+	query string,
+	channels []string,
+	opts slacksearch.SearchOptions,
+) (*slacksearch.SlackSearchResult, error) {
 	s.lastQuery = query
 	s.lastChannels = channels
+	s.lastOpts = opts
 	return s.result, nil
 }

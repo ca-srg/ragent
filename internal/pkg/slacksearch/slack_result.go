@@ -34,6 +34,20 @@ func (r *SlackConversationResult) ForPrompt() string {
 			user,
 			strings.TrimSpace(msg.Text),
 		)
+		for _, prev := range msg.Previous {
+			prevUser := prev.Username
+			if prevUser == "" {
+				prevUser = prev.User
+			}
+			if prevUser == "" {
+				prevUser = "unknown"
+			}
+			fmt.Fprintf(&sb, "    • Previous at %s by %s: %s\n",
+				prev.Timestamp,
+				prevUser,
+				strings.TrimSpace(prev.Text),
+			)
+		}
 		for _, reply := range msg.Thread {
 			replyUser := reply.Username
 			if replyUser == "" {
@@ -48,6 +62,20 @@ func (r *SlackConversationResult) ForPrompt() string {
 				strings.TrimSpace(reply.Text),
 			)
 		}
+		for _, next := range msg.Next {
+			nextUser := next.Username
+			if nextUser == "" {
+				nextUser = next.User
+			}
+			if nextUser == "" {
+				nextUser = "unknown"
+			}
+			fmt.Fprintf(&sb, "    • Next at %s by %s: %s\n",
+				next.Timestamp,
+				nextUser,
+				strings.TrimSpace(next.Text),
+			)
+		}
 	}
 	return sb.String()
 }
@@ -60,6 +88,8 @@ type SlackConversationMessage struct {
 	Text      string
 	Permalink string
 	Thread    []SlackThreadMessage
+	Previous  []SlackThreadMessage
+	Next      []SlackThreadMessage
 }
 
 type SlackThreadMessage struct {

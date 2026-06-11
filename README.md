@@ -813,7 +813,16 @@ OIDC_CLIENT_SECRET=your_client_secret
 
 # Slack Bot Configuration
 SLACK_BOT_TOKEN=xoxb-your-bot-token
-SLACK_USER_TOKEN=xoxp-your-user-token-with-search-read
+# SLACK_USER_TOKEN is optional but covers more paths.
+# - When set (xoxp): all entry points (slack-bot / query CLI / mcp-server)
+#   use the legacy `search.messages` API and can reach private channels,
+#   DMs and MPIMs that the user has access to.
+# - When unset: only the slack-bot mention path can search Slack. It calls
+#   the Real-time Search API (`assistant.search.context`) on the bot token
+#   plus the per-event `action_token` and reaches public channels the bot
+#   has not joined (requires the `search:read.public` bot scope). CLI/MCP
+#   cannot obtain an `action_token` and therefore skip Slack search.
+SLACK_USER_TOKEN=
 SLACK_RESPONSE_TIMEOUT=5s
 SLACK_MAX_RESULTS=5
 SLACK_ENABLE_THREADING=false
@@ -880,7 +889,12 @@ When `EMBEDDING_MODEL` is omitted, Gemini defaults to `text-embedding-004` (768 
 
 Models such as `gemini-embedding-2-preview` support configurable output dimensions. Set `EMBEDDING_DIMENSION` to match your vector store index — for example `EMBEDDING_DIMENSION=1024` for an OpenSearch index created with 1024 dimensions. When omitted, the model's default dimension is used.
 
-Slack search requires `SLACK_SEARCH_ENABLED=true`, a valid `SLACK_BOT_TOKEN`, **and** a user token `SLACK_USER_TOKEN` that includes scopes such as `search:read`, `channels:history`, `groups:history`, and other conversation history scopes relevant to the channels you query. The search-specific knobs let you tune throughput and cost per workspace without touching the core document pipeline.
+Slack search requires `SLACK_SEARCH_ENABLED=true` and a valid `SLACK_BOT_TOKEN`. `SLACK_USER_TOKEN` (`xoxp-`) is **optional** but determines which entry points can search Slack:
+
+- **With `SLACK_USER_TOKEN`** — every entry point (`slack-bot`, `query` CLI, `mcp-server`) calls the legacy `search.messages` API with the user-token `search:read` scope. Results cover public channels, private channels the user belongs to, plus DMs / MPIMs.
+- **Without `SLACK_USER_TOKEN`** — only the `slack-bot` mention path can search Slack. It switches to the Real-time Search API (`assistant.search.context`) using the bot token together with the short-lived `action_token` carried by `app_mention` / DM `message` events. The bot needs the granular `search:read.public` scope and reaches public channels even ones the bot has not been invited to. The `query` CLI and `mcp-server` cannot obtain an `action_token`, so they refuse to run Slack search in this mode (other RAGent features continue to work).
+
+The search-specific knobs let you tune throughput and cost per workspace without touching the core document pipeline. See [`docs/slack-user-token.md`](docs/slack-user-token.md) for the full rationale of when a user token is required.
 
 ### MCP Bypass Configuration (Optional)
 
