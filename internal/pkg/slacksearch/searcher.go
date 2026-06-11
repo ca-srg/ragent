@@ -57,10 +57,11 @@ type SearchRequest struct {
 
 // SearchResponse contains the Slack search results and metadata.
 type SearchResponse struct {
-	Messages   []slack.Message
-	TotalCount int
-	HasMore    bool
-	Query      string
+	Messages         []slack.Message
+	EnrichedMessages []EnrichedMessage
+	TotalCount       int
+	HasMore          bool
+	Query            string
 }
 
 // NewSearcher constructs a new Searcher instance.

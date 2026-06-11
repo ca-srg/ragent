@@ -104,7 +104,9 @@ func (b *SocketBot) handleEvent(ctx context.Context, ev socketmode.Event) {
 	case socketmode.EventTypeEventsAPI:
 		// Ack first to avoid Slack retries.
 		if ev.Request != nil {
-			b.sm.Ack(*ev.Request)
+			if err := b.sm.Ack(*ev.Request); err != nil {
+				b.logger.Printf("event=events_api ack_error=%v envelope_id=%s", err, ev.Request.EnvelopeID)
+			}
 			if ev.Request.RetryAttempt > 0 {
 				b.logger.Printf("event=events_api retry_attempt=%d retry_reason=%s envelope_id=%s",
 					ev.Request.RetryAttempt, ev.Request.RetryReason, ev.Request.EnvelopeID)

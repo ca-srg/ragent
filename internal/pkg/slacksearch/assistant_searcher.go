@@ -23,6 +23,8 @@ type assistantSearchClient interface {
 	) (*slack.AssistantSearchContextResponse, error)
 }
 
+const maxAssistantSearchResults = 20
+
 // AssistantSearcher invokes Slack's `assistant.search.context` API on a Bot
 // Token. The caller must surface a short-lived `action_token` obtained from
 // an `app_mention` or `message` event (Real-time Search API). The bot can
@@ -113,7 +115,7 @@ func (s *AssistantSearcher) Search(ctx context.Context, req *SearchRequest) (*Se
 		ActionToken:            req.ActionToken,
 		ChannelTypes:           []string{"public_channel"},
 		ContentTypes:           []string{"messages"},
-		Limit:                  clamp(max(req.MaxResults, defaultSearchResultLimit), minSearchResults, maxSearchResults),
+		Limit:                  clamp(max(req.MaxResults, defaultSearchResultLimit), minSearchResults, maxAssistantSearchResults),
 		IncludeContextMessages: true,
 		Sort:                   "timestamp",
 		SortDir:                "desc",
@@ -163,16 +165,19 @@ func (s *AssistantSearcher) Search(ctx context.Context, req *SearchRequest) (*Se
 	}
 
 	messages := make([]slack.Message, 0, len(resp.Results.Messages))
+	enrichedMessages := make([]EnrichedMessage, 0, len(resp.Results.Messages))
 	for _, match := range resp.Results.Messages {
 		messages = append(messages, convertAssistantSearchMessage(match))
+		enrichedMessages = append(enrichedMessages, convertAssistantSearchEnrichedMessage(match))
 	}
 
 	hasMore := strings.TrimSpace(resp.ResponseMetadata.NextCursor) != ""
 	response := &SearchResponse{
-		Messages:   messages,
-		TotalCount: len(messages),
-		HasMore:    hasMore,
-		Query:      query,
+		Messages:         messages,
+		EnrichedMessages: enrichedMessages,
+		TotalCount:       len(messages),
+		HasMore:          hasMore,
+		Query:            query,
 	}
 
 	span.SetAttributes(
@@ -219,6 +224,12 @@ func (s *AssistantSearcher) SearchWithRetry(ctx context.Context, req *SearchRequ
 		}
 
 		lastErr = err
+		if isAssistantActionTokenError(err) {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "non_retryable_action_token_error")
+			return nil, lastErr
+		}
+
 		s.recordFailure()
 
 		if isAssistantFatalError(err) {
@@ -303,15 +314,39 @@ func convertAssistantSearchMessage(m slack.AssistantSearchContextMessage) slack.
 	}
 }
 
+func convertAssistantSearchEnrichedMessage(m slack.AssistantSearchContextMessage) EnrichedMessage {
+	msg := convertAssistantSearchMessage(m)
+	enriched := EnrichedMessage{
+		OriginalMessage: msg,
+		Permalink:       msg.Permalink,
+	}
+	if m.ContextMessages != nil {
+		enriched.PreviousMessages = convertAssistantSearchContextMessages(m.ContextMessages.Before)
+		enriched.NextMessages = convertAssistantSearchContextMessages(m.ContextMessages.After)
+	}
+	return enriched
+}
+
+func convertAssistantSearchContextMessages(messages []slack.AssistantSearchContextMessage) []slack.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	converted := make([]slack.Message, 0, len(messages))
+	for _, msg := range messages {
+		converted = append(converted, convertAssistantSearchMessage(msg))
+	}
+	return converted
+}
+
+func isAssistantActionTokenError(err error) bool {
+	return assistantErrorContains(err, "invalid_action_token", "token_expired")
+}
+
 // isAssistantFatalError reports whether the Slack error code (if any) is one
 // of the documented fatal conditions for assistant.search.context that
 // should never be retried.
 func isAssistantFatalError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	fatals := []string{
+	return assistantErrorContains(err,
 		"invalid_action_token",
 		"missing_scope",
 		"not_allowed_token_type",
@@ -322,8 +357,15 @@ func isAssistantFatalError(err error) bool {
 		"feature_not_enabled",
 		"assistant_search_context_disabled",
 		"context_channel_not_found",
+	)
+}
+
+func assistantErrorContains(err error, codes ...string) bool {
+	if err == nil {
+		return false
 	}
-	for _, code := range fatals {
+	msg := err.Error()
+	for _, code := range codes {
 		if strings.Contains(msg, code) {
 			return true
 		}

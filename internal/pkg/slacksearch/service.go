@@ -36,15 +36,16 @@ type slackSufficiencyChecker interface {
 
 // SlackSearchService orchestrates the Slack search pipeline.
 //
-// It can dispatch a search to either of two backends, chosen per-call based
-// on SearchOptions.ActionToken:
+// It can dispatch a search to either of two backends, chosen per-call with
+// the user-token backend taking priority when it is configured:
 //
 //   - userSearcher       — legacy `search.messages` over a User Token (xoxp);
-//     required by CLI/MCP because they have no `action_token`.
+//     preferred whenever SLACK_USER_TOKEN is configured, including Slack bot
+//     events that also carry an `action_token`.
 //   - assistantSearcher  — Real-time Search API (`assistant.search.context`)
 //     over the Bot Token (xoxb) plus a short-lived `action_token` obtained
-//     from an `app_mention` / `message` event. Lets the bot reach public
-//     channels it has not been invited to.
+//     from an `app_mention` / `message` event. Used only when the user-token
+//     backend is unavailable.
 type SlackSearchService struct {
 	botClient          *slack.Client
 	userClient         *slack.Client // nil unless SLACK_USER_TOKEN is set
@@ -229,16 +230,15 @@ const (
 // selectSearcher picks the active searcher for this call.
 //
 // Priority:
-//  1. opts.ActionToken set + assistantSearcher available → assistant path.
-//     This lets a slack-bot mention reach public channels the bot is not in.
-//  2. userSearcher available → legacy search.messages path.
+//  1. userSearcher available → legacy search.messages path.
+//  2. opts.ActionToken set + assistantSearcher available → assistant path.
 //  3. otherwise → caller error.
 func (s *SlackSearchService) selectSearcher(opts SearchOptions) (slackSearcher, SearchBackend, error) {
-	if strings.TrimSpace(opts.ActionToken) != "" && s.assistantSearcher != nil {
-		return s.assistantSearcher, SearchBackendAssistant, nil
-	}
 	if s.userSearcher != nil {
 		return s.userSearcher, SearchBackendUser, nil
+	}
+	if strings.TrimSpace(opts.ActionToken) != "" && s.assistantSearcher != nil {
+		return s.assistantSearcher, SearchBackendAssistant, nil
 	}
 	return nil, "", fmt.Errorf(
 		"slack search requires either SLACK_USER_TOKEN (legacy search.messages) " +
@@ -247,11 +247,10 @@ func (s *SlackSearchService) selectSearcher(opts SearchOptions) (slackSearcher, 
 
 // Search executes the Slack search pipeline.
 //
-// opts.ActionToken decides the backend at call time. When non-empty and the
-// bot client is available, the service uses `assistant.search.context`
-// against the bot token, which can reach public channels even if the bot has
-// not been invited. Otherwise it falls back to the legacy `search.messages`
-// flow against SLACK_USER_TOKEN.
+// SLACK_USER_TOKEN decides the backend first: when the user-token backend is
+// configured, the service uses `search.messages` even if opts.ActionToken is
+// present. The assistant backend is used only when the user-token backend is
+// unavailable and opts.ActionToken is non-empty.
 func (s *SlackSearchService) Search(
 	ctx context.Context,
 	userQuery string,
@@ -374,12 +373,13 @@ func (s *SlackSearchService) Search(
 		}
 
 		var (
-			searchMessages []slack.Message
-			matches        int
-			err            error
+			searchMessages         []slack.Message
+			searchEnrichedMessages []EnrichedMessage
+			matches                int
+			err                    error
 		)
 
-		searchMessages, _, executedQueries, previousQueries, _, err = s.runSearchIteration(
+		searchMessages, searchEnrichedMessages, _, executedQueries, previousQueries, _, err = s.runSearchIteration(
 			iterationCtx,
 			activeSearcher,
 			opts,
@@ -402,7 +402,7 @@ func (s *SlackSearchService) Search(
 			return nil, err
 		}
 
-		searchMessages, botFiltered := filterBotMessages(searchMessages)
+		searchMessages, searchEnrichedMessages, botFiltered := filterBotSearchResults(searchMessages, searchEnrichedMessages)
 		if botFiltered > 0 {
 			iterSpan.SetAttributes(attribute.Int("slack.filtered_bot_messages", botFiltered))
 			s.logger.Printf("Slack search iteration=%d hash=%s filtered_bot_messages=%d", iterationsDone, queryHash, botFiltered)
@@ -462,15 +462,22 @@ func (s *SlackSearchService) Search(
 			return result, nil
 		}
 
-		// assistant.search.context already returns permalinks and (eventually)
-		// inline context_messages, so we skip the ContextRetriever — its
+		// assistant.search.context already returns permalinks and inline
+		// context_messages, so we skip the ContextRetriever — its
 		// underlying APIs (conversations.history/replies) require the bot to
 		// be a channel member, which defeats the whole point of using the
-		// assistant path. The bot path therefore exposes only the matched
-		// messages plus their permalinks.
+		// assistant path.
 		var contextResp *ContextResponse
 		switch {
-		case backend == SearchBackendAssistant, s.contextRetriever == nil:
+		case backend == SearchBackendAssistant:
+			if len(searchEnrichedMessages) == 0 {
+				searchEnrichedMessages = s.fallbackEnriched(searchMessages)
+			}
+			contextResp = &ContextResponse{
+				EnrichedMessages: searchEnrichedMessages,
+				TotalRetrieved:   len(searchEnrichedMessages),
+			}
+		case s.contextRetriever == nil:
 			contextResp = &ContextResponse{
 				EnrichedMessages: s.fallbackEnriched(searchMessages),
 				TotalRetrieved:   len(searchMessages),
@@ -591,12 +598,13 @@ func (s *SlackSearchService) runSearchIteration(
 	previousResults int,
 	executedQueries []string,
 	iteration int,
-) ([]slack.Message, int, []string, []string, int, error) {
+) ([]slack.Message, []EnrichedMessage, int, []string, []string, int, error) {
 	var (
-		searchMessages []slack.Message
-		totalMatches   int
-		genResp        *QueryGenerationResponse
-		err            error
+		searchMessages         []slack.Message
+		searchEnrichedMessages []EnrichedMessage
+		totalMatches           int
+		genResp                *QueryGenerationResponse
+		err                    error
 	)
 	queryHash := telemetryFingerprint(userQuery)
 
@@ -613,22 +621,22 @@ func (s *SlackSearchService) runSearchIteration(
 		genResp, err = s.queryGenerator.GenerateAlternativeQueries(ctx, genReq)
 	}
 	if err != nil {
-		return nil, 0, executedQueries, previousQueries, previousResults, fmt.Errorf("failed to generate Slack queries: %w", err)
+		return nil, nil, 0, executedQueries, previousQueries, previousResults, fmt.Errorf("failed to generate Slack queries: %w", err)
 	}
 
 	if len(genResp.Queries) == 0 {
 		s.logger.Printf("Slack search iteration=%d hash=%s generated_zero_queries", iteration+1, queryHash)
-		return searchMessages, totalMatches, executedQueries, previousQueries, previousResults, nil
+		return searchMessages, searchEnrichedMessages, totalMatches, executedQueries, previousQueries, previousResults, nil
 	}
 
 	s.logger.Printf("Slack search iteration=%d hash=%s generated_queries=%d time_filter=%t",
 		iteration+1, queryHash, len(genResp.Queries), genResp.TimeFilter != nil)
 
-	searchMessages, totalMatches, executedQueries = s.executeSlackSearch(ctx, activeSearcher, opts, genResp, executedQueries)
+	searchMessages, searchEnrichedMessages, totalMatches, executedQueries = s.executeSlackSearch(ctx, activeSearcher, opts, genResp, executedQueries)
 	previousQueries = append(previousQueries, genResp.Queries...)
 	previousResults = totalMatches
 
-	return searchMessages, totalMatches, executedQueries, previousQueries, previousResults, nil
+	return searchMessages, searchEnrichedMessages, totalMatches, executedQueries, previousQueries, previousResults, nil
 }
 
 func (s *SlackSearchService) executeSlackSearch(
@@ -637,9 +645,10 @@ func (s *SlackSearchService) executeSlackSearch(
 	opts SearchOptions,
 	genResp *QueryGenerationResponse,
 	executedQueries []string,
-) ([]slack.Message, int, []string) {
+) ([]slack.Message, []EnrichedMessage, int, []string) {
 	messageMap := make(map[string]slack.Message)
 	messages := make([]slack.Message, 0)
+	enrichedMessages := make([]EnrichedMessage, 0)
 	totalMatches := 0
 
 	limit := s.config.MaxResults
@@ -653,7 +662,7 @@ func (s *SlackSearchService) executeSlackSearch(
 	for _, query := range genResp.Queries {
 		select {
 		case <-ctx.Done():
-			return messages, totalMatches, executedQueries
+			return messages, enrichedMessages, totalMatches, executedQueries
 		default:
 		}
 
@@ -674,20 +683,30 @@ func (s *SlackSearchService) executeSlackSearch(
 
 		totalMatches += response.TotalCount
 		s.logger.Printf("Slack search query succeeded hash=%s matches=%d total_matches=%d", telemetryFingerprint(query), len(response.Messages), totalMatches)
-		for _, msg := range response.Messages {
+		responseMessages := response.Messages
+		if len(responseMessages) == 0 && len(response.EnrichedMessages) > 0 {
+			responseMessages = originalMessagesFromEnriched(response.EnrichedMessages)
+		}
+		enrichedByKey := enrichedMessagesByKey(response.EnrichedMessages)
+		for _, msg := range responseMessages {
 			key := fmt.Sprintf("%s:%s", msg.Channel, msg.Timestamp)
 			if _, exists := messageMap[key]; exists {
 				continue
 			}
 			messageMap[key] = msg
 			messages = append(messages, msg)
+			if enrichedMsg, ok := enrichedByKey[key]; ok {
+				enrichedMessages = append(enrichedMessages, enrichedMsg)
+			} else if len(response.EnrichedMessages) > 0 {
+				enrichedMessages = append(enrichedMessages, EnrichedMessage{OriginalMessage: msg, Permalink: msg.Permalink})
+			}
 			if len(messages) >= limit {
 				break
 			}
 		}
 	}
 
-	return messages, totalMatches, executedQueries
+	return messages, enrichedMessages, totalMatches, executedQueries
 }
 
 func (s *SlackSearchService) fallbackEnriched(messages []slack.Message) []EnrichedMessage {
@@ -695,9 +714,27 @@ func (s *SlackSearchService) fallbackEnriched(messages []slack.Message) []Enrich
 	for _, msg := range messages {
 		enriched = append(enriched, EnrichedMessage{
 			OriginalMessage: msg,
+			Permalink:       msg.Permalink,
 		})
 	}
 	return enriched
+}
+
+func originalMessagesFromEnriched(enriched []EnrichedMessage) []slack.Message {
+	messages := make([]slack.Message, 0, len(enriched))
+	for _, msg := range enriched {
+		messages = append(messages, msg.OriginalMessage)
+	}
+	return messages
+}
+
+func enrichedMessagesByKey(enriched []EnrichedMessage) map[string]EnrichedMessage {
+	byKey := make(map[string]EnrichedMessage, len(enriched))
+	for _, msg := range enriched {
+		key := fmt.Sprintf("%s:%s", msg.OriginalMessage.Channel, msg.OriginalMessage.Timestamp)
+		byKey[key] = msg
+	}
+	return byKey
 }
 
 func (s *SlackSearchService) buildResult(
@@ -738,6 +775,24 @@ func (s *SlackSearchService) buildResult(
 	}
 
 	return result
+}
+
+func filterBotSearchResults(messages []slack.Message, enriched []EnrichedMessage) ([]slack.Message, []EnrichedMessage, int) {
+	filteredMessages, dropped := filterBotMessages(messages)
+	if len(enriched) == 0 || dropped == 0 {
+		return filteredMessages, enriched, dropped
+	}
+
+	enrichedByKey := enrichedMessagesByKey(enriched)
+	filteredEnriched := make([]EnrichedMessage, 0, len(filteredMessages))
+	for _, msg := range filteredMessages {
+		key := fmt.Sprintf("%s:%s", msg.Channel, msg.Timestamp)
+		if enrichedMsg, ok := enrichedByKey[key]; ok {
+			filteredEnriched = append(filteredEnriched, enrichedMsg)
+		}
+	}
+
+	return filteredMessages, filteredEnriched, dropped
 }
 
 func filterBotMessages(messages []slack.Message) ([]slack.Message, int) {

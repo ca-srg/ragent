@@ -33,12 +33,9 @@ type SearchOptions struct {
 	ThreadTimestamp string
 	UserID          string
 	// ActionToken is the short-lived token surfaced by Slack on app_mention /
-	// message events under `event.assistant_thread.action_token`. When set, the
-	// Slack search service uses the Real-time Search API
-	// (`assistant.search.context`) on the bot token, which lets a bot search
-	// public channels it has not been invited to. When empty, the service
-	// falls back to the legacy `search.messages` flow that requires
-	// SLACK_USER_TOKEN.
+	// message events under `event.assistant_thread.action_token`. It enables the
+	// Real-time Search API (`assistant.search.context`) on the bot token only
+	// when the legacy SLACK_USER_TOKEN search backend is unavailable.
 	ActionToken string
 }
 
@@ -79,11 +76,25 @@ func (r *SlackSearchResult) ForPrompt() string {
 			FormatSlackUser(orig.User, orig.Username),
 			strings.TrimSpace(orig.Text),
 		)
+		for _, prev := range msg.PreviousMessages {
+			fmt.Fprintf(&sb, "    • Previous at %s by %s: %s\n",
+				FormatSlackTimestamp(prev.Timestamp),
+				FormatSlackUser(prev.User, prev.Username),
+				strings.TrimSpace(prev.Text),
+			)
+		}
 		for _, reply := range msg.ThreadMessages {
 			fmt.Fprintf(&sb, "    • Reply at %s by %s: %s\n",
 				FormatSlackTimestamp(reply.Timestamp),
 				FormatSlackUser(reply.User, reply.Username),
 				strings.TrimSpace(reply.Text),
+			)
+		}
+		for _, next := range msg.NextMessages {
+			fmt.Fprintf(&sb, "    • Next at %s by %s: %s\n",
+				FormatSlackTimestamp(next.Timestamp),
+				FormatSlackUser(next.User, next.Username),
+				strings.TrimSpace(next.Text),
 			)
 		}
 	}

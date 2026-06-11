@@ -306,7 +306,7 @@ func contextBackground() context.Context {
 
 // --- selectSearcher / dispatch tests ---
 
-func TestSlackSearchService_SelectSearcherUsesAssistantWhenActionToken(t *testing.T) {
+func TestSlackSearchService_SelectSearcherPrefersUserWhenAvailable(t *testing.T) {
 	s := newTestService(defaultConfig())
 	userS := &mockSearcher{}
 	asstS := &mockSearcher{}
@@ -315,11 +315,11 @@ func TestSlackSearchService_SelectSearcherUsesAssistantWhenActionToken(t *testin
 
 	sr, backend, err := s.selectSearcher(SearchOptions{ActionToken: "TK"})
 	require.NoError(t, err)
-	assert.Equal(t, SearchBackendAssistant, backend)
+	assert.Equal(t, SearchBackendUser, backend)
 	// Compare interface identity by type assertion to *mockSearcher.
 	gotMock, ok := sr.(*mockSearcher)
 	require.True(t, ok)
-	assert.Same(t, asstS, gotMock)
+	assert.Same(t, userS, gotMock)
 }
 
 func TestSlackSearchService_SelectSearcherFallsBackToUserWithoutActionToken(t *testing.T) {
@@ -351,6 +351,20 @@ func TestSlackSearchService_SelectSearcherActionTokenButNoAssistantUsesUser(t *t
 	assert.Same(t, userS, gotMock)
 }
 
+func TestSlackSearchService_SelectSearcherUsesAssistantWhenUserUnavailable(t *testing.T) {
+	s := newTestService(defaultConfig())
+	asstS := &mockSearcher{}
+	s.userSearcher = nil
+	s.assistantSearcher = asstS
+
+	sr, backend, err := s.selectSearcher(SearchOptions{ActionToken: "TK"})
+	require.NoError(t, err)
+	assert.Equal(t, SearchBackendAssistant, backend)
+	gotMock, ok := sr.(*mockSearcher)
+	require.True(t, ok)
+	assert.Same(t, asstS, gotMock)
+}
+
 func TestSlackSearchService_SelectSearcherWithNothingErrors(t *testing.T) {
 	s := newTestService(defaultConfig())
 	s.userSearcher = nil
@@ -361,32 +375,49 @@ func TestSlackSearchService_SelectSearcherWithNothingErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "SLACK_USER_TOKEN")
 }
 
-func TestSlackSearchService_SearchDispatchesToAssistant(t *testing.T) {
+func TestSlackSearchService_FallbackEnrichedPreservesPermalink(t *testing.T) {
+	service := newTestService(defaultConfig())
+	msg := slack.Message{Msg: slack.Msg{
+		Channel:   "C1",
+		Timestamp: "1700000000.000100",
+		Text:      "hit",
+		Permalink: "https://example.slack.com/archives/C1/p1700000000000100",
+	}}
+
+	enriched := service.fallbackEnriched([]slack.Message{msg})
+	require.Len(t, enriched, 1)
+	assert.Equal(t, msg.Permalink, enriched[0].Permalink)
+}
+
+func TestSlackSearchService_SearchPrefersUserBackendWhenActionTokenAndUserSearcher(t *testing.T) {
 	cfg := defaultConfig()
 	service := newTestService(cfg)
 
 	qg := &mockQueryGenerator{}
 	userS := &mockSearcher{}
 	asstS := &mockSearcher{}
+	contextRetriever := &mockContextRetriever{}
 	suff := &mockSufficiencyChecker{}
 
 	service.queryGenerator = qg
 	service.userSearcher = userS
 	service.assistantSearcher = asstS
-	service.contextRetriever = &mockContextRetriever{}
+	service.contextRetriever = contextRetriever
 	service.sufficiencyChecker = suff
+
+	msg := slackMsg("1700000000.000100", "user-token hit")
+	enriched := []EnrichedMessage{{OriginalMessage: msg, Permalink: "https://example.com/user-hit"}}
 
 	qg.On("GenerateQueries", mock.Anything, mock.AnythingOfType("*slacksearch.QueryGenerationRequest")).
 		Return(&QueryGenerationResponse{Queries: []string{"q1"}}, nil).Once()
-
-	// assistantSearcher must be called and receive ActionToken + ContextChannelID.
-	asstS.On("SearchWithRetry", mock.Anything, mock.MatchedBy(func(req *SearchRequest) bool {
-		return req.ActionToken == "TK_FROM_EVENT" && req.ContextChannelID == "C_ORIGIN"
+	userS.On("SearchWithRetry", mock.Anything, mock.MatchedBy(func(req *SearchRequest) bool {
+		return req.ActionToken == "TK_FROM_EVENT" && req.Query == "q1"
 	}), cfg.MaxRetries).Return(&SearchResponse{
-		Messages:   []slack.Message{slackMsg("1700000000.000100", "hit")},
+		Messages:   []slack.Message{msg},
 		TotalCount: 1,
 	}, nil).Once()
-
+	contextRetriever.On("RetrieveContext", mock.Anything, mock.AnythingOfType("*slacksearch.ContextRequest")).
+		Return(&ContextResponse{EnrichedMessages: enriched, TotalRetrieved: 1}, nil).Once()
 	suff.On("Check", mock.Anything, mock.AnythingOfType("*slacksearch.SufficiencyRequest")).
 		Return(&SufficiencyResponse{IsSufficient: true, MissingInfo: nil, Confidence: 0.9}, nil).Once()
 
@@ -397,10 +428,82 @@ func TestSlackSearchService_SearchDispatchesToAssistant(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.EnrichedMessages, 1)
+	assert.Equal(t, "https://example.com/user-hit", result.Sources["C1#1700000000.000100"])
+
+	userS.AssertExpectations(t)
+	asstS.AssertNotCalled(t, "SearchWithRetry", mock.Anything, mock.Anything, mock.Anything)
+	contextRetriever.AssertExpectations(t)
+	qg.AssertExpectations(t)
+	suff.AssertExpectations(t)
+}
+
+func TestSlackSearchService_SearchDispatchesToAssistantWhenUserUnavailable(t *testing.T) {
+	cfg := defaultConfig()
+	service := newTestService(cfg)
+
+	qg := &mockQueryGenerator{}
+	asstS := &mockSearcher{}
+	contextRetriever := &mockContextRetriever{}
+	suff := &mockSufficiencyChecker{}
+
+	service.queryGenerator = qg
+	service.userSearcher = nil
+	service.assistantSearcher = asstS
+	service.contextRetriever = contextRetriever
+	service.sufficiencyChecker = suff
+
+	msg := slack.Message{Msg: slack.Msg{
+		Channel:   "C1",
+		User:      "U1",
+		Timestamp: "1700000000.000100",
+		Text:      "hit",
+		Permalink: "https://example.slack.com/archives/C1/p1700000000000100",
+	}}
+	prev := slackMsg("1700000000.000000", "before context")
+	next := slackMsg("1700000000.000200", "after context")
+
+	qg.On("GenerateQueries", mock.Anything, mock.AnythingOfType("*slacksearch.QueryGenerationRequest")).
+		Return(&QueryGenerationResponse{Queries: []string{"q1"}}, nil).Once()
+
+	// assistantSearcher must be called and receive ActionToken + ContextChannelID only when userSearcher is unavailable.
+	asstS.On("SearchWithRetry", mock.Anything, mock.MatchedBy(func(req *SearchRequest) bool {
+		return req.ActionToken == "TK_FROM_EVENT" && req.ContextChannelID == "C_ORIGIN"
+	}), cfg.MaxRetries).Return(&SearchResponse{
+		Messages: []slack.Message{msg},
+		EnrichedMessages: []EnrichedMessage{
+			{
+				OriginalMessage:  msg,
+				PreviousMessages: []slack.Message{prev},
+				NextMessages:     []slack.Message{next},
+				Permalink:        msg.Permalink,
+			},
+		},
+		TotalCount: 1,
+	}, nil).Once()
+
+	suff.On("Check", mock.Anything, mock.MatchedBy(func(req *SufficiencyRequest) bool {
+		return len(req.Messages) == 1 &&
+			len(req.Messages[0].PreviousMessages) == 1 &&
+			req.Messages[0].PreviousMessages[0].Text == "before context" &&
+			len(req.Messages[0].NextMessages) == 1 &&
+			req.Messages[0].NextMessages[0].Text == "after context"
+	})).
+		Return(&SufficiencyResponse{IsSufficient: true, MissingInfo: nil, Confidence: 0.9}, nil).Once()
+
+	result, err := service.Search(context.Background(), "find x", nil, SearchOptions{
+		ActionToken: "TK_FROM_EVENT",
+		ChannelID:   "C_ORIGIN",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.EnrichedMessages, 1)
+	assert.Equal(t, msg.Permalink, result.EnrichedMessages[0].Permalink)
+	assert.Equal(t, msg.Permalink, result.Sources["C1#1700000000.000100"])
+	assert.Equal(t, "before context", result.EnrichedMessages[0].PreviousMessages[0].Text)
+	assert.Equal(t, "after context", result.EnrichedMessages[0].NextMessages[0].Text)
 
 	asstS.AssertExpectations(t)
-	// user searcher must NOT be called when action_token is set.
-	userS.AssertNotCalled(t, "SearchWithRetry", mock.Anything, mock.Anything, mock.Anything)
+	contextRetriever.AssertNotCalled(t, "RetrieveContext", mock.Anything, mock.Anything)
 	qg.AssertExpectations(t)
 	suff.AssertExpectations(t)
 }

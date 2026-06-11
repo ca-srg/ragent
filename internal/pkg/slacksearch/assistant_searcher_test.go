@@ -58,6 +58,26 @@ func TestAssistantSearcher_SearchSuccess(t *testing.T) {
 					MessageTS:    "1700000000.000100",
 					Content:      "deployment completed",
 					Permalink:    "https://example.slack.com/archives/C_HIT/p1700000000000100",
+					ContextMessages: &slack.AssistantSearchContextMessageContext{
+						Before: []slack.AssistantSearchContextMessage{
+							{
+								ChannelID:    "C_HIT",
+								AuthorUserID: "U0",
+								AuthorName:   "bob",
+								MessageTS:    "1700000000.000000",
+								Content:      "deployment started",
+							},
+						},
+						After: []slack.AssistantSearchContextMessage{
+							{
+								ChannelID:    "C_HIT",
+								AuthorUserID: "U2",
+								AuthorName:   "carol",
+								MessageTS:    "1700000000.000200",
+								Content:      "smoke tests passed",
+							},
+						},
+					},
 				},
 			},
 		},
@@ -79,6 +99,39 @@ func TestAssistantSearcher_SearchSuccess(t *testing.T) {
 	assert.Equal(t, "deployment completed", got.Text)
 	assert.Equal(t, "1700000000.000100", got.Timestamp)
 	assert.Equal(t, "https://example.slack.com/archives/C_HIT/p1700000000000100", got.Permalink)
+	require.Len(t, resp.EnrichedMessages, 1)
+	enriched := resp.EnrichedMessages[0]
+	assert.Equal(t, got, enriched.OriginalMessage)
+	assert.Equal(t, got.Permalink, enriched.Permalink)
+	require.Len(t, enriched.PreviousMessages, 1)
+	assert.Equal(t, "deployment started", enriched.PreviousMessages[0].Text)
+	require.Len(t, enriched.NextMessages, 1)
+	assert.Equal(t, "smoke tests passed", enriched.NextMessages[0].Text)
+
+	prompt := (&SlackSearchResult{EnrichedMessages: resp.EnrichedMessages}).ForPrompt()
+	assert.Contains(t, prompt, "Previous at")
+	assert.Contains(t, prompt, "deployment started")
+	assert.Contains(t, prompt, "Next at")
+	assert.Contains(t, prompt, "smoke tests passed")
+	client.AssertExpectations(t)
+}
+
+func TestAssistantSearcher_ClampsLimitToAssistantMaximum(t *testing.T) {
+	client := &mockAssistantSearchClient{}
+	s := newTestAssistantSearcher(client)
+
+	client.On("SearchAssistantContextContext", mock.Anything, mock.MatchedBy(func(p slack.AssistantSearchContextParameters) bool {
+		return p.Limit == maxAssistantSearchResults
+	})).Return(&slack.AssistantSearchContextResponse{
+		SlackResponse: slack.SlackResponse{Ok: true},
+	}, nil).Once()
+
+	_, err := s.Search(context.Background(), &SearchRequest{
+		Query:       "deployment",
+		ActionToken: "TK123",
+		MaxResults:  100,
+	})
+	require.NoError(t, err)
 	client.AssertExpectations(t)
 }
 
@@ -132,6 +185,48 @@ func TestAssistantSearcher_FatalErrorFastFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid_action_token")
 	client.AssertNumberOfCalls(t, "SearchAssistantContextContext", 1)
+}
+
+func TestAssistantSearcher_ActionTokenErrorsDoNotOpenCircuit(t *testing.T) {
+	client := &mockAssistantSearchClient{}
+	s := newTestAssistantSearcher(client)
+
+	for _, code := range []string{"invalid_action_token", "token_expired", "invalid_action_token"} {
+		client.On("SearchAssistantContextContext", mock.Anything, mock.Anything).
+			Return(&slack.AssistantSearchContextResponse{
+				SlackResponse: slack.SlackResponse{Ok: false, Error: code},
+			}, nil).Once()
+
+		_, err := s.SearchWithRetry(context.Background(), &SearchRequest{
+			Query:       "x",
+			ActionToken: "expired",
+		}, 5)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), code)
+	}
+
+	client.On("SearchAssistantContextContext", mock.Anything, mock.Anything).
+		Return(&slack.AssistantSearchContextResponse{
+			SlackResponse: slack.SlackResponse{Ok: true},
+			Results: slack.AssistantSearchContextResults{
+				Messages: []slack.AssistantSearchContextMessage{
+					{
+						ChannelID:    "C1",
+						AuthorUserID: "U1",
+						MessageTS:    "1700000000.000100",
+						Content:      "ok",
+					},
+				},
+			},
+		}, nil).Once()
+
+	resp, err := s.SearchWithRetry(context.Background(), &SearchRequest{
+		Query:       "x",
+		ActionToken: "fresh",
+	}, 0)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	client.AssertNumberOfCalls(t, "SearchAssistantContextContext", 4)
 }
 
 func TestAssistantSearcher_NotOkBecomesError(t *testing.T) {
