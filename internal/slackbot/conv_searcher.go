@@ -14,7 +14,12 @@ import (
 )
 
 type SlackConversationService interface {
-	Search(ctx context.Context, query string, channels []string) (*slacksearch.SlackSearchResult, error)
+	Search(
+		ctx context.Context,
+		query string,
+		channels []string,
+		opts slacksearch.SearchOptions,
+	) (*slacksearch.SlackSearchResult, error)
 }
 
 type botSlackSearcher struct {
@@ -54,7 +59,10 @@ func (b *botSlackSearcher) SearchConversations(ctx context.Context, query string
 		return nil, nil
 	}
 	channels := b.channelFilter(opts.ChannelID)
-	result, err := b.service.Search(ctx, query, channels)
+	// Propagate the full SearchOptions (most importantly opts.ActionToken
+	// surfaced from the originating Slack event) to the slacksearch service
+	// so it can switch to assistant.search.context when available.
+	result, err := b.service.Search(ctx, query, channels, opts)
 	if err != nil {
 		return nil, err
 	}

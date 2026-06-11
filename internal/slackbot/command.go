@@ -59,7 +59,7 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 		return fmt.Errorf("failed to load slack config: %w", err)
 	}
 	if strings.TrimSpace(cfg.SlackUserToken) == "" {
-		return fmt.Errorf("slack user token (SLACK_USER_TOKEN) not configured; enable Slack search requires user token with search scopes")
+		logger.Printf("SLACK_USER_TOKEN is not configured; slack-bot Slack search requires event action_token and uses assistant.search.context")
 	}
 
 	// Slack client

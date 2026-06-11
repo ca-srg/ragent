@@ -425,7 +425,7 @@ RAGent は起動時に `SECRET_MANAGER_SECRET_ID` が設定されていると、
 | `OPENSEARCH_ENDPOINT` | OpenSearch エンドポイント URL | 全コマンドで必須 |
 | `OPENSEARCH_INDEX` | OpenSearch インデックス名 | 全コマンドで必須 |
 | `SLACK_BOT_TOKEN` | Slack Bot トークン (`xoxb-`) | `slack-bot` コマンド |
-| `SLACK_USER_TOKEN` | Slack User トークン (`xoxp-`) | Slack 検索機能（`search:read` スコープ必須） |
+| `SLACK_USER_TOKEN` | Slack User トークン (`xoxp-`) | 任意。設定時は `search:read` スコープを付与した user token で `search.messages` を呼び出します。未設定の場合は slack-bot のイベント由来 `action_token` がある経路のみ Bot Token (`xoxb-`) で `assistant.search.context` を呼び出せます |
 | `SLACK_APP_TOKEN` | Slack App-level トークン (`xapp-`) | Socket Mode 利用時 |
 | `OIDC_ISSUER` | OIDC プロバイダー URL | MCP Server OIDC 認証時 |
 | `OIDC_CLIENT_ID` | OIDC クライアント ID | MCP Server OIDC 認証時 |

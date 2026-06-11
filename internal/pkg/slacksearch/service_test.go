@@ -100,7 +100,7 @@ func TestSlackSearchService_SearchSuccess(t *testing.T) {
 	suff := &mockSufficiencyChecker{}
 
 	service.queryGenerator = qg
-	service.searcher = searcher
+	service.userSearcher = searcher
 	service.contextRetriever = context
 	service.sufficiencyChecker = suff
 
@@ -130,7 +130,7 @@ func TestSlackSearchService_SearchSuccess(t *testing.T) {
 	suff.On("Check", mock.Anything, mock.AnythingOfType("*slacksearch.SufficiencyRequest")).
 		Return(&SufficiencyResponse{IsSufficient: true, MissingInfo: nil, Confidence: 0.8}, nil).Once()
 
-	result, err := service.Search(contextBackground(), "How did the deployment go?", []string{"general"})
+	result, err := service.Search(contextBackground(), "How did the deployment go?", []string{"general"}, SearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsSufficient)
@@ -157,7 +157,7 @@ func TestSlackSearchService_SearchIterativeRefinement(t *testing.T) {
 	suff := &mockSufficiencyChecker{}
 
 	service.queryGenerator = qg
-	service.searcher = searcher
+	service.userSearcher = searcher
 	service.contextRetriever = context
 	service.sufficiencyChecker = suff
 
@@ -183,7 +183,7 @@ func TestSlackSearchService_SearchIterativeRefinement(t *testing.T) {
 	suff.On("Check", mock.Anything, mock.AnythingOfType("*slacksearch.SufficiencyRequest")).
 		Return(&SufficiencyResponse{IsSufficient: true, MissingInfo: nil}, nil).Once()
 
-	result, err := service.Search(contextBackground(), "Summarize the incident", nil)
+	result, err := service.Search(contextBackground(), "Summarize the incident", nil, SearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, 2, result.IterationCount)
@@ -204,7 +204,7 @@ func TestSlackSearchService_SearchNoResults(t *testing.T) {
 	searcher := &mockSearcher{}
 
 	service.queryGenerator = qg
-	service.searcher = searcher
+	service.userSearcher = searcher
 	service.contextRetriever = &mockContextRetriever{}
 	service.sufficiencyChecker = &mockSufficiencyChecker{}
 
@@ -213,7 +213,7 @@ func TestSlackSearchService_SearchNoResults(t *testing.T) {
 	searcher.On("SearchWithRetry", mock.Anything, mock.AnythingOfType("*slacksearch.SearchRequest"), cfg.MaxRetries).
 		Return(&SearchResponse{Messages: nil, TotalCount: 0}, nil).Once()
 
-	result, err := service.Search(contextBackground(), "Question with no matches", nil)
+	result, err := service.Search(contextBackground(), "Question with no matches", nil, SearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsSufficient)
@@ -233,7 +233,7 @@ func TestSlackSearchService_SearchHandlesSearchErrors(t *testing.T) {
 	searcher := &mockSearcher{}
 
 	service.queryGenerator = qg
-	service.searcher = searcher
+	service.userSearcher = searcher
 	service.contextRetriever = &mockContextRetriever{}
 	service.sufficiencyChecker = &mockSufficiencyChecker{}
 
@@ -242,7 +242,7 @@ func TestSlackSearchService_SearchHandlesSearchErrors(t *testing.T) {
 	searcher.On("SearchWithRetry", mock.Anything, mock.AnythingOfType("*slacksearch.SearchRequest"), cfg.MaxRetries).
 		Return(nil, assert.AnError).Once()
 
-	result, err := service.Search(contextBackground(), "Failing query", nil)
+	result, err := service.Search(contextBackground(), "Failing query", nil, SearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsSufficient)
@@ -263,7 +263,7 @@ func TestSlackSearchService_SearchRespectsContextCancellation(t *testing.T) {
 	suff := &mockSufficiencyChecker{}
 
 	service.queryGenerator = qg
-	service.searcher = searcher
+	service.userSearcher = searcher
 	service.contextRetriever = contextRetriever
 	service.sufficiencyChecker = suff
 
@@ -289,7 +289,7 @@ func TestSlackSearchService_SearchRespectsContextCancellation(t *testing.T) {
 		cancel()
 	}).Return(&SufficiencyResponse{IsSufficient: false, MissingInfo: []string{"Need more"}}, nil).Once()
 
-	result, err := service.Search(ctx, "Cancel after first iteration", nil)
+	result, err := service.Search(ctx, "Cancel after first iteration", nil, SearchOptions{})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, context.Canceled))
 	assert.Nil(t, result)
@@ -302,4 +302,105 @@ func TestSlackSearchService_SearchRespectsContextCancellation(t *testing.T) {
 
 func contextBackground() context.Context {
 	return context.Background()
+}
+
+// --- selectSearcher / dispatch tests ---
+
+func TestSlackSearchService_SelectSearcherUsesAssistantWhenActionToken(t *testing.T) {
+	s := newTestService(defaultConfig())
+	userS := &mockSearcher{}
+	asstS := &mockSearcher{}
+	s.userSearcher = userS
+	s.assistantSearcher = asstS
+
+	sr, backend, err := s.selectSearcher(SearchOptions{ActionToken: "TK"})
+	require.NoError(t, err)
+	assert.Equal(t, SearchBackendAssistant, backend)
+	// Compare interface identity by type assertion to *mockSearcher.
+	gotMock, ok := sr.(*mockSearcher)
+	require.True(t, ok)
+	assert.Same(t, asstS, gotMock)
+}
+
+func TestSlackSearchService_SelectSearcherFallsBackToUserWithoutActionToken(t *testing.T) {
+	s := newTestService(defaultConfig())
+	userS := &mockSearcher{}
+	asstS := &mockSearcher{}
+	s.userSearcher = userS
+	s.assistantSearcher = asstS
+
+	sr, backend, err := s.selectSearcher(SearchOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, SearchBackendUser, backend)
+	gotMock, ok := sr.(*mockSearcher)
+	require.True(t, ok)
+	assert.Same(t, userS, gotMock)
+}
+
+func TestSlackSearchService_SelectSearcherActionTokenButNoAssistantUsesUser(t *testing.T) {
+	s := newTestService(defaultConfig())
+	userS := &mockSearcher{}
+	s.userSearcher = userS
+	s.assistantSearcher = nil
+
+	sr, backend, err := s.selectSearcher(SearchOptions{ActionToken: "TK"})
+	require.NoError(t, err)
+	assert.Equal(t, SearchBackendUser, backend)
+	gotMock, ok := sr.(*mockSearcher)
+	require.True(t, ok)
+	assert.Same(t, userS, gotMock)
+}
+
+func TestSlackSearchService_SelectSearcherWithNothingErrors(t *testing.T) {
+	s := newTestService(defaultConfig())
+	s.userSearcher = nil
+	s.assistantSearcher = nil
+
+	_, _, err := s.selectSearcher(SearchOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "SLACK_USER_TOKEN")
+}
+
+func TestSlackSearchService_SearchDispatchesToAssistant(t *testing.T) {
+	cfg := defaultConfig()
+	service := newTestService(cfg)
+
+	qg := &mockQueryGenerator{}
+	userS := &mockSearcher{}
+	asstS := &mockSearcher{}
+	suff := &mockSufficiencyChecker{}
+
+	service.queryGenerator = qg
+	service.userSearcher = userS
+	service.assistantSearcher = asstS
+	service.contextRetriever = &mockContextRetriever{}
+	service.sufficiencyChecker = suff
+
+	qg.On("GenerateQueries", mock.Anything, mock.AnythingOfType("*slacksearch.QueryGenerationRequest")).
+		Return(&QueryGenerationResponse{Queries: []string{"q1"}}, nil).Once()
+
+	// assistantSearcher must be called and receive ActionToken + ContextChannelID.
+	asstS.On("SearchWithRetry", mock.Anything, mock.MatchedBy(func(req *SearchRequest) bool {
+		return req.ActionToken == "TK_FROM_EVENT" && req.ContextChannelID == "C_ORIGIN"
+	}), cfg.MaxRetries).Return(&SearchResponse{
+		Messages:   []slack.Message{slackMsg("1700000000.000100", "hit")},
+		TotalCount: 1,
+	}, nil).Once()
+
+	suff.On("Check", mock.Anything, mock.AnythingOfType("*slacksearch.SufficiencyRequest")).
+		Return(&SufficiencyResponse{IsSufficient: true, MissingInfo: nil, Confidence: 0.9}, nil).Once()
+
+	result, err := service.Search(context.Background(), "find x", nil, SearchOptions{
+		ActionToken: "TK_FROM_EVENT",
+		ChannelID:   "C_ORIGIN",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.EnrichedMessages, 1)
+
+	asstS.AssertExpectations(t)
+	// user searcher must NOT be called when action_token is set.
+	userS.AssertNotCalled(t, "SearchWithRetry", mock.Anything, mock.Anything, mock.Anything)
+	qg.AssertExpectations(t)
+	suff.AssertExpectations(t)
 }

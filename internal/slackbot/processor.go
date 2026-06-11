@@ -136,11 +136,15 @@ func (p *Processor) ProcessMessage(ctx context.Context, botUserID string, msg *s
 		span.SetAttributes(attribute.String("slack.query.enhanced", truncateForAttribute(searchQuery)))
 	}
 
-	// Perform search
+	// Perform search. ActionToken is propagated from the inbound Slack event
+	// (set by the Socket Mode handler via ContextWithActionToken). When
+	// present, the slacksearch service can switch to assistant.search.context
+	// on the bot token to reach public channels the bot has not joined.
 	result := p.search.Search(ctx, searchQuery, SearchOptions{
 		ChannelID:       msg.Channel,
 		ThreadTimestamp: msg.ThreadTimestamp,
 		UserID:          msg.User,
+		ActionToken:     ActionTokenFromContext(ctx),
 	})
 	if result != nil {
 		span.SetAttributes(

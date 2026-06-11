@@ -32,6 +32,14 @@ type SearchOptions struct {
 	ChannelID       string
 	ThreadTimestamp string
 	UserID          string
+	// ActionToken is the short-lived token surfaced by Slack on app_mention /
+	// message events under `event.assistant_thread.action_token`. When set, the
+	// Slack search service uses the Real-time Search API
+	// (`assistant.search.context`) on the bot token, which lets a bot search
+	// public channels it has not been invited to. When empty, the service
+	// falls back to the legacy `search.messages` flow that requires
+	// SLACK_USER_TOKEN.
+	ActionToken string
 }
 
 // EnrichedMessage combines a Slack message with additional contextual data.
@@ -92,8 +100,12 @@ func (c *SlackSearchConfig) Validate() error {
 		return nil
 	}
 
-	if strings.TrimSpace(c.UserToken) == "" {
-		return fmt.Errorf("user_token must be provided when Slack search is enabled")
+	// At least one of BotToken or UserToken must be available when Slack
+	// search is enabled. The UserToken (xoxp) backs legacy search.messages;
+	// the BotToken (xoxb) backs assistant.search.context only when a Slack
+	// event action_token is provided per request.
+	if strings.TrimSpace(c.BotToken) == "" && strings.TrimSpace(c.UserToken) == "" {
+		return fmt.Errorf("either bot_token or user_token must be provided when Slack search is enabled")
 	}
 
 	if c.MaxResults <= 0 || c.MaxResults > 100 {

@@ -23,7 +23,7 @@ require (
 	github.com/netflix/go-env v0.0.0-20220526054621-78278af1949d
 	github.com/opensearch-project/opensearch-go/v4 v4.5.0
 	github.com/pdfcpu/pdfcpu v0.11.1
-	github.com/slack-go/slack v0.17.3
+	github.com/slack-go/slack v0.23.1
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.7
 	github.com/stretchr/testify v1.11.1

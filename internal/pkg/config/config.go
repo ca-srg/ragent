@@ -136,9 +136,10 @@ func validateSlackSearchConfig(config *Config) error {
 		return nil
 	}
 
-	if strings.TrimSpace(config.SlackUserToken) == "" {
-		return fmt.Errorf("SLACK_USER_TOKEN is required when Slack search is enabled")
-	}
+	// SLACK_USER_TOKEN is optional. When unset, only callers that can provide
+	// a Slack event action_token (slack-bot mentions/DMs) can use the
+	// assistant.search.context backend; CLI/MCP Slack search still requires a
+	// user token because they have no Slack event surface.
 
 	if config.SlackSearchMaxResults <= 0 || config.SlackSearchMaxResults > 100 {
 		return fmt.Errorf("SLACK_SEARCH_MAX_RESULTS must be between 1 and 100 (got %d)", config.SlackSearchMaxResults)

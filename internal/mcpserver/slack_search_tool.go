@@ -137,7 +137,9 @@ func (sta *SlackSearchToolAdapter) HandleToolCallWithProgress(ctx context.Contex
 	defer cancel()
 
 	startTime := time.Now()
-	result, err := sta.slackService.Search(searchCtx, request.Query, request.Channels)
+	// MCP callers do not supply a Slack event action_token, so slacksearch
+	// uses the legacy user-token (search.messages) backend.
+	result, err := sta.slackService.Search(searchCtx, request.Query, request.Channels, slacksearch.SearchOptions{})
 
 	// Clear progress handler
 	if progressFn != nil {

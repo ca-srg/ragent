@@ -45,6 +45,14 @@ type SearchRequest struct {
 	Query      string
 	TimeRange  *TimeRange
 	MaxResults int
+	// ActionToken propagates the Real-time Search API action token from the
+	// originating Slack event. Only consumed by the assistant.search.context
+	// searcher; legacy search.messages searcher ignores it.
+	ActionToken string
+	// ContextChannelID is the Slack channel ID in which the originating event
+	// occurred. assistant.search.context uses it as a scoping hint when the
+	// caller is inside a Slack Connect channel.
+	ContextChannelID string
 }
 
 // SearchResponse contains the Slack search results and metadata.

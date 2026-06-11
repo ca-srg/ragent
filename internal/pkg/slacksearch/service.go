@@ -35,14 +35,25 @@ type slackSufficiencyChecker interface {
 }
 
 // SlackSearchService orchestrates the Slack search pipeline.
+//
+// It can dispatch a search to either of two backends, chosen per-call based
+// on SearchOptions.ActionToken:
+//
+//   - userSearcher       — legacy `search.messages` over a User Token (xoxp);
+//     required by CLI/MCP because they have no `action_token`.
+//   - assistantSearcher  — Real-time Search API (`assistant.search.context`)
+//     over the Bot Token (xoxb) plus a short-lived `action_token` obtained
+//     from an `app_mention` / `message` event. Lets the bot reach public
+//     channels it has not been invited to.
 type SlackSearchService struct {
 	botClient          *slack.Client
-	userClient         *slack.Client
+	userClient         *slack.Client // nil unless SLACK_USER_TOKEN is set
 	queryGenerator     slackQueryGenerator
-	searcher           slackSearcher
-	contextRetriever   slackContextRetriever
+	userSearcher       slackSearcher         // search.messages; nil without user token
+	assistantSearcher  slackSearcher         // assistant.search.context; nil if bot client missing
+	contextRetriever   slackContextRetriever // requires user token
 	sufficiencyChecker slackSufficiencyChecker
-	messageFetcher     *MessageFetcher
+	messageFetcher     *MessageFetcher // URL fetch; user token preferred, bot token fallback
 	config             *SlackSearchConfig
 	logger             *log.Logger
 	progressHandler    func(iteration int, maxIterations int)
@@ -90,17 +101,20 @@ func NewSlackSearchService(
 	if strings.TrimSpace(cfg.UserToken) == "" {
 		cfg.UserToken = os.Getenv("SLACK_USER_TOKEN")
 	}
-	if cfg.Enabled && strings.TrimSpace(cfg.UserToken) == "" {
-		return nil, fmt.Errorf("SLACK_USER_TOKEN must be set when Slack search is enabled")
-	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid Slack search configuration: %w", err)
 	}
 
+	// Build the user-token client (search.messages backend) when xoxp is set.
+	// The bot token is always available (validated above); the assistant
+	// searcher uses it together with a per-request action_token.
 	var userClient *slack.Client
 	if strings.TrimSpace(cfg.UserToken) != "" {
 		userClient = slack.New(cfg.UserToken)
+	} else if cfg.Enabled {
+		logger.Printf("Slack search: SLACK_USER_TOKEN not set; user-token backend (search.messages) is disabled, " +
+			"slack-bot mention path can still use assistant.search.context with action_token")
 	}
 
 	searchLimiter := NewRateLimiter(20, 20, 20)
@@ -109,22 +123,31 @@ func NewSlackSearchService(
 	llmTimeout := time.Duration(cfg.LLMTimeoutSeconds) * time.Second
 	queryGenerator := NewQueryGenerator(bedrockClient, llmTimeout)
 
+	requestTimeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+
 	var (
-		searcher         slackSearcher
+		userSearcher     slackSearcher
 		contextRetriever slackContextRetriever
 		messageFetcher   *MessageFetcher
-		err              error
 	)
 
 	if userClient != nil {
-		requestTimeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-		searcher = NewSearcher(userClient, searchLimiter, requestTimeout)
+		userSearcher = NewSearcher(userClient, searchLimiter, requestTimeout)
+		var err error
 		contextRetriever, err = NewContextRetriever(userClient, contextLimiter, bedrockClient, cfg, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create context retriever: %w", err)
 		}
 		messageFetcher = NewMessageFetcher(userClient, contextLimiter, cfg, logger)
+	} else {
+		// URL fetch over the bot token still works for channels the bot is
+		// invited to (channels:history scope). It is the only viable path
+		// when SLACK_USER_TOKEN is not configured.
+		messageFetcher = NewMessageFetcher(botClient, contextLimiter, cfg, logger)
 	}
+
+	// assistant.search.context always uses the bot token + action_token.
+	assistantSearcher := NewAssistantSearcher(botClient, searchLimiter, requestTimeout)
 
 	sufficiencyChecker := NewSufficiencyChecker(bedrockClient, logger, llmTimeout)
 
@@ -132,7 +155,8 @@ func NewSlackSearchService(
 		botClient:          botClient,
 		userClient:         userClient,
 		queryGenerator:     queryGenerator,
-		searcher:           searcher,
+		userSearcher:       userSearcher,
+		assistantSearcher:  assistantSearcher,
 		contextRetriever:   contextRetriever,
 		sufficiencyChecker: sufficiencyChecker,
 		messageFetcher:     messageFetcher,
@@ -183,16 +207,57 @@ func (s *SlackSearchService) HealthCheck(ctx context.Context) error {
 		return fmt.Errorf("SLACK_BOT_TOKEN must be set when Slack search is enabled")
 	}
 
-	if s.userClient == nil {
-		return fmt.Errorf("slack user client is not configured")
+	if s.userSearcher == nil && s.assistantSearcher == nil {
+		return fmt.Errorf("slack realtime search client is not configured (no user token and no bot token)")
 	}
 
 	s.logger.Printf("Slack search health check passed")
 	return nil
 }
 
+// SearchBackend identifies which Slack search API the service ended up using.
+type SearchBackend string
+
+const (
+	// SearchBackendUser uses search.messages over a user token.
+	SearchBackendUser SearchBackend = "user_search_messages"
+	// SearchBackendAssistant uses assistant.search.context over a bot token
+	// plus an action_token surfaced by a Slack event.
+	SearchBackendAssistant SearchBackend = "assistant_search_context"
+)
+
+// selectSearcher picks the active searcher for this call.
+//
+// Priority:
+//  1. opts.ActionToken set + assistantSearcher available → assistant path.
+//     This lets a slack-bot mention reach public channels the bot is not in.
+//  2. userSearcher available → legacy search.messages path.
+//  3. otherwise → caller error.
+func (s *SlackSearchService) selectSearcher(opts SearchOptions) (slackSearcher, SearchBackend, error) {
+	if strings.TrimSpace(opts.ActionToken) != "" && s.assistantSearcher != nil {
+		return s.assistantSearcher, SearchBackendAssistant, nil
+	}
+	if s.userSearcher != nil {
+		return s.userSearcher, SearchBackendUser, nil
+	}
+	return nil, "", fmt.Errorf(
+		"slack search requires either SLACK_USER_TOKEN (legacy search.messages) " +
+			"or a Slack event action_token (assistant.search.context)")
+}
+
 // Search executes the Slack search pipeline.
-func (s *SlackSearchService) Search(ctx context.Context, userQuery string, channels []string) (*SlackSearchResult, error) {
+//
+// opts.ActionToken decides the backend at call time. When non-empty and the
+// bot client is available, the service uses `assistant.search.context`
+// against the bot token, which can reach public channels even if the bot has
+// not been invited. Otherwise it falls back to the legacy `search.messages`
+// flow against SLACK_USER_TOKEN.
+func (s *SlackSearchService) Search(
+	ctx context.Context,
+	userQuery string,
+	channels []string,
+	opts SearchOptions,
+) (*SlackSearchResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -204,8 +269,10 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 	span.SetAttributes(
 		attribute.String("slack.query_hash", queryHash),
 		attribute.Int("slack.channel_count", len(channels)),
+		attribute.Bool("slack.has_action_token", strings.TrimSpace(opts.ActionToken) != ""),
 	)
-	s.logger.Printf("Slack search started hash=%s channels=%d enabled=%t", queryHash, len(channels), s.config.Enabled)
+	s.logger.Printf("Slack search started hash=%s channels=%d enabled=%t has_action_token=%t",
+		queryHash, len(channels), s.config.Enabled, strings.TrimSpace(opts.ActionToken) != "")
 
 	if !s.config.Enabled {
 		err := fmt.Errorf("slack search is disabled in configuration")
@@ -213,7 +280,7 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 		span.SetStatus(codes.Error, "slack_search_disabled")
 		return nil, err
 	}
-	if s.queryGenerator == nil || s.searcher == nil || s.contextRetriever == nil || s.sufficiencyChecker == nil {
+	if s.queryGenerator == nil || s.sufficiencyChecker == nil {
 		err := fmt.Errorf("slack search service not fully initialized")
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "service_not_initialized")
@@ -225,6 +292,15 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 		span.SetStatus(codes.Error, "invalid_query")
 		return nil, err
 	}
+
+	activeSearcher, backend, err := s.selectSearcher(opts)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "no_searcher_available")
+		return nil, err
+	}
+	span.SetAttributes(attribute.String("slack.search_backend", string(backend)))
+	s.logger.Printf("Slack search backend=%s hash=%s", backend, queryHash)
 
 	startTime := time.Now()
 
@@ -305,6 +381,8 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 
 		searchMessages, _, executedQueries, previousQueries, _, err = s.runSearchIteration(
 			iterationCtx,
+			activeSearcher,
+			opts,
 			userQuery,
 			channels,
 			previousQueries,
@@ -384,19 +462,35 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 			return result, nil
 		}
 
-		contextResp, err := s.contextRetriever.RetrieveContext(iterationCtx, &ContextRequest{
-			Messages:  searchMessages,
-			UserQuery: userQuery,
-		})
-		if err != nil {
-			s.logger.Printf("Slack search context retrieval failed: %v", err)
-			iterSpan.AddEvent("context_retrieval_failed", trace.WithAttributes(attribute.String("error", err.Error())))
+		// assistant.search.context already returns permalinks and (eventually)
+		// inline context_messages, so we skip the ContextRetriever — its
+		// underlying APIs (conversations.history/replies) require the bot to
+		// be a channel member, which defeats the whole point of using the
+		// assistant path. The bot path therefore exposes only the matched
+		// messages plus their permalinks.
+		var contextResp *ContextResponse
+		switch {
+		case backend == SearchBackendAssistant, s.contextRetriever == nil:
 			contextResp = &ContextResponse{
 				EnrichedMessages: s.fallbackEnriched(searchMessages),
 				TotalRetrieved:   len(searchMessages),
 			}
-		} else {
-			s.logger.Printf("Slack search context retrieved hash=%s retrieved=%d", queryHash, contextResp.TotalRetrieved)
+		default:
+			var retrieveErr error
+			contextResp, retrieveErr = s.contextRetriever.RetrieveContext(iterationCtx, &ContextRequest{
+				Messages:  searchMessages,
+				UserQuery: userQuery,
+			})
+			if retrieveErr != nil {
+				s.logger.Printf("Slack search context retrieval failed: %v", retrieveErr)
+				iterSpan.AddEvent("context_retrieval_failed", trace.WithAttributes(attribute.String("error", retrieveErr.Error())))
+				contextResp = &ContextResponse{
+					EnrichedMessages: s.fallbackEnriched(searchMessages),
+					TotalRetrieved:   len(searchMessages),
+				}
+			} else {
+				s.logger.Printf("Slack search context retrieved hash=%s retrieved=%d", queryHash, contextResp.TotalRetrieved)
+			}
 		}
 
 		enrichedMessages = contextResp.EnrichedMessages
@@ -489,6 +583,8 @@ func (s *SlackSearchService) Search(ctx context.Context, userQuery string, chann
 
 func (s *SlackSearchService) runSearchIteration(
 	ctx context.Context,
+	activeSearcher slackSearcher,
+	opts SearchOptions,
 	userQuery string,
 	channels []string,
 	previousQueries []string,
@@ -528,7 +624,7 @@ func (s *SlackSearchService) runSearchIteration(
 	s.logger.Printf("Slack search iteration=%d hash=%s generated_queries=%d time_filter=%t",
 		iteration+1, queryHash, len(genResp.Queries), genResp.TimeFilter != nil)
 
-	searchMessages, totalMatches, executedQueries = s.executeSlackSearch(ctx, genResp, executedQueries)
+	searchMessages, totalMatches, executedQueries = s.executeSlackSearch(ctx, activeSearcher, opts, genResp, executedQueries)
 	previousQueries = append(previousQueries, genResp.Queries...)
 	previousResults = totalMatches
 
@@ -537,6 +633,8 @@ func (s *SlackSearchService) runSearchIteration(
 
 func (s *SlackSearchService) executeSlackSearch(
 	ctx context.Context,
+	activeSearcher slackSearcher,
+	opts SearchOptions,
 	genResp *QueryGenerationResponse,
 	executedQueries []string,
 ) ([]slack.Message, int, []string) {
@@ -560,12 +658,14 @@ func (s *SlackSearchService) executeSlackSearch(
 		}
 
 		request := &SearchRequest{
-			Query:      query,
-			TimeRange:  genResp.TimeFilter,
-			MaxResults: s.config.MaxResults,
+			Query:            query,
+			TimeRange:        genResp.TimeFilter,
+			MaxResults:       s.config.MaxResults,
+			ActionToken:      opts.ActionToken,
+			ContextChannelID: opts.ChannelID,
 		}
 
-		response, err := s.searcher.SearchWithRetry(ctx, request, s.config.MaxRetries)
+		response, err := activeSearcher.SearchWithRetry(ctx, request, s.config.MaxRetries)
 		executedQueries = append(executedQueries, query)
 		if err != nil {
 			s.logger.Printf("Slack search query failed hash=%s error=%v", telemetryFingerprint(query), err)
