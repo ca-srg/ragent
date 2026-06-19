@@ -232,7 +232,7 @@ func TestLoadSecretString_NilSecretString_ReturnsError(t *testing.T) {
 
 	_, err := LoadSecretString(context.Background(), "ragent/mcp-config", "")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "has no SecretString")
+	assert.Contains(t, err.Error(), "has no secret string")
 }
 
 // TestLoadSecretsIntoEnv_NestedJSON_SkipsNonString verifies that non-string
