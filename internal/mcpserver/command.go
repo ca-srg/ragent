@@ -22,6 +22,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
+	"github.com/ca-srg/ragent/internal/pkg/mcpclient"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/observability"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
@@ -54,6 +55,7 @@ type MCPServerOptions struct {
 	OnlySlack         bool
 	ExportEval        bool
 	ExportEvalPath    string
+	MCPConfigPath     string
 	DashboardHandler  http.Handler
 	DashboardCleanup  func()
 	DashboardBasePath string
@@ -134,6 +136,16 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		cfg.SlackSearchEnabled = true
 		logger.Printf("Running in Slack-only mode (OpenSearch disabled)")
 	}
+
+	mcpManager, err := mcpclient.ConnectFromFile(ctx, opts.MCPConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect MCP clients: %w", err)
+	}
+	defer func() {
+		if err := mcpManager.Close(); err != nil {
+			logger.Printf("MCP client close warning: %v", err)
+		}
+	}()
 
 	shutdown, obsErr := observability.Init(cfg)
 	if obsErr != nil {
@@ -394,6 +406,8 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		// Create Slack search handler
 		slackSearchHandler := NewSlackSearchHandler(slackService, slackSearchConfig)
 		slackSearchHandler.GetAdapter().SetEvalWriter(evalWriter)
+		slackSearchHandler.GetAdapter().SetMCPClient(mcpManager)
+		slackSearchHandler.GetAdapter().SetMCPRetryPlanner(slackBedrockClient)
 		slackToolHandlerFunc := slackSearchHandler.HandleSDKToolCall
 
 		// Determine tool name
@@ -405,6 +419,9 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		// Build enriched tool definition
 		baseSlackDef := slackSearchHandler.GetSDKToolDefinition()
 		detailedSlackTool := BuildSlackSearchToolDefinition(baseSlackDef, slackToolName, slackSearchConfig)
+		if evalWriter != nil {
+			markToolMutating(detailedSlackTool, slackToolName)
+		}
 
 		// Register Slack search tool
 		if err := server.RegisterCustomTool(detailedSlackTool, slackToolHandlerFunc); err != nil {
@@ -463,6 +480,8 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		// Create hybrid search tool handler for SDK integration
 		hybridSearchHandler := NewHybridSearchHandler(osClient, embeddingClient, hybridSearchConfig, slackService)
 		hybridSearchHandler.GetAdapter().SetEvalWriter(evalWriter)
+		hybridSearchHandler.GetAdapter().SetMCPClient(mcpManager)
+		hybridSearchHandler.GetAdapter().SetMCPRetryPlanner(slackBedrockClient)
 
 		// Create function wrapper to match mcp.ToolHandler signature
 		toolHandlerFunc := hybridSearchHandler.HandleSDKToolCall
@@ -476,6 +495,9 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		// Build enriched tool definition for MCP clients
 		baseDefinition := hybridSearchHandler.GetSDKToolDefinition()
 		detailedTool := BuildHybridSearchToolDefinition(baseDefinition, toolName, hybridSearchConfig)
+		if evalWriter != nil {
+			markToolMutating(detailedTool, toolName)
+		}
 
 		// Register tool with SDK server through ServerWrapper using the enriched definition
 		if err := server.RegisterCustomTool(detailedTool, toolHandlerFunc); err != nil {
@@ -563,6 +585,7 @@ func BuildHybridSearchToolDefinition(base *mcp.Tool, toolName string, defaults *
 		toolCopy = *base
 	}
 	toolCopy.Name = toolName
+	markToolReadOnly(&toolCopy, toolName)
 
 	toolCopy.Description = fmt.Sprintf(
 		"ハイブリッド検索ツール。RAGent の OpenSearch (BM25) と Titan ベクトル検索を組み合わせ、最大 %d 件の候補を融合スコアで返します。日本語・英語いずれの自然文クエリにも対応し、手順書・設計資料・ナレッジノートを横断的に調べる用途を想定しています。必要に応じて `enable_slack_search` を true にすることで社内 Slack の会話も同時に検索できます。レスポンスは JSON テキストで、各ドキュメントのタイトル/抜粋/スコア/パス/メタデータ (任意) を含みます。\n\n**重要**: ユーザーが「Slack検索を利用して」「Slackも検索して」のように明示的に Slack 検索を要求した場合は `enable_slack_search` を true に、「Slack検索を利用せず」「Slack検索なしで」のように Slack 検索を除外する指示がある場合は `enable_slack_search` を false に設定してください。ユーザーの Slack 検索に関する明示的な指示を必ず尊重してください。\n\nEnglish: Run hybrid retrieval across the Markdown knowledge base by blending BM25 and Titan embeddings on Amazon OpenSearch. Returns up to %d ranked documents with fused scores plus optional metadata. Set `enable_slack_search` to true to enrich the response with Slack conversations. **Important**: Always respect the user's explicit instructions about Slack search (e.g. 'without slack search' → false, 'with slack search' → true).",

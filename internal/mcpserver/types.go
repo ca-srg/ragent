@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/ca-srg/ragent/internal/pkg/mcpclient"
 )
 
 // MCP SDK Type Aliases - Using SDK types instead of custom implementations
@@ -100,6 +102,7 @@ type HybridSearchResponse struct {
 	Metadata            *HybridSearchMetadata     `json:"metadata,omitempty"`
 	SlackResults        []HybridSearchSlackResult `json:"slack_results,omitempty"`
 	ReferencedSlackURLs []HybridSearchSlackResult `json:"referenced_slack_urls,omitempty"`
+	MCPResults          []mcpclient.ToolResult    `json:"mcp_results,omitempty"`
 	SearchSources       []string                  `json:"search_sources,omitempty"`
 }
 
@@ -199,10 +202,11 @@ type SlackSearchRequest struct {
 
 // SlackSearchResponse represents the slack search tool response
 type SlackSearchResponse struct {
-	Query    string                  `json:"query"`
-	Total    int                     `json:"total"`
-	Results  []SlackSearchResultItem `json:"results"`
-	Metadata *SlackSearchMetadata    `json:"metadata,omitempty"`
+	Query      string                  `json:"query"`
+	Total      int                     `json:"total"`
+	Results    []SlackSearchResultItem `json:"results"`
+	MCPResults []mcpclient.ToolResult  `json:"mcp_results,omitempty"`
+	Metadata   *SlackSearchMetadata    `json:"metadata,omitempty"`
 }
 
 // SlackSearchResultItem represents a single Slack message in search results

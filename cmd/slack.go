@@ -24,11 +24,14 @@ var slackCmd = &cobra.Command{
 			OnlySlack:      slackOnlyMode,
 			ExportEval:     slackExportEval,
 			ExportEvalPath: slackExportEvalPath,
+			MCPConfigPath:  mcpClientConfigPath,
 		})
 	},
 }
 
 func init() {
+	addMCPClientConfigFlag(slackCmd)
+
 	// add flags
 	slackCmd.Flags().IntVarP(&slackContextSize, "context-size", "c", 0, "Number of context documents to retrieve (overrides config)")
 	slackCmd.Flags().BoolVar(&slackOnlyMode, "only-slack", false, "Search only Slack conversations (skip OpenSearch)")

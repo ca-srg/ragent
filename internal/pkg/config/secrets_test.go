@@ -209,6 +209,32 @@ func TestLoadSecretsIntoEnv_NilSecretString_Noop(t *testing.T) {
 	assert.Equal(t, 1, mock.callCount, "SM should still be called once")
 }
 
+func TestLoadSecretString_ReturnsRawSecretString(t *testing.T) {
+	t.Cleanup(ResetSecretsLoaderForTest)
+
+	mock := newMockWithSecret(`{
+		// JSONC, not an env-var JSON map
+		"mcpServers": {"local": {"command": "ragent"}}
+	}`)
+	setupMockFactory(mock)
+
+	secret, err := LoadSecretString(context.Background(), "ragent/mcp-config", "ap-northeast-1")
+	require.NoError(t, err)
+	assert.Contains(t, secret, "// JSONC")
+	assert.Equal(t, 1, mock.callCount)
+}
+
+func TestLoadSecretString_NilSecretString_ReturnsError(t *testing.T) {
+	t.Cleanup(ResetSecretsLoaderForTest)
+
+	mock := &mockSMClient{secretString: nil}
+	setupMockFactory(mock)
+
+	_, err := LoadSecretString(context.Background(), "ragent/mcp-config", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "has no SecretString")
+}
+
 // TestLoadSecretsIntoEnv_NestedJSON_SkipsNonString verifies that non-string
 // values (objects, arrays, numbers, booleans, null) in the JSON are silently
 // skipped and only string values are injected as env vars.

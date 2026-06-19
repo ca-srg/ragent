@@ -14,6 +14,7 @@ import (
 	appcfg "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
+	"github.com/ca-srg/ragent/internal/pkg/mcpclient"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/observability"
 )
@@ -29,6 +30,7 @@ type SlackBotOptions struct {
 	OnlySlack         bool
 	ExportEval        bool
 	ExportEvalPath    string
+	MCPConfigPath     string
 	BuildConvSearcher func(cfg *appcfg.Config, client *slack.Client, logger *log.Logger) SlackConversationSearcher
 }
 
@@ -93,6 +95,16 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 		scfg.MaxResults = opts.ContextSize
 	}
 
+	mcpManager, err := mcpclient.ConnectFromFile(ctx, opts.MCPConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect MCP clients: %w", err)
+	}
+	defer func() {
+		if err := mcpManager.Close(); err != nil {
+			logger.Printf("MCP client close warning: %v", err)
+		}
+	}()
+
 	awsCfg, err := bedrock.BuildBedrockAWSConfig(ctx, cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
 		return fmt.Errorf("failed to load Bedrock AWS config for Slack search: %w", err)
@@ -123,12 +135,15 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 	if opts.OnlySlack {
 		// Use Slack-only adapter
 		chatClient := bedrock.GetSharedBedrockClient(awsCfg, cfg.ChatModel)
-		adapter = NewSlackOnlySearchAdapter(cfg, scfg.MaxResults, convSearcher, chatClient, &awsCfg)
+		slackOnlyAdapter := NewSlackOnlySearchAdapter(cfg, scfg.MaxResults, convSearcher, chatClient, &awsCfg)
+		slackOnlyAdapter.SetMCPClient(mcpManager)
+		adapter = slackOnlyAdapter
 		logger.Printf("Using Slack-only search adapter")
 	} else {
 		// Use hybrid search adapter
 		hybridAdapter := NewHybridSearchAdapter(cfg, scfg.MaxResults, convSearcher, &awsCfg)
 		hybridAdapter.SetSlackClient(client) // Enable Slack URL message fetching
+		hybridAdapter.SetMCPClient(mcpManager)
 		adapter = hybridAdapter
 	}
 

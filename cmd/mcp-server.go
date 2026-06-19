@@ -86,6 +86,7 @@ Examples:
 			OnlySlack:         mcpOnlySlack,
 			ExportEval:        mcpExportEval,
 			ExportEvalPath:    mcpExportEvalPath,
+			MCPConfigPath:     mcpClientConfigPath,
 		}
 
 		dashboardDir := mcpDashboardDirectory
@@ -115,6 +116,8 @@ Examples:
 }
 
 func init() {
+	addMCPClientConfigFlag(mcpServerCmd)
+
 	// Server configuration flags
 	mcpServerCmd.Flags().StringVar(&mcpServerHost, "host", "localhost", "Server host address")
 	mcpServerCmd.Flags().IntVar(&mcpServerPort, "port", 8080, "Server port")

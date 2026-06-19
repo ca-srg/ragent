@@ -219,11 +219,13 @@ func convertToSDKTool(name string, definition MCPToolDefinition) *mcp.Tool {
 		}
 	}
 
-	return &mcp.Tool{
+	tool := &mcp.Tool{
 		Name:        name,
 		Description: definition.Description,
 		InputSchema: inputSchema,
 	}
+	markToolReadOnly(tool, name)
+	return tool
 }
 
 // convertToSDKResult converts RAGent tool result to SDK result

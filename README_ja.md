@@ -979,6 +979,21 @@ RAGent slack-bot  # ローカルのSLACK_BOT_TOKENを使用、他のシークレ
 
 > **注意**: JSON内の文字列値のみが注入されます。非文字列値（オブジェクト、配列、数値、真偽値、null）は無視されます。
 
+### Secrets Manager からの MCP クライアント設定読み込み
+
+`--mcp-config` にはローカルの JSONC ファイルパスに加えて `secretsmanager://SECRET_ID` を指定できます。Secrets Manager では `SECRET_MANAGER_SECRET_ID` 用の環境変数 JSON マップではなく、`mcp-config.jsonc` の中身をそのままシークレット文字列として保存してください。
+
+```bash
+aws secretsmanager create-secret \
+  --name ragent/mcp-config \
+  --secret-string file://mcp-config.jsonc \
+  --region us-east-1
+
+RAGent query "質問" --mcp-config secretsmanager://ragent/mcp-config
+```
+
+AWS リージョンは `SECRET_MANAGER_REGION` が設定されていればそれを使い、未設定時は `us-east-1` を使います。MCP 設定用シークレットには `secretsmanager:GetSecretValue` 権限が必要です。
+
 ## OpenTelemetryによる可観測性
 
 RAGentはOpenTelemetry (OTel) Go SDK を利用してトレースとメトリクスを公開します。Slack Botのメッセージ処理、MCPツール呼び出し、ハイブリッド検索処理にスパンが付与され、リクエスト数・エラー数・レスポンス時間のメトリクスが収集されます。

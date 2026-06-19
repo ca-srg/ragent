@@ -1,0 +1,21 @@
+{
+  // Standard MCP client config. Copy to mcp-config.jsonc and pass --mcp-config ./mcp-config.jsonc.
+  "mcpServers": {
+    "local-ragent": {
+      "url": "http://localhost:8080/mcp",
+      "transport": "streamable-http",
+      "tools": ["hybrid_search"]
+    },
+
+    // Stdio example (use an already installed or version-pinned command):
+    // "filesystem": {
+    //   "command": "/path/to/mcp-server-filesystem",
+    //   "args": ["/path/to/docs"],
+    //   "tools": ["search"],
+    //   "queryParam": "query"
+    // }
+  },
+  "timeoutSeconds": 15,
+  "maxTools": 8,
+  "maxResponseChars": 6000
+}

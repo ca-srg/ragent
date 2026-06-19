@@ -44,11 +44,14 @@ Examples:
 			OnlySlack:      chatOnlySlack,
 			ExportEval:     chatExportEval,
 			ExportEvalPath: chatExportEvalPath,
+			MCPConfigPath:  mcpClientConfigPath,
 		})
 	},
 }
 
 func init() {
+	addMCPClientConfigFlag(chatCmd)
+
 	chatCmd.Flags().IntVarP(&contextSize, "context-size", "c", 5, "Number of context documents to retrieve")
 	chatCmd.Flags().BoolVarP(&interactive, "interactive", "i", true, "Run in interactive mode")
 	chatCmd.Flags().StringVarP(&systemPrompt, "system", "s", "", "System prompt for the chat")

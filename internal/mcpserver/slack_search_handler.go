@@ -211,6 +211,7 @@ func BuildSlackSearchToolDefinition(base *mcp.Tool, toolName string, defaults *S
 		toolCopy = *base
 	}
 	toolCopy.Name = toolName
+	markToolReadOnly(&toolCopy, toolName)
 
 	toolCopy.Description = fmt.Sprintf(
 		"Slack ワークスペースの会話を検索します。クエリに関連するメッセージとスレッドを最大 %d 件返します。チームの議論、アナウンス、共同作業の会話から情報を見つけるために使用してください。\n\nEnglish: Search Slack workspace conversations. Returns up to %d messages and threads relevant to the query. Use this tool to find information from team discussions, announcements, and collaborative conversations.",

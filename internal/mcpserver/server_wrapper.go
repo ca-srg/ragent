@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ca-srg/ragent/internal/pkg/mcpclient"
+
 	appconfig "github.com/ca-srg/ragent/internal/pkg/config"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -354,6 +356,7 @@ func (sw *ServerWrapper) Start() error {
 	}
 
 	// Always-on access logging
+	handler = mcpclient.InboundDepthMiddleware(handler)
 	handler = sw.loggingMiddleware(handler)
 
 	// Create HTTP server
