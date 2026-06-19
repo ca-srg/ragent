@@ -56,7 +56,7 @@ func LoadSecretString(ctx context.Context, secretID, region string) (string, err
 		return "", err
 	}
 	if output.SecretString == nil {
-		return "", fmt.Errorf("Secrets Manager secret %q has no SecretString", secretID)
+		return "", fmt.Errorf("secrets manager secret %q has no SecretString", secretID)
 	}
 	return *output.SecretString, nil
 }
@@ -112,7 +112,7 @@ func loadSecretsOnce(ctx context.Context) error {
 func getSecretValue(ctx context.Context, secretID, region string) (*secretsmanager.GetSecretValueOutput, error) {
 	secretID = strings.TrimSpace(secretID)
 	if secretID == "" {
-		return nil, fmt.Errorf("Secrets Manager secret ID is required")
+		return nil, fmt.Errorf("secrets manager secret ID is required")
 	}
 
 	factory := smClientFactory
