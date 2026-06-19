@@ -1012,6 +1012,21 @@ RAGent slack-bot  # Uses the local SLACK_BOT_TOKEN, other secrets from SM
 
 > **Note**: Only string values in the JSON are injected. Non-string values (objects, arrays, numbers, booleans, null) are silently skipped.
 
+### MCP Client Config from Secrets Manager
+
+`--mcp-config` accepts either a local JSONC file path or `secretsmanager://SECRET_ID`. For Secrets Manager, store the raw contents of `mcp-config.jsonc` as the secret string, not as the environment-variable JSON map used by `SECRET_MANAGER_SECRET_ID`.
+
+```bash
+aws secretsmanager create-secret \
+  --name ragent/mcp-config \
+  --secret-string file://mcp-config.jsonc \
+  --region us-east-1
+
+RAGent query "your question" --mcp-config secretsmanager://ragent/mcp-config
+```
+
+This uses `SECRET_MANAGER_REGION` for the AWS region when set, otherwise `us-east-1`, and requires `secretsmanager:GetSecretValue` on the MCP config secret.
+
 ## OpenTelemetry Observability
 
 RAGent exposes distributed traces and usage metrics through the OpenTelemetry (OTel) Go SDK. Traces are emitted for Slack Bot message handling, MCP tool calls, and the shared hybrid search service, while counters and histograms capture request rates, error rates, and response times.

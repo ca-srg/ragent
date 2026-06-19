@@ -69,11 +69,14 @@ Examples:
 			SlackChannels:  slackChannels,
 			ExportEval:     exportEval,
 			ExportEvalPath: exportEvalPath,
+			MCPConfigPath:  mcpClientConfigPath,
 		})
 	},
 }
 
 func init() {
+	addMCPClientConfigFlag(queryCmd)
+
 	queryCmd.Flags().StringVarP(&queryText, "query", "q", "", "Text query to search for (required)")
 	queryCmd.Flags().IntVarP(&topK, "top-k", "k", 10, "Number of similar results to return")
 	queryCmd.Flags().BoolVarP(&outputJSON, "json", "j", false, "Output results in JSON format")

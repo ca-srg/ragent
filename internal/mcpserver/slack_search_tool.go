@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
+	"github.com/ca-srg/ragent/internal/pkg/mcpclient"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/google/jsonschema-go/jsonschema"
 )
@@ -17,10 +18,12 @@ import (
 // SlackSearchToolAdapter adapts Slack search functionality to MCP tool interface
 // This adapter is used in --only-slack mode where OpenSearch is not available
 type SlackSearchToolAdapter struct {
-	slackService  *slacksearch.SlackSearchService
-	defaultConfig *SlackSearchConfig
-	logger        *log.Logger
-	evalWriter    *evalexport.Writer
+	slackService    *slacksearch.SlackSearchService
+	defaultConfig   *SlackSearchConfig
+	logger          *log.Logger
+	evalWriter      *evalexport.Writer
+	mcpClient       *mcpclient.Manager
+	mcpRetryPlanner mcpclient.RetryChatClient
 }
 
 // SlackSearchConfig contains configuration for slack-only search
@@ -151,10 +154,25 @@ func (sta *SlackSearchToolAdapter) HandleToolCallWithProgress(ctx context.Contex
 		return CreateToolCallErrorResult(fmt.Sprintf("Slack search failed: %v", err)), err
 	}
 
+	var mcpResult *mcpclient.QueryResult
+	if sta.mcpClient != nil {
+		sendProgress(0.9, 1.0, "Querying MCP tools...")
+		mcpResult, err = mcpclient.QueryWithRetry(ctx, sta.mcpClient, sta.mcpRetryPlanner, request.Query, sta.logger.Printf)
+		if err != nil {
+			sta.logger.Printf("MCP query unavailable: %v", err)
+			mcpResult = nil
+		} else if mcpResult != nil {
+			for _, warning := range mcpResult.Errors {
+				sta.logger.Printf("MCP tool warning: %s", warning)
+			}
+		}
+	}
+
 	sendProgress(0.95, 1.0, "Preparing response...")
 
 	// Convert to MCP response
 	response := sta.convertToMCPResponse(request, result, time.Since(startTime))
+	attachMCPResultsToSlackResponse(response, mcpResult)
 
 	if sta.evalWriter != nil {
 		record := evalexport.NewEvalRecord("mcp-server", request.Query)
@@ -280,6 +298,14 @@ func (sta *SlackSearchToolAdapter) convertToMCPResponse(request *SlackSearchRequ
 // SetEvalWriter sets the evaluation data writer for this adapter.
 func (sta *SlackSearchToolAdapter) SetEvalWriter(w *evalexport.Writer) {
 	sta.evalWriter = w
+}
+
+func (sta *SlackSearchToolAdapter) SetMCPClient(client *mcpclient.Manager) {
+	sta.mcpClient = client
+}
+
+func (sta *SlackSearchToolAdapter) SetMCPRetryPlanner(planner mcpclient.RetryChatClient) {
+	sta.mcpRetryPlanner = planner
 }
 
 // SetDefaultConfig updates the default configuration

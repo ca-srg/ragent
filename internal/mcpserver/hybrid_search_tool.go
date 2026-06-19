@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
+	"github.com/ca-srg/ragent/internal/pkg/mcpclient"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -39,6 +40,8 @@ type HybridSearchToolAdapter struct {
 	logger          *log.Logger
 	slackService    *slacksearch.SlackSearchService
 	evalWriter      *evalexport.Writer
+	mcpClient       *mcpclient.Manager
+	mcpRetryPlanner mcpclient.RetryChatClient
 }
 
 // HybridSearchConfig contains configuration for hybrid search
@@ -299,10 +302,25 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 		}
 	}
 
+	var mcpResult *mcpclient.QueryResult
+	if hsta.mcpClient != nil {
+		sendProgress(0.9, 1.0, "Querying MCP tools...")
+		mcpResult, err = mcpclient.QueryWithRetry(ctx, hsta.mcpClient, hsta.mcpRetryPlanner, searchRequest.Query, hsta.logger.Printf)
+		if err != nil {
+			hsta.logger.Printf("MCP query unavailable: %v", err)
+			mcpResult = nil
+		} else if mcpResult != nil {
+			for _, warning := range mcpResult.Errors {
+				hsta.logger.Printf("MCP tool warning: %s", warning)
+			}
+		}
+	}
+
 	sendProgress(0.95, 1.0, "Preparing response...")
 
 	// Convert to MCP format
 	mcpResponse := hsta.convertToMCPResponse(searchRequest, result, slackResult, slackURLMessages)
+	attachMCPResultsToHybridResponse(mcpResponse, mcpResult)
 
 	if hsta.evalWriter != nil {
 		record := evalexport.NewEvalRecord("mcp-server", searchRequest.Query)
@@ -760,6 +778,14 @@ func (hsta *HybridSearchToolAdapter) SetDefaultConfig(config *HybridSearchConfig
 
 func (hsta *HybridSearchToolAdapter) SetEvalWriter(w *evalexport.Writer) {
 	hsta.evalWriter = w
+}
+
+func (hsta *HybridSearchToolAdapter) SetMCPClient(client *mcpclient.Manager) {
+	hsta.mcpClient = client
+}
+
+func (hsta *HybridSearchToolAdapter) SetMCPRetryPlanner(planner mcpclient.RetryChatClient) {
+	hsta.mcpRetryPlanner = planner
 }
 
 // GetDefaultConfig returns the current default configuration

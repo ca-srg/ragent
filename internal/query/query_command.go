@@ -17,6 +17,7 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/embedding"
 	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
+	"github.com/ca-srg/ragent/internal/pkg/mcpclient"
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 	"github.com/ca-srg/ragent/internal/pkg/opensearch"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
@@ -96,18 +97,18 @@ type QueryOptions struct {
 	SlackChannels  []string
 	ExportEval     bool
 	ExportEvalPath string
+	MCPConfigPath  string
+	MCPResults     *mcpclient.QueryResult
 }
 
 // RunQuery is the exported entry point called from cmd/query.go.
 func RunQuery(cmd *cobra.Command, opts QueryOptions) error {
 	metrics.RecordInvocation(metrics.ModeQuery)
-
+	mode := opts.SearchMode
 	if opts.OnlySlack {
-		log.Printf("Starting slack-only search for: %s", opts.QueryText)
-		return runSlackOnlySearch(opts)
+		mode = "slack_only"
 	}
-
-	log.Printf("Starting %s search for: %s", opts.SearchMode, opts.QueryText)
+	log.Printf("Starting %s search for: %s", mode, opts.QueryText)
 
 	cfg, err := LoadAppConfig()
 	if err != nil {
@@ -120,6 +121,21 @@ func RunQuery(cmd *cobra.Command, opts QueryOptions) error {
 	bedrockConfig, err := LoadBedrockAWSConfig(ctx, cfg.BedrockRegion, cfg.BedrockBearerToken)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS configuration: %w", err)
+	}
+
+	mcpManager, err := mcpclient.ConnectFromFile(ctx, opts.MCPConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect MCP clients: %w", err)
+	}
+	defer closeMCPManager(mcpManager)
+	var mcpRetryPlanner mcpclient.RetryChatClient
+	if mcpManager != nil {
+		mcpRetryPlanner = bedrock.NewBedrockClient(bedrockConfig, cfg.ChatModel)
+	}
+
+	if opts.OnlySlack {
+		log.Printf("Starting slack-only search for: %s", opts.QueryText)
+		return runSlackOnlySearch(ctx, cfg, bedrockConfig, opts, mcpManager, mcpRetryPlanner)
 	}
 
 	embeddingClient, err := embedding.NewEmbeddingClient(cfg)
@@ -129,29 +145,23 @@ func RunQuery(cmd *cobra.Command, opts QueryOptions) error {
 
 	switch opts.SearchMode {
 	case "hybrid":
-		return runHybridSearch(ctx, cfg, bedrockConfig, embeddingClient, opts)
+		return runHybridSearch(ctx, cfg, bedrockConfig, embeddingClient, opts, mcpManager, mcpRetryPlanner)
 	case "opensearch":
-		return runOpenSearchOnly(ctx, cfg, embeddingClient, opts)
+		return runOpenSearchOnly(ctx, cfg, embeddingClient, opts, mcpManager, mcpRetryPlanner)
 	default:
 		return fmt.Errorf("invalid search mode: %s. Valid modes: hybrid, opensearch", opts.SearchMode)
 	}
 }
 
-func runSlackOnlySearch(opts QueryOptions) error {
-	cfg, err := LoadAppConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(opts.Timeout)*time.Second)
-	defer cancel()
-
-	bedrockConfig, err := LoadBedrockAWSConfig(ctx, cfg.BedrockRegion, cfg.BedrockBearerToken)
-	if err != nil {
-		return fmt.Errorf("failed to load AWS configuration: %w", err)
-	}
-
-	result, err := PerformSlackOnlySearch(ctx, cfg, bedrockConfig, opts.QueryText, opts.SlackChannels, nil)
+func runSlackOnlySearch(
+	ctx context.Context,
+	cfg *appconfig.Config,
+	awsCfg aws.Config,
+	opts QueryOptions,
+	mcpManager *mcpclient.Manager,
+	mcpRetryPlanner mcpclient.RetryChatClient,
+) error {
+	result, err := PerformSlackOnlySearch(ctx, cfg, awsCfg, opts.QueryText, opts.SlackChannels, nil)
 	if err != nil {
 		return fmt.Errorf("slack search failed: %w", err)
 	}
@@ -172,10 +182,19 @@ func runSlackOnlySearch(opts QueryOptions) error {
 		}
 	}
 
-	return outputSlackOnlyResults(result, opts.QueryText, opts.OutputJSON)
+	opts.MCPResults = collectMCPResults(ctx, mcpManager, mcpRetryPlanner, opts.QueryText)
+	return outputSlackOnlyResults(result, opts)
 }
 
-func runHybridSearch(ctx context.Context, cfg *appconfig.Config, awsCfg aws.Config, embeddingClient opensearch.EmbeddingClient, opts QueryOptions) error {
+func runHybridSearch(
+	ctx context.Context,
+	cfg *appconfig.Config,
+	awsCfg aws.Config,
+	embeddingClient opensearch.EmbeddingClient,
+	opts QueryOptions,
+	mcpManager *mcpclient.Manager,
+	mcpRetryPlanner mcpclient.RetryChatClient,
+) error {
 	var slackURLMessages []slacksearch.EnrichedMessage
 	urlMessages, err := FetchSlackURLContext(ctx, cfg, opts.QueryText)
 	if err != nil {
@@ -208,10 +227,18 @@ func runHybridSearch(ctx context.Context, cfg *appconfig.Config, awsCfg aws.Conf
 		}
 	}
 
+	opts.MCPResults = collectMCPResults(ctx, mcpManager, mcpRetryPlanner, opts.QueryText)
 	return outputCombinedResultsWithURLContext(docResult, slackResult, slackURLMessages, "hybrid", opts)
 }
 
-func runOpenSearchOnly(ctx context.Context, cfg *appconfig.Config, embeddingClient opensearch.EmbeddingClient, opts QueryOptions) error {
+func runOpenSearchOnly(
+	ctx context.Context,
+	cfg *appconfig.Config,
+	embeddingClient opensearch.EmbeddingClient,
+	opts QueryOptions,
+	mcpManager *mcpclient.Manager,
+	mcpRetryPlanner mcpclient.RetryChatClient,
+) error {
 	osResult, err := attemptOpenSearchHybrid(ctx, cfg, embeddingClient, opts)
 	if err != nil {
 		return fmt.Errorf("OpenSearch search failed: %w", err)
@@ -226,6 +253,7 @@ func runOpenSearchOnly(ctx context.Context, cfg *appconfig.Config, embeddingClie
 		}
 	}
 
+	opts.MCPResults = collectMCPResults(ctx, mcpManager, mcpRetryPlanner, opts.QueryText)
 	return OutputHybridResults(osResult, "opensearch", opts)
 }
 
@@ -353,12 +381,14 @@ func outputCombinedResultsWithURLContext(result *opensearch.HybridSearchResult, 
 			Mode                string                         `json:"mode"`
 			SlackResults        *slacksearch.SlackSearchResult `json:"slack_results,omitempty"`
 			ReferencedSlackURLs []slacksearch.EnrichedMessage  `json:"referenced_slack_urls,omitempty"`
+			MCPResults          *mcpclient.QueryResult         `json:"mcp_results,omitempty"`
 		}{
 			HybridSearchResult:  result,
 			Query:               opts.QueryText,
 			Mode:                searchType,
 			SlackResults:        slackResult,
 			ReferencedSlackURLs: urlMessages,
+			MCPResults:          opts.MCPResults,
 		}
 		jsonOutput, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
@@ -376,8 +406,49 @@ func outputCombinedResultsWithURLContext(result *opensearch.HybridSearchResult, 
 	if slackResult != nil {
 		slacksearch.PrintSlackResults(slackResult)
 	}
+	printMCPResults(opts.MCPResults)
 
 	return nil
+}
+
+func collectMCPResults(ctx context.Context, manager *mcpclient.Manager, retryPlanner mcpclient.RetryChatClient, query string) *mcpclient.QueryResult {
+	if manager == nil {
+		return nil
+	}
+	result, err := mcpclient.QueryWithRetry(ctx, manager, retryPlanner, query, log.Printf)
+	if err != nil {
+		log.Printf("MCP query unavailable: %v", err)
+		return nil
+	}
+	if result == nil || (len(result.Results) == 0 && len(result.Errors) == 0) {
+		return nil
+	}
+	for _, warning := range result.Errors {
+		log.Printf("MCP tool warning: %s", warning)
+	}
+	return result
+}
+
+func closeMCPManager(manager *mcpclient.Manager) {
+	if err := manager.Close(); err != nil {
+		log.Printf("MCP client close warning: %v", err)
+	}
+}
+
+func printMCPResults(result *mcpclient.QueryResult) {
+	if result == nil {
+		return
+	}
+	if len(result.Results) > 0 {
+		fmt.Println("\n=== MCP Results ===")
+		for _, item := range result.Results {
+			fmt.Printf("\n  [%s/%s]\n", item.Server, item.Tool)
+			fmt.Printf("     %s\n", strings.ReplaceAll(strings.TrimSpace(item.Text), "\n", "\n     "))
+		}
+	}
+	if len(result.Errors) > 0 {
+		fmt.Printf("\nMCP warnings: %s\n", strings.Join(result.Errors, "; "))
+	}
 }
 
 // PrintHybridResults prints hybrid search results to stdout.
@@ -442,16 +513,18 @@ func PrintHybridResults(result *opensearch.HybridSearchResult, searchType string
 	fmt.Printf("  Fusion Time: %v\n", result.FusionTime)
 }
 
-func outputSlackOnlyResults(result *slacksearch.SlackSearchResult, query string, outputJSON bool) error {
-	if outputJSON {
+func outputSlackOnlyResults(result *slacksearch.SlackSearchResult, opts QueryOptions) error {
+	if opts.OutputJSON {
 		payload := struct {
-			Query  string                         `json:"query"`
-			Mode   string                         `json:"mode"`
-			Result *slacksearch.SlackSearchResult `json:"result"`
+			Query      string                         `json:"query"`
+			Mode       string                         `json:"mode"`
+			Result     *slacksearch.SlackSearchResult `json:"result"`
+			MCPResults *mcpclient.QueryResult         `json:"mcp_results,omitempty"`
 		}{
-			Query:  query,
-			Mode:   "slack_only",
-			Result: result,
+			Query:      opts.QueryText,
+			Mode:       "slack_only",
+			Result:     result,
+			MCPResults: opts.MCPResults,
 		}
 		jsonOutput, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
@@ -461,11 +534,12 @@ func outputSlackOnlyResults(result *slacksearch.SlackSearchResult, query string,
 		return nil
 	}
 
-	fmt.Printf("\nQuery: %s\n", query)
+	fmt.Printf("\nQuery: %s\n", opts.QueryText)
 	fmt.Println("Search Type: slack_only")
 
 	if result == nil {
 		fmt.Println("  (no results)")
+		printMCPResults(opts.MCPResults)
 		return nil
 	}
 
@@ -481,6 +555,7 @@ func outputSlackOnlyResults(result *slacksearch.SlackSearchResult, query string,
 
 	if len(result.EnrichedMessages) == 0 {
 		fmt.Println("\n  (no Slack messages found)")
+		printMCPResults(opts.MCPResults)
 		return nil
 	}
 
@@ -507,6 +582,7 @@ func outputSlackOnlyResults(result *slacksearch.SlackSearchResult, query string,
 			}
 		}
 	}
+	printMCPResults(opts.MCPResults)
 
 	return nil
 }

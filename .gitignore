@@ -20,4 +20,5 @@ terraform/test/terraform.tfstate.backup
 terraform/test/terraform.tfvars
 terraform/aws/modules/ragent/.terraform
 csv-config.yaml
+mcp-config.jsonc
 *.db

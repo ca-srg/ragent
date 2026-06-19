@@ -224,11 +224,13 @@ func convertRAGentToolToSDK(ragentDef MCPToolDefinition) *mcp.Tool {
 		}
 	}
 
-	return &mcp.Tool{
+	tool := &mcp.Tool{
 		Name:        ragentDef.Name,
 		Description: ragentDef.Description,
 		InputSchema: inputSchema,
 	}
+	markToolReadOnly(tool, ragentDef.Name)
+	return tool
 }
 
 func getAuthMethodFromContext(ctx context.Context) string {

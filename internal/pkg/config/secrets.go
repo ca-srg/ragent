@@ -48,6 +48,19 @@ func LoadSecretsIntoEnv(ctx context.Context) error {
 	return secretsErr
 }
 
+// LoadSecretString fetches one raw SecretString from AWS Secrets Manager.
+// Unlike LoadSecretsIntoEnv, it does not parse the value as an env-var JSON map.
+func LoadSecretString(ctx context.Context, secretID, region string) (string, error) {
+	output, err := getSecretValue(ctx, secretID, region)
+	if err != nil {
+		return "", err
+	}
+	if output.SecretString == nil {
+		return "", fmt.Errorf("secrets manager secret %q has no secret string", secretID)
+	}
+	return *output.SecretString, nil
+}
+
 // loadSecretsOnce performs the actual one-time fetch from Secrets Manager.
 func loadSecretsOnce(ctx context.Context) error {
 	secretID := os.Getenv(envSecretManagerSecretID)
@@ -56,26 +69,9 @@ func loadSecretsOnce(ctx context.Context) error {
 		return nil
 	}
 
-	region := os.Getenv(envSecretManagerRegion)
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	factory := smClientFactory
-	if factory == nil {
-		factory = newDefaultSMClient
-	}
-
-	client, err := factory(ctx, region)
+	output, err := getSecretValue(ctx, secretID, "")
 	if err != nil {
-		return fmt.Errorf("failed to create Secrets Manager client: %w", err)
-	}
-
-	output, err := client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(secretID),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get secret value from Secrets Manager: %w", err)
+		return err
 	}
 
 	if output.SecretString == nil {
@@ -111,6 +107,43 @@ func loadSecretsOnce(ctx context.Context) error {
 	log.Printf("Secrets Manager: injected %d key(s), skipped %d key(s) (already set in env)", injected, skipped)
 
 	return nil
+}
+
+func getSecretValue(ctx context.Context, secretID, region string) (*secretsmanager.GetSecretValueOutput, error) {
+	secretID = strings.TrimSpace(secretID)
+	if secretID == "" {
+		return nil, fmt.Errorf("secrets manager secret id is required")
+	}
+
+	factory := smClientFactory
+	if factory == nil {
+		factory = newDefaultSMClient
+	}
+
+	client, err := factory(ctx, secretManagerRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Secrets Manager client: %w", err)
+	}
+
+	output, err := client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(secretID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret value from Secrets Manager: %w", err)
+	}
+	return output, nil
+}
+
+func secretManagerRegion(region string) string {
+	region = strings.TrimSpace(region)
+	if region != "" {
+		return region
+	}
+	region = strings.TrimSpace(os.Getenv(envSecretManagerRegion))
+	if region == "" {
+		return "us-east-1"
+	}
+	return region
 }
 
 var sensitiveKeySubstrings = []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "BEARER"}

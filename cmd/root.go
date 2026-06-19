@@ -8,6 +8,12 @@ import (
 	"github.com/ca-srg/ragent/internal/pkg/metrics"
 )
 
+var mcpClientConfigPath string
+
+func addMCPClientConfigFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&mcpClientConfigPath, "mcp-config", "", "Path to MCP client config JSONC or secretsmanager://SECRET_ID")
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "ragent",
 	Short: "RAGent - RAG system builder for Markdown documents",
