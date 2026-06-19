@@ -232,6 +232,9 @@ func (m *Manager) CallTool(ctx context.Context, call ToolCall) (ToolResult, erro
 	if err != nil {
 		return ToolResult{}, err
 	}
+	if s == nil || tool == nil {
+		return ToolResult{}, fmt.Errorf("MCP selected tool %q not found", strings.TrimSpace(call.Tool))
+	}
 	args := copyArgs(s.config.Arguments)
 	for k, v := range call.Arguments {
 		args[k] = v
