@@ -32,6 +32,10 @@ type maxToolCallLimiter interface {
 	maxToolCalls() int
 }
 
+type queryWithToolBudgeter interface {
+	queryWithToolBudget(ctx context.Context, query string, maxTools int) (*QueryResult, int, error)
+}
+
 type retryPlan struct {
 	Calls []retryCall `json:"calls"`
 }
@@ -71,7 +75,8 @@ func QueryWithRetry(ctx context.Context, client RetryClient, planner RetryChatCl
 	if strings.TrimSpace(query) == "" {
 		return client.Query(ctx, query)
 	}
-	planned, plannedCalls, planningErr := queryWithInitialPlanning(ctx, client, planner, query, logf)
+	planned, initialCalls, planningErr := queryWithInitialPlanning(ctx, client, planner, query, logf)
+	plannedCalls := initialCalls > 0
 	if plannedCalls && planned != nil && len(planned.Results) > 0 {
 		if planningErr != nil {
 			planned.Errors = append(planned.Errors, fmt.Sprintf("MCP planning failed: %v", planningErr))
@@ -84,11 +89,18 @@ func QueryWithRetry(ctx context.Context, client RetryClient, planner RetryChatCl
 	if planningErr != nil && logf != nil {
 		logf("MCP initial planning failed: %v", planningErr)
 	}
-	result, err := client.Query(ctx, query)
+	remainingCalls, limitedCalls := remainingToolCallBudget(client, initialCalls)
+	result, fallbackCalls, err := queryFallbackWithBudget(ctx, client, query, planned, remainingCalls, limitedCalls)
 	if err != nil || result == nil || len(result.Errors) == 0 {
 		return result, err
 	}
-	retryMCPWithLLM(ctx, client, planner, query, result, logf)
+	if limitedCalls {
+		remainingCalls -= fallbackCalls
+		if remainingCalls <= 0 {
+			return result, nil
+		}
+	}
+	retryMCPWithLLM(ctx, client, planner, query, result, logf, retryToolCallLimit(remainingCalls, limitedCalls))
 	return result, nil
 }
 
@@ -119,27 +131,26 @@ func queryWithInitialPlanning(
 	planner RetryChatClient,
 	query string,
 	logf func(string, ...any),
-) (*QueryResult, bool, error) {
+) (*QueryResult, int, error) {
 	result := &QueryResult{}
 	tools := client.AvailableTools()
 	if len(tools) == 0 {
-		return result, false, nil
+		return result, 0, nil
 	}
 
-	called := false
 	calledCount := 0
 	callLimit := initialPlanningCallLimit(client)
 	seen := make(map[string]struct{})
 	for round := 0; round < maxPlanningRounds; round++ {
 		if calledCount >= callLimit {
-			return result, called, nil
+			return result, calledCount, nil
 		}
 		plan, err := planInitialCalls(ctx, planner, query, result, tools)
 		if err != nil {
-			return result, called, err
+			return result, calledCount, err
 		}
 		if len(plan.Calls) == 0 {
-			return result, called, nil
+			return result, calledCount, nil
 		}
 
 		roundCalled := false
@@ -160,7 +171,6 @@ func queryWithInitialPlanning(
 				continue
 			}
 			seen[key] = struct{}{}
-			called = true
 			calledCount++
 			roundCalled = true
 
@@ -176,30 +186,110 @@ func queryWithInitialPlanning(
 				result.Results = append(result.Results, toolResult)
 			}
 			if calledCount >= callLimit {
-				return result, called, nil
+				return result, calledCount, nil
 			}
 		}
 		if !roundCalled {
-			return result, called, nil
+			return result, calledCount, nil
 		}
 	}
-	return result, called, nil
+	return result, calledCount, nil
 }
 
 func initialPlanningCallLimit(client RetryClient) int {
 	limit := maxInitialPlanningCalls
-	limiter, ok := client.(maxToolCallLimiter)
-	if !ok {
+	maxTools := maxToolCallLimit(client)
+	if maxTools == 0 {
 		return limit
 	}
-	maxTools := limiter.maxToolCalls()
-	if maxTools > 0 && maxTools < limit {
+	if maxTools < limit {
 		return maxTools
 	}
 	return limit
 }
 
-func retryMCPWithLLM(ctx context.Context, client RetryClient, planner RetryChatClient, query string, result *QueryResult, logf func(string, ...any)) {
+func maxToolCallLimit(client RetryClient) int {
+	limiter, ok := client.(maxToolCallLimiter)
+	if !ok {
+		return 0
+	}
+	maxTools := limiter.maxToolCalls()
+	if maxTools <= 0 {
+		return 0
+	}
+	return maxTools
+}
+
+func remainingToolCallBudget(client RetryClient, usedCalls int) (int, bool) {
+	maxTools := maxToolCallLimit(client)
+	if maxTools == 0 {
+		return 0, false
+	}
+	remaining := maxTools - usedCalls
+	if remaining < 0 {
+		remaining = 0
+	}
+	return remaining, true
+}
+
+func queryFallbackWithBudget(
+	ctx context.Context,
+	client RetryClient,
+	query string,
+	planned *QueryResult,
+	remainingCalls int,
+	limitedCalls bool,
+) (*QueryResult, int, error) {
+	if !limitedCalls {
+		result, err := client.Query(ctx, query)
+		return result, 0, err
+	}
+	if remainingCalls <= 0 {
+		if planned != nil {
+			return planned, 0, nil
+		}
+		return &QueryResult{}, 0, nil
+	}
+	if budgeted, ok := client.(queryWithToolBudgeter); ok {
+		result, calls, err := budgeted.queryWithToolBudget(ctx, query, remainingCalls)
+		return result, clampToolCalls(calls, remainingCalls), err
+	}
+	result, err := client.Query(ctx, query)
+	return result, remainingCalls, err
+}
+
+func clampToolCalls(calls int, limit int) int {
+	if calls < 0 {
+		return 0
+	}
+	if calls > limit {
+		return limit
+	}
+	return calls
+}
+
+func retryToolCallLimit(remainingCalls int, limitedCalls bool) int {
+	if !limitedCalls {
+		return maxRetryCalls
+	}
+	if remainingCalls < maxRetryCalls {
+		return remainingCalls
+	}
+	return maxRetryCalls
+}
+
+func retryMCPWithLLM(
+	ctx context.Context,
+	client RetryClient,
+	planner RetryChatClient,
+	query string,
+	result *QueryResult,
+	logf func(string, ...any),
+	callLimit int,
+) {
+	if callLimit <= 0 {
+		return
+	}
 	tools := client.AvailableTools()
 	if len(tools) == 0 {
 		return
@@ -214,8 +304,9 @@ func retryMCPWithLLM(ctx context.Context, client RetryClient, planner RetryChatC
 
 	var retryErrors []string
 	succeeded := false
-	for i, call := range plan.Calls {
-		if i >= maxRetryCalls {
+	called := 0
+	for _, call := range plan.Calls {
+		if called >= callLimit {
 			break
 		}
 		if strings.TrimSpace(call.Tool) == "" {
@@ -228,6 +319,7 @@ func retryMCPWithLLM(ctx context.Context, client RetryClient, planner RetryChatC
 		if logf != nil {
 			logf("MCP retrying tool: %s/%s", call.Server, call.Tool)
 		}
+		called++
 		toolResult, err := client.CallTool(ctx, ToolCall{Server: call.Server, Tool: call.Tool, Arguments: call.Arguments})
 		if err != nil {
 			retryErrors = append(retryErrors, fmt.Sprintf("MCP retry %s/%s failed: %v", call.Server, call.Tool, err))

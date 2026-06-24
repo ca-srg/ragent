@@ -195,6 +195,47 @@ func TestQueryWithRetryFallsBackWhenInitialPlanningProducesNoResults(t *testing.
 	require.Len(t, client.calls, 1)
 }
 
+func TestQueryWithRetryDoesNotFallbackWhenInitialPlanningExhaustsMaxTools(t *testing.T) {
+	client := &fakeNoResultInitialPlanClient{maxTools: 1}
+	planner := &scriptedRetryPlanner{responses: []string{
+		`{"calls":[{"server":"linear","tool":"list_teams","arguments":{"query":"ML"}}]}`,
+	}}
+
+	result, err := QueryWithRetry(context.Background(), client, planner, "ML チーム", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Empty(t, result.Results)
+	require.Len(t, client.calls, 1)
+	assert.Equal(t, 0, client.queryCalls, "fallback query-compatible tools should not run with no remaining maxTools budget")
+	assert.LessOrEqual(t, len(client.calls)+client.queryToolCalls, client.maxTools)
+}
+
+func TestQueryWithRetryCarriesInitialPlanningBudgetThroughFallbackRetry(t *testing.T) {
+	client := &fakeNoResultInitialPlanClient{
+		maxTools: 2,
+		queryResult: &QueryResult{
+			Errors: []string{"MCP linear/list_teams returned error: fallback failed"},
+		},
+	}
+	planner := &scriptedRetryPlanner{responses: []string{
+		`{"calls":[{"server":"linear","tool":"list_teams","arguments":{"query":"ML"}}]}`,
+		`{"calls":[]}`,
+		`{"calls":[{"server":"linear","tool":"list_teams","arguments":{"query":"retry"}}]}`,
+	}}
+
+	result, err := QueryWithRetry(context.Background(), client, planner, "ML チーム", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 1, client.queryCalls)
+	assert.Equal(t, 1, client.queryToolCalls, "fallback query should receive only the remaining maxTools budget")
+	require.Len(t, client.calls, 1, "retry should not execute after fallback query consumes the remaining budget")
+	require.Len(t, planner.requests, 2, "retry planning should not run without remaining budget")
+	assert.Equal(t, []string{"MCP linear/list_teams returned error: fallback failed"}, result.Errors)
+	assert.LessOrEqual(t, len(client.calls)+client.queryToolCalls, client.maxTools)
+}
+
 func TestQueryWithRetryDoesNotExecuteNonReadOnlyPlannedTool(t *testing.T) {
 	client := &fakeMutatingPlanClient{}
 	planner := &scriptedRetryPlanner{responses: []string{
@@ -329,13 +370,23 @@ func (c *fakeInitialPlanClient) maxToolCalls() int {
 }
 
 type fakeNoResultInitialPlanClient struct {
-	queryCalls int
-	calls      []ToolCall
+	queryCalls     int
+	queryToolCalls int
+	calls          []ToolCall
+	maxTools       int
+	queryResult    *QueryResult
 }
 
 func (c *fakeNoResultInitialPlanClient) Query(context.Context, string) (*QueryResult, error) {
 	c.queryCalls++
-	return &QueryResult{Results: []ToolResult{{Server: "linear", Tool: "fallback", Text: "fallback query context"}}}, nil
+	c.queryToolCalls += c.maxTools
+	return c.fallbackQueryResult(), nil
+}
+
+func (c *fakeNoResultInitialPlanClient) queryWithToolBudget(_ context.Context, _ string, maxTools int) (*QueryResult, int, error) {
+	c.queryCalls++
+	c.queryToolCalls += maxTools
+	return c.fallbackQueryResult(), maxTools, nil
 }
 
 func (c *fakeNoResultInitialPlanClient) AvailableTools() []ToolInfo {
@@ -351,6 +402,17 @@ func (c *fakeNoResultInitialPlanClient) AvailableTools() []ToolInfo {
 func (c *fakeNoResultInitialPlanClient) CallTool(_ context.Context, call ToolCall) (ToolResult, error) {
 	c.calls = append(c.calls, call)
 	return ToolResult{Server: call.Server, Tool: call.Tool}, nil
+}
+
+func (c *fakeNoResultInitialPlanClient) maxToolCalls() int {
+	return c.maxTools
+}
+
+func (c *fakeNoResultInitialPlanClient) fallbackQueryResult() *QueryResult {
+	if c.queryResult != nil {
+		return c.queryResult
+	}
+	return &QueryResult{Results: []ToolResult{{Server: "linear", Tool: "fallback", Text: "fallback query context"}}}
 }
 
 type fakeMutatingPlanClient struct {

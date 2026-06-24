@@ -253,12 +253,17 @@ func (m *Manager) maxToolCalls() int {
 
 // Query calls configured query-compatible MCP tools. Tool failures are returned as warnings.
 func (m *Manager) Query(ctx context.Context, query string) (*QueryResult, error) {
+	result, _, err := m.queryWithToolBudget(ctx, query, m.maxTools)
+	return result, err
+}
+
+func (m *Manager) queryWithToolBudget(ctx context.Context, query string, maxTools int) (*QueryResult, int, error) {
 	if m == nil || strings.TrimSpace(query) == "" {
-		return nil, nil
+		return nil, 0, nil
 	}
 	depth := RecursionDepth(ctx)
 	if depth >= maxRecursionDepth {
-		return nil, fmt.Errorf("MCP recursion depth exceeded")
+		return nil, 0, fmt.Errorf("MCP recursion depth exceeded")
 	}
 
 	result := &QueryResult{}
@@ -268,8 +273,8 @@ func (m *Manager) Query(ctx context.Context, query string) (*QueryResult, error)
 			if !queryCompatibleTool(tool, s.config) {
 				continue
 			}
-			if called >= m.maxTools {
-				return result, nil
+			if called >= maxTools {
+				return result, called, nil
 			}
 			called++
 			toolResult, err := m.callTool(ctx, s, tool, query)
@@ -282,7 +287,7 @@ func (m *Manager) Query(ctx context.Context, query string) (*QueryResult, error)
 			}
 		}
 	}
-	return result, nil
+	return result, called, nil
 }
 
 func (m *Manager) callTool(ctx context.Context, s *serverSession, tool *mcp.Tool, query string) (ToolResult, error) {
