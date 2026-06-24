@@ -46,8 +46,17 @@ type retryPlanningState struct {
 
 // QueryWithRetry plans safe MCP tool calls with the LLM, then falls back to the normal query pass and error retry.
 func QueryWithRetry(ctx context.Context, client RetryClient, planner RetryChatClient, query string, logf func(string, ...any)) (*QueryResult, error) {
+	if client == nil {
+		return nil, nil
+	}
+	if manager, ok := client.(*Manager); ok && manager == nil {
+		return nil, nil
+	}
 	if isNilInterface(client) {
 		return nil, nil
+	}
+	if planner == nil {
+		return nil, fmt.Errorf("MCP retry planner is required when MCP client is configured")
 	}
 	if err := RequireRetryPlanner(client, planner); err != nil {
 		return nil, err
@@ -59,7 +68,7 @@ func QueryWithRetry(ctx context.Context, client RetryClient, planner RetryChatCl
 		return client.Query(ctx, query)
 	}
 	planned, plannedCalls, planningErr := queryWithInitialPlanning(ctx, client, planner, query, logf)
-	if plannedCalls && len(planned.Results) > 0 {
+	if plannedCalls && planned != nil && len(planned.Results) > 0 {
 		if planningErr != nil {
 			planned.Errors = append(planned.Errors, fmt.Sprintf("MCP planning failed: %v", planningErr))
 		}
@@ -107,12 +116,12 @@ func queryWithInitialPlanning(
 	query string,
 	logf func(string, ...any),
 ) (*QueryResult, bool, error) {
+	result := &QueryResult{}
 	tools := client.AvailableTools()
 	if len(tools) == 0 {
-		return nil, false, nil
+		return result, false, nil
 	}
 
-	result := &QueryResult{}
 	called := false
 	calledCount := 0
 	seen := make(map[string]struct{})
