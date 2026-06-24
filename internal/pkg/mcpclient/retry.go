@@ -28,6 +28,10 @@ type RetryClient interface {
 	CallTool(ctx context.Context, call ToolCall) (ToolResult, error)
 }
 
+type maxToolCallLimiter interface {
+	maxToolCalls() int
+}
+
 type retryPlan struct {
 	Calls []retryCall `json:"calls"`
 }
@@ -124,9 +128,10 @@ func queryWithInitialPlanning(
 
 	called := false
 	calledCount := 0
+	callLimit := initialPlanningCallLimit(client)
 	seen := make(map[string]struct{})
 	for round := 0; round < maxPlanningRounds; round++ {
-		if calledCount >= maxInitialPlanningCalls {
+		if calledCount >= callLimit {
 			return result, called, nil
 		}
 		plan, err := planInitialCalls(ctx, planner, query, result, tools)
@@ -170,7 +175,7 @@ func queryWithInitialPlanning(
 			if strings.TrimSpace(toolResult.Text) != "" {
 				result.Results = append(result.Results, toolResult)
 			}
-			if calledCount >= maxInitialPlanningCalls {
+			if calledCount >= callLimit {
 				return result, called, nil
 			}
 		}
@@ -179,6 +184,19 @@ func queryWithInitialPlanning(
 		}
 	}
 	return result, called, nil
+}
+
+func initialPlanningCallLimit(client RetryClient) int {
+	limit := maxInitialPlanningCalls
+	limiter, ok := client.(maxToolCallLimiter)
+	if !ok {
+		return limit
+	}
+	maxTools := limiter.maxToolCalls()
+	if maxTools > 0 && maxTools < limit {
+		return maxTools
+	}
+	return limit
 }
 
 func retryMCPWithLLM(ctx context.Context, client RetryClient, planner RetryChatClient, query string, result *QueryResult, logf func(string, ...any)) {

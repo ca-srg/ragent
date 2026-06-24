@@ -229,6 +229,28 @@ func TestQueryWithRetryLimitsInitialPlanningCallsAcrossRounds(t *testing.T) {
 	assert.Equal(t, 3, len(planner.requests), "planning should stop once the total planned call budget is exhausted")
 }
 
+func TestQueryWithRetryRespectsMaxToolsForInitialPlanningCalls(t *testing.T) {
+	client := &fakeInitialPlanClient{maxTools: 2}
+	planner := &scriptedRetryPlanner{responses: []string{
+		`{"calls":[{"server":"linear","tool":"list_teams","arguments":{"query":"ML"}}]}`,
+		`{"calls":[{"server":"linear","tool":"list_projects","arguments":{"teamId":"team-1"}}]}`,
+		`{"calls":[{"server":"linear","tool":"list_teams","arguments":{"query":"CBA"}}]}`,
+	}}
+
+	result, err := QueryWithRetry(context.Background(), client, planner, "projects", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, client.calls, 2)
+	assert.Len(t, result.Results, 2)
+	assert.Equal(t, 2, len(planner.requests), "initial planning should stop once maxTools is exhausted")
+}
+
+func TestInitialPlanningCallLimitUsesManagerMaxTools(t *testing.T) {
+	assert.Equal(t, 2, initialPlanningCallLimit(&Manager{maxTools: 2}))
+	assert.Equal(t, maxInitialPlanningCalls, initialPlanningCallLimit(&Manager{maxTools: 8}))
+}
+
 type fakeRetryClient struct {
 	calls []ToolCall
 }
@@ -263,6 +285,7 @@ func (p *fakeRetryPlanner) GenerateChatResponse(context.Context, []bedrock.ChatM
 type fakeInitialPlanClient struct {
 	queryCalls int
 	calls      []ToolCall
+	maxTools   int
 }
 
 func (c *fakeInitialPlanClient) Query(context.Context, string) (*QueryResult, error) {
@@ -299,6 +322,10 @@ func (c *fakeInitialPlanClient) CallTool(_ context.Context, call ToolCall) (Tool
 	default:
 		return ToolResult{Server: call.Server, Tool: call.Tool, Text: `{}`}, nil
 	}
+}
+
+func (c *fakeInitialPlanClient) maxToolCalls() int {
+	return c.maxTools
 }
 
 type fakeNoResultInitialPlanClient struct {

@@ -244,6 +244,13 @@ func (m *Manager) CallTool(ctx context.Context, call ToolCall) (ToolResult, erro
 	return m.callToolWithArgs(ctx, s, tool, args)
 }
 
+func (m *Manager) maxToolCalls() int {
+	if m == nil {
+		return 0
+	}
+	return m.maxTools
+}
+
 // Query calls configured query-compatible MCP tools. Tool failures are returned as warnings.
 func (m *Manager) Query(ctx context.Context, query string) (*QueryResult, error) {
 	if m == nil || strings.TrimSpace(query) == "" {
