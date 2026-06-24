@@ -336,6 +336,9 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 
 	// Initialize Bedrock client for Slack search (needed for LLM in Slack search)
 	slackBedrockClient := bedrock.NewBedrockClient(awsConfig, cfg.ChatModel)
+	if err := mcpclient.RequireRetryPlanner(mcpManager, slackBedrockClient); err != nil {
+		return err
+	}
 
 	// Initialize Slack search service (required in --only-slack mode, optional otherwise)
 	var slackService *slacksearch.SlackSearchService

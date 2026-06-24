@@ -15,7 +15,7 @@ import (
 	"github.com/ca-srg/ragent/internal/query/search"
 )
 
-func TestGenerateChatResponseRetriesMCPWarningWithPlannedToolCall(t *testing.T) {
+func TestGenerateChatResponseUsesInitialMCPPlanWithPlannedToolCall(t *testing.T) {
 	origNewHybridSearchServiceFunc := NewHybridSearchServiceFunc
 	t.Cleanup(func() { NewHybridSearchServiceFunc = origNewHybridSearchServiceFunc })
 	NewHybridSearchServiceFunc = func(_ *appconfig.Config, _ embedding.EmbeddingClient) (HybridSearchInitializer, error) {
@@ -36,16 +36,16 @@ func TestGenerateChatResponseRetriesMCPWarningWithPlannedToolCall(t *testing.T) 
 	if result.Response != "final answer" {
 		t.Fatalf("expected final answer, got %q", result.Response)
 	}
-	if len(chatClient.calls) != 2 {
-		t.Fatalf("expected retry planning and final response calls, got %d", len(chatClient.calls))
+	if len(chatClient.calls) != 3 {
+		t.Fatalf("expected initial planning, stop planning, and final response calls, got %d", len(chatClient.calls))
 	}
 	if len(mcpClient.calls) != 1 {
 		t.Fatalf("expected one planned MCP retry call, got %d", len(mcpClient.calls))
 	}
 
 	planPrompt := chatClient.calls[0][1].Content
-	if !strings.Contains(planPrompt, "Available MCP tools") || !strings.Contains(planPrompt, "missing id") {
-		t.Fatalf("retry planning prompt missing tool list or warning: %s", planPrompt)
+	if !strings.Contains(planPrompt, "Available MCP tools") || !strings.Contains(planPrompt, "Previous MCP results/errors") {
+		t.Fatalf("initial planning prompt missing tool list or state: %s", planPrompt)
 	}
 
 	call := mcpClient.calls[0]
@@ -53,20 +53,25 @@ func TestGenerateChatResponseRetriesMCPWarningWithPlannedToolCall(t *testing.T) 
 		t.Fatalf("unexpected MCP retry call: %#v", call)
 	}
 
-	finalPrompt := chatClient.calls[1][len(chatClient.calls[1])-1].Content
+	finalPrompt := chatClient.calls[2][len(chatClient.calls[2])-1].Content
 	if !strings.Contains(finalPrompt, "resolved context from MCP retry") {
 		t.Fatalf("final prompt did not include MCP retry result: %s", finalPrompt)
 	}
 }
 
 type fakeMCPRetryChatResponder struct {
-	calls [][]bedrock.ChatMessage
+	calls         [][]bedrock.ChatMessage
+	planningCalls int
 }
 
 func (r *fakeMCPRetryChatResponder) GenerateChatResponse(_ context.Context, messages []bedrock.ChatMessage) (string, error) {
 	r.calls = append(r.calls, append([]bedrock.ChatMessage(nil), messages...))
-	if len(r.calls) == 1 {
-		return `{"calls":[{"server":"docs","tool":"lookup","arguments":{"id":"TEAM-1"},"reason":"retry with id"}]}`, nil
+	if len(messages) > 0 && strings.Contains(messages[0].Content, "Return only a JSON object") {
+		r.planningCalls++
+		if r.planningCalls == 1 {
+			return `{"calls":[{"server":"docs","tool":"lookup","arguments":{"id":"TEAM-1"},"reason":"resolve id"}]}`, nil
+		}
+		return `{"calls":[]}`, nil
 	}
 	return "final answer", nil
 }
@@ -84,6 +89,7 @@ func (c *fakeMCPRetryClient) AvailableTools() []mcpclient.ToolInfo {
 		Server:      "docs",
 		Name:        "lookup",
 		Description: "Lookup docs by id",
+		ReadOnly:    true,
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`),
 	}}
 }

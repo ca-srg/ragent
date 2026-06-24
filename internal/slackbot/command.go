@@ -135,12 +135,19 @@ func RunSlackBot(ctx context.Context, opts SlackBotOptions) error {
 	if opts.OnlySlack {
 		// Use Slack-only adapter
 		chatClient := bedrock.GetSharedBedrockClient(awsCfg, cfg.ChatModel)
+		if err := mcpclient.RequireRetryPlanner(mcpManager, chatClient); err != nil {
+			return err
+		}
 		slackOnlyAdapter := NewSlackOnlySearchAdapter(cfg, scfg.MaxResults, convSearcher, chatClient, &awsCfg)
 		slackOnlyAdapter.SetMCPClient(mcpManager)
 		adapter = slackOnlyAdapter
 		logger.Printf("Using Slack-only search adapter")
 	} else {
 		// Use hybrid search adapter
+		chatClient := bedrock.GetSharedBedrockClient(awsCfg, cfg.ChatModel)
+		if err := mcpclient.RequireRetryPlanner(mcpManager, chatClient); err != nil {
+			return err
+		}
 		hybridAdapter := NewHybridSearchAdapter(cfg, scfg.MaxResults, convSearcher, &awsCfg)
 		hybridAdapter.SetSlackClient(client) // Enable Slack URL message fetching
 		hybridAdapter.SetMCPClient(mcpManager)
