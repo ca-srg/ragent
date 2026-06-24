@@ -132,6 +132,9 @@ func RunQuery(cmd *cobra.Command, opts QueryOptions) error {
 	if mcpManager != nil {
 		mcpRetryPlanner = bedrock.NewBedrockClient(bedrockConfig, cfg.ChatModel)
 	}
+	if err := mcpclient.RequireRetryPlanner(mcpManager, mcpRetryPlanner); err != nil {
+		return err
+	}
 
 	if opts.OnlySlack {
 		log.Printf("Starting slack-only search for: %s", opts.QueryText)

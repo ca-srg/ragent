@@ -14,6 +14,9 @@ const (
 type recursionDepthKey struct{}
 
 func WithRecursionDepth(ctx context.Context, depth int) context.Context {
+	if depth < 0 {
+		depth = 0
+	}
 	return context.WithValue(ctx, recursionDepthKey{}, depth)
 }
 

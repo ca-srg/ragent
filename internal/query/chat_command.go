@@ -117,6 +117,9 @@ func RunChat(cmd *cobra.Command, opts ChatOptions) error {
 	}
 	defer closeMCPManager(mcpManager)
 	opts.MCPClient = mcpManager
+	if err := mcpclient.RequireRetryPlanner(opts.MCPClient, chatClient); err != nil {
+		return err
+	}
 
 	log.Printf("Chat ready! Using model: %s", cfg.ChatModel)
 	if opts.OnlySlack {

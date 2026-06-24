@@ -56,6 +56,7 @@ type ToolInfo struct {
 	Server      string          `json:"server"`
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
+	ReadOnly    bool            `json:"readOnly"`
 	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
 }
 
@@ -211,6 +212,7 @@ func (m *Manager) AvailableTools() []ToolInfo {
 				Server:      s.name,
 				Name:        tool.Name,
 				Description: tool.Description,
+				ReadOnly:    tool.Annotations != nil && tool.Annotations.ReadOnlyHint,
 			}
 			if tool.InputSchema != nil {
 				if data, err := json.Marshal(tool.InputSchema); err == nil {
