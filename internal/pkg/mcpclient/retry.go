@@ -78,6 +78,18 @@ func QueryWithRetry(ctx context.Context, client RetryClient, planner RetryChatCl
 	planned, initialCalls, planningErr := queryWithInitialPlanning(ctx, client, planner, query, logf)
 	plannedCalls := initialCalls > 0
 	if planningErr == nil {
+		if plannedCalls && planned != nil && len(planned.Errors) > 0 {
+			remainingCalls, limitedCalls := remainingToolCallBudget(client, initialCalls)
+			retryMCPWithLLM(
+				ctx,
+				client,
+				planner,
+				query,
+				planned,
+				logf,
+				retryToolCallLimit(remainingCalls, limitedCalls),
+			)
+		}
 		return planned, nil
 	}
 	if plannedCalls && planned != nil && len(planned.Results) > 0 {
@@ -382,13 +394,13 @@ func planCalls(ctx context.Context, planner RetryChatClient, systemPrompt, query
 	if err := json.Unmarshal(rawPlan.Calls, &plan.Calls); err != nil {
 		return nil, fmt.Errorf("failed to parse MCP tool calls: %w", err)
 	}
+	if len(plan.Calls) > maxRetryCalls {
+		plan.Calls = plan.Calls[:maxRetryCalls]
+	}
 	for i, call := range plan.Calls {
 		if strings.TrimSpace(call.Tool) == "" {
 			return nil, fmt.Errorf("failed to parse MCP tool calls: calls[%d].tool is required", i)
 		}
-	}
-	if len(plan.Calls) > maxRetryCalls {
-		plan.Calls = plan.Calls[:maxRetryCalls]
 	}
 	return &plan, nil
 }

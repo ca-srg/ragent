@@ -63,6 +63,44 @@ func TestQueryWithRetryHonorsEmptyInitialPlan(t *testing.T) {
 	require.Len(t, planner.requests, 1)
 }
 
+func TestQueryWithRetryRetriesFailedInitialPlannedCallWithoutFallback(t *testing.T) {
+	client := &fakeRetryClient{callErrors: []error{assert.AnError}}
+	planner := &scriptedRetryPlanner{responses: []string{
+		`{"calls":[{"server":"linear","tool":"get_issue","arguments":{"id":"ASICS-1"}}]}`,
+		`{"calls":[]}`,
+		`{"calls":[{"server":"linear","tool":"get_issue","arguments":{"id":"ASICS-1"}}]}`,
+	}}
+
+	result, err := QueryWithRetry(context.Background(), client, planner, "ASICS-1", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Empty(t, result.Errors)
+	require.Len(t, result.Results, 1)
+	assert.Equal(t, "issue details", result.Results[0].Text)
+	assert.Equal(t, 0, client.queryCalls)
+	require.Len(t, client.calls, 2)
+	require.Len(t, planner.requests, 3)
+}
+
+func TestQueryWithRetryDoesNotRetryFailedInitialCallWithoutBudget(t *testing.T) {
+	client := &fakeRetryClient{callErrors: []error{assert.AnError}, maxTools: 1}
+	planner := &scriptedRetryPlanner{responses: []string{
+		`{"calls":[{"server":"linear","tool":"get_issue","arguments":{"id":"ASICS-1"}}]}`,
+	}}
+
+	result, err := QueryWithRetry(context.Background(), client, planner, "ASICS-1", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Empty(t, result.Results)
+	require.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0], "MCP planned linear/get_issue failed")
+	assert.Equal(t, 0, client.queryCalls)
+	require.Len(t, client.calls, 1)
+	require.Len(t, planner.requests, 1)
+}
+
 func TestQueryWithRetryRequiresPlannerWhenClientConfigured(t *testing.T) {
 	client := &fakeRetryClient{}
 
@@ -297,6 +335,29 @@ func TestPlanInitialCallsRejectsMissingCallsArray(t *testing.T) {
 	}
 }
 
+func TestPlanInitialCallsIgnoresInvalidCallsBeyondLimit(t *testing.T) {
+	responses := []string{
+		`{"calls":[{"tool":"first"},{"tool":"second"},{"tool":"third"},{}]}`,
+		`{"calls":[{"tool":"first"},{"tool":"second"},{"tool":"third"},null]}`,
+	}
+	for _, response := range responses {
+		t.Run(response, func(t *testing.T) {
+			client := &fakeRetryClient{}
+			planner := &fakeRetryPlanner{response: response}
+
+			plan, err := planInitialCalls(context.Background(), planner, "ASICS-1", &QueryResult{}, client.AvailableTools())
+
+			require.NoError(t, err)
+			require.Len(t, plan.Calls, maxRetryCalls)
+			assert.Equal(t, []string{"first", "second", "third"}, []string{
+				plan.Calls[0].Tool,
+				plan.Calls[1].Tool,
+				plan.Calls[2].Tool,
+			})
+		})
+	}
+}
+
 func TestQueryWithRetryLimitsInitialPlanningCallsAcrossRounds(t *testing.T) {
 	client := &fakeInitialPlanClient{}
 	planner := &scriptedRetryPlanner{responses: []string{
@@ -340,6 +401,8 @@ func TestInitialPlanningCallLimitUsesManagerMaxTools(t *testing.T) {
 type fakeRetryClient struct {
 	queryCalls int
 	calls      []ToolCall
+	callErrors []error
+	maxTools   int
 }
 
 func (c *fakeRetryClient) Query(context.Context, string) (*QueryResult, error) {
@@ -359,7 +422,18 @@ func (c *fakeRetryClient) AvailableTools() []ToolInfo {
 
 func (c *fakeRetryClient) CallTool(_ context.Context, call ToolCall) (ToolResult, error) {
 	c.calls = append(c.calls, call)
+	if len(c.callErrors) > 0 {
+		err := c.callErrors[0]
+		c.callErrors = c.callErrors[1:]
+		if err != nil {
+			return ToolResult{}, err
+		}
+	}
 	return ToolResult{Server: call.Server, Tool: call.Tool, Text: "issue details"}, nil
+}
+
+func (c *fakeRetryClient) maxToolCalls() int {
+	return c.maxTools
 }
 
 type fakeRetryPlanner struct {
