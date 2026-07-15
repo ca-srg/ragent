@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ca-srg/ragent/internal/pkg/evalexport"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 )
 
@@ -45,6 +48,10 @@ func TestHybridSearchToolFetchesReferencedSlackURLWithoutSlackSearchService(t *t
 		FetchedCount:     1,
 	}}
 	adapter := newSlackURLTestAdapter(fetcher)
+	evalDir := t.TempDir()
+	evalWriter, err := evalexport.NewWriter(evalDir)
+	require.NoError(t, err)
+	adapter.SetEvalWriter(evalWriter)
 
 	query := "この URL の内容を教えて\nhttps://example-workspace.slack.com/archives/C01234567/p1234567890123456"
 	result, err := adapter.HandleToolCall(context.Background(), map[string]interface{}{
@@ -75,6 +82,79 @@ func TestHybridSearchToolFetchesReferencedSlackURLWithoutSlackSearchService(t *t
 	searchClient := adapter.searchClient.(*fakeSDKSearchClient)
 	assert.Nil(t, searchClient.bm25Query)
 	assert.Nil(t, searchClient.vectorQuery)
+
+	evalFiles, err := filepath.Glob(filepath.Join(evalDir, "eval_*.jsonl"))
+	require.NoError(t, err)
+	require.Len(t, evalFiles, 1)
+	evalData, err := os.ReadFile(evalFiles[0])
+	require.NoError(t, err)
+	var record evalexport.EvalRecord
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(string(evalData))), &record))
+	assert.Equal(t, slackURLDirectFetchMethod, record.RunConfig.SearchMode)
+	assert.Contains(t, record.RetrievedContexts, slacksearch.FormatFetchedContext([]slacksearch.EnrichedMessage{message}))
+	assert.Equal(t, message.Permalink, record.References["C01234567#1234567890.123456"])
+	assert.Empty(t, record.RetrievedDocs)
+}
+
+func TestHybridSearchToolDoesNotDirectReturnWhenWorkspaceSlackSearchRequested(t *testing.T) {
+	const slackURL = "https://example-workspace.slack.com/archives/C01234567/p1234567890123456"
+	tests := []struct {
+		name   string
+		query  string
+		enable bool
+	}{
+		{name: "request flag", query: slackURL, enable: true},
+		{name: "query directive", query: "Slack検索を利用して関連会話も探して " + slackURL},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fetcher := &fakeSlackURLFetcher{response: &slacksearch.FetchResponse{
+				EnrichedMessages: []slacksearch.EnrichedMessage{{Permalink: slackURL}},
+				FetchedCount:     1,
+			}}
+			adapter := newSlackURLTestAdapter(fetcher)
+			adapter.slackService = &slacksearch.SlackSearchService{}
+			adapter.searchClient.(*fakeSDKSearchClient).healthCheckErr = assert.AnError
+
+			_, err := adapter.HandleToolCall(context.Background(), map[string]interface{}{
+				"query":               tt.query,
+				"top_k":               1,
+				"enable_slack_search": tt.enable,
+			})
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "OpenSearch connection failed")
+		})
+	}
+}
+
+func TestHybridSearchToolFallsBackWhenSlackURLFetchIsPartial(t *testing.T) {
+	const firstURL = "https://example-workspace.slack.com/archives/C01234567/p1234567890123456"
+	const secondURL = "https://example-workspace.slack.com/archives/C07654321/p1234567890654321"
+	fetcher := &fakeSlackURLFetcher{response: &slacksearch.FetchResponse{
+		EnrichedMessages: []slacksearch.EnrichedMessage{{
+			OriginalMessage: slack.Message{Msg: slack.Msg{Channel: "C01234567", Timestamp: "1234567890.123456"}},
+			Permalink:       firstURL,
+		}},
+		FetchedCount: 1,
+		Errors:       []string{"failed to fetch " + secondURL},
+	}}
+	adapter := newSlackURLTestAdapter(fetcher)
+
+	result, err := adapter.HandleToolCall(context.Background(), map[string]interface{}{
+		"query": firstURL + " " + secondURL,
+		"top_k": 1,
+	})
+
+	require.NoError(t, err)
+	var response HybridSearchResponse
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &response))
+	assert.NotEqual(t, slackURLDirectFetchMethod, response.SearchMethod)
+	require.Len(t, response.ReferencedSlackURLs, 1)
+	searchClient := adapter.searchClient.(*fakeSDKSearchClient)
+	assert.NotNil(t, searchClient.bm25Query)
+	assert.NotNil(t, searchClient.vectorQuery)
 }
 
 func TestHybridSearchToolAllowsURLFetchWhenSlackSearchRequestedWithoutService(t *testing.T) {
