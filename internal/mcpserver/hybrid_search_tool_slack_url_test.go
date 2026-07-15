@@ -27,12 +27,12 @@ func (f *fakeSlackURLFetcher) FetchByURLs(_ context.Context, req *slacksearch.Fe
 func TestHybridSearchToolFetchesReferencedSlackURLWithoutSlackSearchService(t *testing.T) {
 	message := slacksearch.EnrichedMessage{
 		OriginalMessage: slack.Message{Msg: slack.Msg{
-			Channel:   "C033LM8534M",
-			Timestamp: "1783667252.817109",
+			Channel:   "C01234567",
+			Timestamp: "1234567890.123456",
 			User:      "U123",
 			Text:      "referenced message",
 		}},
-		Permalink: "https://ca-winticket.slack.com/archives/C033LM8534M/p1783667252817109",
+		Permalink: "https://example-workspace.slack.com/archives/C01234567/p1234567890123456",
 	}
 	fetcher := &fakeSlackURLFetcher{response: &slacksearch.FetchResponse{
 		EnrichedMessages: []slacksearch.EnrichedMessage{message},
@@ -41,14 +41,14 @@ func TestHybridSearchToolFetchesReferencedSlackURLWithoutSlackSearchService(t *t
 	adapter := &HybridSearchToolAdapter{logger: log.New(io.Discard, "", 0)}
 	adapter.setSlackURLFetcher(fetcher)
 
-	query := "この URL の内容を教えて\nhttps://ca-winticket.slack.com/archives/C033LM8534M/p1783667252817109"
+	query := "この URL の内容を教えて\nhttps://example-workspace.slack.com/archives/C01234567/p1234567890123456"
 	messages := adapter.fetchReferencedSlackMessages(context.Background(), query)
 
 	require.Len(t, messages, 1)
 	require.NotNil(t, fetcher.request)
 	require.Len(t, fetcher.request.URLs, 1)
-	assert.Equal(t, "C033LM8534M", fetcher.request.URLs[0].ChannelID)
-	assert.Equal(t, "1783667252.817109", fetcher.request.URLs[0].MessageTS)
+	assert.Equal(t, "C01234567", fetcher.request.URLs[0].ChannelID)
+	assert.Equal(t, "1234567890.123456", fetcher.request.URLs[0].MessageTS)
 
 	response := adapter.convertToMCPResponse(
 		&HybridSearchRequest{Query: query, SearchMode: "hybrid"},

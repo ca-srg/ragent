@@ -52,7 +52,7 @@ Slack には `search:read.public` / `search:read.private` / `search:read.im` / `
 
 ### 2.3 実機検証結果
 
-ワークスペース `ca-winticket.slack.com` で発行された Bot Token (xoxb) に `search:read.public` 等のスコープを付与した状態で `search.messages` を呼んだところ、以下のレスポンス:
+検証用ワークスペースで発行された Bot Token (xoxb) に `search:read.public` 等のスコープを付与した状態で `search.messages` を呼んだところ、以下のレスポンス:
 
 ```json
 { "ok": false, "error": "not_allowed_token_type" }

@@ -101,12 +101,12 @@ func TestBuildBM25QueryExtractsBoostPhraseFromLongQuery(t *testing.T) {
 }
 
 func TestExtractCriticalPhrasesIgnoresURLFragments(t *testing.T) {
-	query := "この URL の内容を教えて\nhttps://ca-winticket.slack.com/archives/C033LM8534M/p1783667252817109"
+	query := "この URL の内容を教えて\nhttps://example-workspace.slack.com/archives/C01234567/p1234567890123456"
 	if phrases := extractCriticalPhrases(query); len(phrases) != 0 {
 		t.Fatalf("expected no URL-derived phrases, got %v", phrases)
 	}
 
-	query = "0円チャージ https://ca-winticket.slack.com/archives/C033LM8534M/p1783667252817109"
+	query = "0円チャージ https://example-workspace.slack.com/archives/C01234567/p1234567890123456"
 	phrases := extractCriticalPhrases(query)
 	if len(phrases) != 1 || phrases[0] != "0円チャージ" {
 		t.Fatalf("expected non-URL phrase [0円チャージ], got %v", phrases)
@@ -118,7 +118,7 @@ func TestExtractCriticalPhrasesIgnoresURLFragments(t *testing.T) {
 		t.Fatalf("expected phrase after URL punctuation [0円チャージ], got %v", phrases)
 	}
 
-	query = "https://example.com/path、https://ca-winticket.slack.com/archives/C033LM8534M/p1783667252817109、0円チャージ"
+	query = "https://example.com/path、https://example-workspace.slack.com/archives/C01234567/p1234567890123456、0円チャージ"
 	phrases = extractCriticalPhrases(query)
 	if len(phrases) != 1 || phrases[0] != "0円チャージ" {
 		t.Fatalf("expected phrase after consecutive URLs [0円チャージ], got %v", phrases)
