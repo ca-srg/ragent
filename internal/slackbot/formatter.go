@@ -178,7 +178,8 @@ func appendSectionTextBlocks(blocks []slack.Block, text string) []slack.Block {
 }
 
 func newContextTextBlock(blockID string, text string) *slack.ContextBlock {
-	return slack.NewContextBlock(blockID, slack.NewTextBlockObject(slack.MarkdownType, truncateTextByRuneLimit(text, slackContextTextLimit), false, false))
+	truncated := truncateTextByRuneLimit(text, slackContextTextLimit)
+	return slack.NewContextBlock(blockID, slack.NewTextBlockObject(slack.MarkdownType, truncated, false, false))
 }
 
 func truncateTextByRuneLimit(text string, limit int) string {
