@@ -34,9 +34,10 @@ func TestMessageFetcherPreservesPartialMessageWhenThreadFetchFails(t *testing.T)
 	require.Len(t, response.EnrichedMessages, 1)
 	assert.Equal(t, originalURL, response.EnrichedMessages[0].Permalink)
 	assert.Empty(t, response.EnrichedMessages[0].ThreadMessages)
-	assert.Zero(t, response.FetchedCount)
-	require.Len(t, response.Errors, 1)
-	assert.Contains(t, response.Errors[0], "failed to fetch thread replies")
+	assert.Equal(t, 1, response.FetchedCount)
+	assert.Empty(t, response.Errors)
+	require.Len(t, response.Warnings, 1)
+	assert.Contains(t, response.Warnings[0], "thread replies could not be fetched")
 	client.AssertExpectations(t)
 }
 
@@ -63,5 +64,6 @@ func TestMessageFetcherFetchesRepliesForRootMessage(t *testing.T) {
 	assert.Equal(t, "C01234567", response.EnrichedMessages[0].ThreadMessages[0].Channel)
 	assert.Equal(t, 1, response.FetchedCount)
 	assert.Empty(t, response.Errors)
+	assert.Empty(t, response.Warnings)
 	client.AssertExpectations(t)
 }

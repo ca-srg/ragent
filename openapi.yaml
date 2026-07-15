@@ -734,6 +734,11 @@ components:
         fallback_reason:
           type: string
           description: フォールバックが発生した理由
+        warnings:
+          type: array
+          items:
+            type: string
+          description: 取得できなかった任意コンテキストに関する警告
         results:
           type: array
           items:
@@ -847,7 +852,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SlackThreadReplyItem'
-          description: スレッド返信一覧
+          description: 取得できたスレッド返信一覧。取得できない場合はレスポンスの warnings に記録されます
 
     # =========================================================================
     # 認証スキーマ

@@ -14,7 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ca-srg/ragent/internal/pkg/embedding/bedrock"
 	"github.com/ca-srg/ragent/internal/pkg/evalexport"
+	"github.com/ca-srg/ragent/internal/pkg/mcpclient"
 	"github.com/ca-srg/ragent/internal/pkg/slacksearch"
 )
 
@@ -26,6 +28,31 @@ type fakeSlackURLFetcher struct {
 func (f *fakeSlackURLFetcher) FetchByURLs(_ context.Context, req *slacksearch.FetchRequest) (*slacksearch.FetchResponse, error) {
 	f.request = req
 	return f.response, nil
+}
+
+type fakeMCPRetryClient struct {
+	queryCount int
+	callCount  int
+}
+
+func (f *fakeMCPRetryClient) Query(_ context.Context, _ string) (*mcpclient.QueryResult, error) {
+	f.queryCount++
+	return &mcpclient.QueryResult{}, nil
+}
+
+func (f *fakeMCPRetryClient) AvailableTools() []mcpclient.ToolInfo {
+	return []mcpclient.ToolInfo{{Server: "records", Name: "lookup", ReadOnly: true}}
+}
+
+func (f *fakeMCPRetryClient) CallTool(_ context.Context, call mcpclient.ToolCall) (mcpclient.ToolResult, error) {
+	f.callCount++
+	return mcpclient.ToolResult{Server: call.Server, Tool: call.Tool, Text: "linked record"}, nil
+}
+
+type fakeMCPRetryPlanner struct{}
+
+func (fakeMCPRetryPlanner) GenerateChatResponse(_ context.Context, _ []bedrock.ChatMessage) (string, error) {
+	return `{"calls":[{"server":"records","tool":"lookup","arguments":{"id":"ABC-123"}}]}`, nil
 }
 
 func TestHybridSearchToolFetchesReferencedSlackURLWithoutSlackSearchService(t *testing.T) {
@@ -94,6 +121,64 @@ func TestHybridSearchToolFetchesReferencedSlackURLWithoutSlackSearchService(t *t
 	assert.Contains(t, record.RetrievedContexts, slacksearch.FormatFetchedContext([]slacksearch.EnrichedMessage{message}))
 	assert.Equal(t, message.Permalink, record.References["C01234567#1234567890.123456"])
 	assert.Empty(t, record.RetrievedDocs)
+}
+
+func TestHybridSearchToolReturnsPrimaryMessageWhenThreadContextFails(t *testing.T) {
+	const slackURL = "https://example-workspace.slack.com/archives/C01234567/p1234567890123456"
+	fetcher := &fakeSlackURLFetcher{response: &slacksearch.FetchResponse{
+		EnrichedMessages: []slacksearch.EnrichedMessage{{
+			OriginalMessage: slack.Message{Msg: slack.Msg{Channel: "C01234567", Timestamp: "1234567890.123456", Text: "root"}},
+			Permalink:       slackURL,
+		}},
+		FetchedCount: 1,
+		Warnings:     []string{"thread replies could not be fetched for " + slackURL},
+	}}
+	adapter := newSlackURLTestAdapter(fetcher)
+	adapter.searchClient.(*fakeSDKSearchClient).healthCheckErr = assert.AnError
+
+	result, err := adapter.HandleToolCall(context.Background(), map[string]interface{}{"query": slackURL, "top_k": 1})
+
+	require.NoError(t, err)
+	var response HybridSearchResponse
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &response))
+	assert.Equal(t, slackURLDirectFetchMethod, response.SearchMethod)
+	require.Len(t, response.ReferencedSlackURLs, 1)
+	require.Len(t, response.Warnings, 1)
+	assert.Contains(t, response.Warnings[0], "thread replies could not be fetched")
+	searchClient := adapter.searchClient.(*fakeSDKSearchClient)
+	assert.Nil(t, searchClient.bm25Query)
+	assert.Nil(t, searchClient.vectorQuery)
+}
+
+func TestHybridSearchToolAttachesMCPResultsToSlackURLDirectResponse(t *testing.T) {
+	const slackURL = "https://example-workspace.slack.com/archives/C01234567/p1234567890123456"
+	fetcher := &fakeSlackURLFetcher{response: &slacksearch.FetchResponse{
+		EnrichedMessages: []slacksearch.EnrichedMessage{{Permalink: slackURL}},
+		FetchedCount:     1,
+	}}
+	adapter := newSlackURLTestAdapter(fetcher)
+	mcpClient := &fakeMCPRetryClient{}
+	adapter.mcpClient = mcpClient
+	adapter.mcpRetryPlanner = fakeMCPRetryPlanner{}
+
+	result, err := adapter.HandleToolCall(context.Background(), map[string]interface{}{
+		"query": "このURLとABC-123を確認 " + slackURL,
+		"top_k": 1,
+	})
+
+	require.NoError(t, err)
+	var response HybridSearchResponse
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &response))
+	assert.Equal(t, slackURLDirectFetchMethod, response.SearchMethod)
+	require.Len(t, response.MCPResults, 1)
+	assert.Equal(t, "linked record", response.MCPResults[0].Text)
+	assert.Equal(t, 2, response.Total)
+	assert.Equal(t, []string{"slack_urls", "mcp"}, response.SearchSources)
+	assert.Equal(t, 1, mcpClient.callCount)
+	assert.Zero(t, mcpClient.queryCount)
+	searchClient := adapter.searchClient.(*fakeSDKSearchClient)
+	assert.Nil(t, searchClient.bm25Query)
+	assert.Nil(t, searchClient.vectorQuery)
 }
 
 func TestHybridSearchToolDoesNotDirectReturnWhenWorkspaceSlackSearchRequested(t *testing.T) {
@@ -252,4 +337,12 @@ func TestHybridSearchToolIgnoresNilSlackURLFetcher(t *testing.T) {
 	adapter.setSlackURLFetcher(fetcher)
 
 	assert.Nil(t, adapter.slackURLFetcher)
+}
+
+func TestHybridSearchToolNormalizesNilMCPClient(t *testing.T) {
+	adapter := &HybridSearchToolAdapter{}
+
+	adapter.SetMCPClient(nil)
+
+	assert.Nil(t, adapter.mcpClient)
 }

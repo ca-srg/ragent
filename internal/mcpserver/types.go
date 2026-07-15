@@ -98,6 +98,7 @@ type HybridSearchResponse struct {
 	SearchMethod        string                    `json:"search_method"`
 	URLDetected         bool                      `json:"url_detected,omitempty"`
 	FallbackReason      string                    `json:"fallback_reason,omitempty"`
+	Warnings            []string                  `json:"warnings,omitempty"`
 	ReferencedSlackURLs []HybridSearchSlackResult `json:"referenced_slack_urls,omitempty"`
 	Results             []HybridSearchResultItem  `json:"results"`
 	Metadata            *HybridSearchMetadata     `json:"metadata,omitempty"`
