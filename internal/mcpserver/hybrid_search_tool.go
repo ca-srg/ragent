@@ -31,6 +31,10 @@ type SearchClient interface {
 	HealthCheck(ctx context.Context) error
 }
 
+type slackURLFetcher interface {
+	FetchByURLs(ctx context.Context, req *slacksearch.FetchRequest) (*slacksearch.FetchResponse, error)
+}
+
 // HybridSearchToolAdapter adapts existing hybrid search functionality to MCP tool interface
 type HybridSearchToolAdapter struct {
 	searchClient    SearchClient
@@ -39,6 +43,7 @@ type HybridSearchToolAdapter struct {
 	defaultConfig   *HybridSearchConfig
 	logger          *log.Logger
 	slackService    *slacksearch.SlackSearchService
+	slackURLFetcher slackURLFetcher
 	evalWriter      *evalexport.Writer
 	mcpClient       *mcpclient.Manager
 	mcpRetryPlanner mcpclient.RetryChatClient
@@ -71,7 +76,7 @@ func NewHybridSearchToolAdapter(searchClient SearchClient, embeddingClient opens
 
 	hybridEngine := opensearch.NewHybridSearchEngine(searchClient, embeddingClient)
 
-	return &HybridSearchToolAdapter{
+	adapter := &HybridSearchToolAdapter{
 		searchClient:    searchClient,
 		embeddingClient: embeddingClient,
 		hybridEngine:    hybridEngine,
@@ -79,6 +84,12 @@ func NewHybridSearchToolAdapter(searchClient SearchClient, embeddingClient opens
 		logger:          log.New(log.Writer(), "[HybridSearchTool] ", log.LstdFlags),
 		slackService:    slackService,
 	}
+	if slackService != nil {
+		if fetcher := slackService.GetMessageFetcher(); fetcher != nil {
+			adapter.slackURLFetcher = fetcher
+		}
+	}
+	return adapter
 }
 
 // GetToolDefinition returns the MCP tool definition for hybrid search
@@ -218,22 +229,18 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 		searchRequest.EnableSlackSearch = true
 	}
 
-	if searchRequest.EnableSlackSearch && hsta.slackService == nil {
+	hasSlackURL := len(slacksearch.DetectSlackURLs(searchRequest.Query)) > 0
+	canFetchSlackURL := hasSlackURL && hsta.slackURLFetcher != nil
+	if searchRequest.EnableSlackSearch && hsta.slackService == nil && !canFetchSlackURL {
 		err := fmt.Errorf("slack search requested but not configured")
 		return CreateToolCallErrorResult(err.Error()), err
 	}
 
 	// Fetch messages from Slack URLs in the query (if any)
 	var slackURLMessages []slacksearch.EnrichedMessage
-	if hsta.slackService != nil && slacksearch.HasSlackURL(searchRequest.Query) {
+	if hasSlackURL {
 		sendProgress(0.02, 1.0, "Fetching referenced Slack messages...")
-		fetchResp, fetchErr := hsta.slackService.FetchMessagesFromQuery(ctx, searchRequest.Query)
-		if fetchErr != nil {
-			hsta.logger.Printf("Slack URL fetch warning: %v", fetchErr)
-		} else if fetchResp != nil && len(fetchResp.EnrichedMessages) > 0 {
-			slackURLMessages = fetchResp.EnrichedMessages
-			hsta.logger.Printf("Fetched %d message(s) from Slack URL(s)", len(slackURLMessages))
-		}
+		slackURLMessages = hsta.fetchReferencedSlackMessages(ctx, searchRequest.Query)
 	}
 
 	sendProgress(0.05, 1.0, "Checking OpenSearch connection...")
@@ -750,6 +757,7 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *HybridSearchR
 		urlItems := convertEnrichedMessages(urlMessages)
 		if len(urlItems) > 0 {
 			response.ReferencedSlackURLs = urlItems
+			response.Total += len(urlItems)
 			// Add to sources if not already included
 			hasSlackURLSource := false
 			for _, s := range sources {
@@ -786,6 +794,51 @@ func (hsta *HybridSearchToolAdapter) SetMCPClient(client *mcpclient.Manager) {
 
 func (hsta *HybridSearchToolAdapter) SetMCPRetryPlanner(planner mcpclient.RetryChatClient) {
 	hsta.mcpRetryPlanner = planner
+}
+
+func (hsta *HybridSearchToolAdapter) setSlackURLFetcher(fetcher slackURLFetcher) {
+	if fetcher == nil {
+		return
+	}
+	if concrete, ok := fetcher.(*slacksearch.MessageFetcher); ok && concrete == nil {
+		return
+	}
+	if hsta.slackURLFetcher == nil {
+		hsta.slackURLFetcher = fetcher
+	}
+}
+
+func (hsta *HybridSearchToolAdapter) fetchReferencedSlackMessages(ctx context.Context, query string) []slacksearch.EnrichedMessage {
+	urls := slacksearch.DetectSlackURLs(query)
+	if len(urls) == 0 {
+		return nil
+	}
+	if hsta.slackURLFetcher == nil {
+		if hsta.logger != nil {
+			hsta.logger.Printf("Slack URL fetch warning: Slack URL fetcher is not configured")
+		}
+		return nil
+	}
+
+	response, err := hsta.slackURLFetcher.FetchByURLs(ctx, &slacksearch.FetchRequest{URLs: urls, UserQuery: query})
+	if err != nil {
+		if hsta.logger != nil {
+			hsta.logger.Printf("Slack URL fetch warning: %v", err)
+		}
+		return nil
+	}
+	if response == nil {
+		return nil
+	}
+	if hsta.logger != nil {
+		for _, warning := range response.Errors {
+			hsta.logger.Printf("Slack URL fetch warning: %s", warning)
+		}
+		if len(response.EnrichedMessages) > 0 {
+			hsta.logger.Printf("Fetched %d message(s) from Slack URL(s)", len(response.EnrichedMessages))
+		}
+	}
+	return response.EnrichedMessages
 }
 
 // GetDefaultConfig returns the current default configuration

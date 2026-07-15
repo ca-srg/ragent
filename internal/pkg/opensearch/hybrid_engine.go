@@ -34,7 +34,11 @@ type HybridSearchEngine struct {
 	urlDetector     URLDetector
 }
 
-var digitPhrasePattern = regexp.MustCompile(`[0-9０-９]+(?:円|％|%|[\p{Han}\p{Katakana}ーA-Za-z0-9０-９])+`)
+var (
+	digitPhrasePattern       = regexp.MustCompile(`[0-9０-９]+(?:円|％|%|[\p{Han}\p{Katakana}ーA-Za-z0-9０-９])+`)
+	digitPhrasePrefixPattern = regexp.MustCompile(`^` + digitPhrasePattern.String())
+	phraseURLPattern         = regexp.MustCompile(`(?i)https?://[^\s\p{Zs}、。！？「」『』（）｢｣]+`)
+)
 
 type HybridQuery struct {
 	Query                  string            `json:"query"`
@@ -474,6 +478,7 @@ func extractCriticalPhrases(original string) []string {
 	if stripped == "" {
 		return nil
 	}
+	stripped = stripPhraseURLs(stripped)
 
 	// Normalize by removing spaces so patterns like "0 円" are captured
 	cleaned := strings.ReplaceAll(stripped, " ", "")
@@ -521,6 +526,32 @@ func extractCriticalPhrases(original string) []string {
 	}
 
 	return phrases
+}
+
+func stripPhraseURLs(input string) string {
+	return phraseURLPattern.ReplaceAllStringFunc(input, func(match string) string {
+		pathEnd := len(match)
+		if queryOrFragment := strings.IndexAny(match, "?#"); queryOrFragment >= 0 {
+			pathEnd = queryOrFragment
+		}
+		hasOpeningParenthesis := strings.Contains(match[:pathEnd], "(")
+		for offset := 0; offset < pathEnd; {
+			delimiter := strings.IndexAny(match[offset:pathEnd], ",.;!)")
+			if delimiter < 0 {
+				break
+			}
+			delimiter += offset
+			suffix := match[delimiter+1:]
+			phrase := digitPhrasePrefixPattern.FindStringIndex(suffix)
+			isURLParenthesis := match[delimiter] == ')' && hasOpeningParenthesis
+			hasURLContinuation := len(phrase) == 2 && strings.ContainsAny(suffix[phrase[1]:], "/?:#@&=+,.;!()")
+			if len(phrase) == 2 && !isURLParenthesis && !hasURLContinuation {
+				return " " + suffix
+			}
+			offset = delimiter + 1
+		}
+		return " "
+	})
 }
 
 func containsString(slice []string, target string) bool {
