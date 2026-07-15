@@ -13,8 +13,12 @@ import (
 )
 
 const (
-	maxSlackBlocks   = 45
-	maxSlackMessages = 15
+	maxSlackBlocks                = 45
+	maxSlackMessages              = 15
+	slackMessageBlockLimit        = 50
+	slackSectionTextLimit         = 3000
+	slackContextTextLimit         = 3000
+	slackResponseSectionSoftLimit = 2500
 )
 
 // Formatter builds Slack responses (Block Kit)
@@ -22,10 +26,9 @@ type Formatter struct{}
 
 // BuildUsage creates a simple tip message with section block
 func (f *Formatter) BuildUsage(tip string) slack.MsgOption {
-	blocks := []slack.Block{
-		slack.NewSectionBlock(&slack.TextBlockObject{Type: slack.MarkdownType, Text: ":information_source: 使い方"}, nil, nil),
-		slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, tip, false, false), nil, nil),
-	}
+	blocks := appendSectionTextBlocks(nil, ":information_source: 使い方")
+	blocks = appendSectionTextBlocks(blocks, tip)
+	blocks = limitBlocksWithinMessageLimit(blocks)
 	return slack.MsgOptionBlocks(blocks...)
 }
 
@@ -48,7 +51,7 @@ func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.
 	if result.FallbackReason != "" {
 		metaParts = append(metaParts, fmt.Sprintf("フォールバック: %s", result.FallbackReason))
 	}
-	intro := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, strings.Join(metaParts, " / "), false, false))
+	intro := newContextTextBlock("", strings.Join(metaParts, " / "))
 
 	blocks := []slack.Block{header, intro}
 	for i, item := range result.Items {
@@ -59,7 +62,7 @@ func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.
 			titleText = fmt.Sprintf("%d. %s", i+1, item.Title)
 		}
 		md := fmt.Sprintf("*%s*\n%s", titleText, item.Snippet)
-		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, md, false, false), nil, nil))
+		blocks = appendSectionTextBlocks(blocks, md)
 		// context line with category/path if available
 		ctxParts := []string{}
 		if item.Category != "" {
@@ -69,17 +72,14 @@ func (f *Formatter) BuildSearchResult(query string, result *SearchResult) slack.
 			ctxParts = append(ctxParts, fmt.Sprintf("パス: %s", item.FilePath))
 		}
 		if len(ctxParts) > 0 {
-			blocks = append(blocks, slack.NewContextBlock(
-				fmt.Sprintf("ctx-meta-%d", i),
-				slack.NewTextBlockObject(slack.MarkdownType, strings.Join(ctxParts, " · "), false, false),
-			))
+			blocks = append(blocks, newContextTextBlock(fmt.Sprintf("ctx-meta-%d", i), strings.Join(ctxParts, " · ")))
 		}
 	}
 	if len(blocks) == 2 {
 		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, "該当する結果が見つかりませんでした。", false, false), nil, nil))
 	}
-	footer := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%sにより生成", "RAGent"), false, false))
-	blocks = append(blocks, footer)
+	footer := newContextTextBlock("", fmt.Sprintf("%sにより生成", "RAGent"))
+	blocks = appendFooterWithinBlockLimit(blocks, footer)
 	return slack.MsgOptionBlocks(blocks...)
 }
 
@@ -106,7 +106,7 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 	if result.FallbackReason != "" {
 		metaParts = append(metaParts, fmt.Sprintf("フォールバック: %s", result.FallbackReason))
 	}
-	intro := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, strings.Join(metaParts, " / "), false, false))
+	intro := newContextTextBlock("", strings.Join(metaParts, " / "))
 
 	// Main response in sections (split if needed for Slack's character limits)
 	blocks := []slack.Block{header, intro}
@@ -122,13 +122,13 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 			if currentSection != "" {
 				normalized := normalizeMarkdownForSlack(currentSection)
 				if strings.TrimSpace(normalized) != "" {
-					blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, normalized, false, false), nil, nil))
+					blocks = appendSectionTextBlocks(blocks, normalized)
 				}
 				currentSection = ""
 			}
 			// Add header as divider
 			blocks = append(blocks, slack.NewDividerBlock())
-			blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, "*"+strings.TrimPrefix(line, "## ")+"*", false, false), nil, nil))
+			blocks = appendSectionTextBlocks(blocks, "*"+strings.TrimPrefix(line, "## ")+"*")
 		} else {
 			// Build up section content
 			if currentSection != "" {
@@ -137,10 +137,10 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 			currentSection += line
 
 			// If section gets too long, flush it (Slack has a 3000 char limit per text block)
-			if len(currentSection) > 2500 {
+			if len([]rune(currentSection)) > slackResponseSectionSoftLimit {
 				normalized := normalizeMarkdownForSlack(currentSection)
 				if strings.TrimSpace(normalized) != "" {
-					blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, normalized, false, false), nil, nil))
+					blocks = appendSectionTextBlocks(blocks, normalized)
 				}
 				currentSection = ""
 			}
@@ -151,7 +151,7 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 	if currentSection != "" {
 		normalized := normalizeMarkdownForSlack(currentSection)
 		if strings.TrimSpace(normalized) != "" {
-			blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, normalized, false, false), nil, nil))
+			blocks = appendSectionTextBlocks(blocks, normalized)
 		}
 	}
 
@@ -160,24 +160,95 @@ func (f *Formatter) BuildChatResponse(query string, result *SearchResult) slack.
 	}
 
 	// Footer
-	footer := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("%sにより生成", "RAGent"), false, false))
-	blocks = append(blocks, footer)
+	footer := newContextTextBlock("", fmt.Sprintf("%sにより生成", "RAGent"))
+	blocks = appendFooterWithinBlockLimit(blocks, footer)
 
 	return slack.MsgOptionBlocks(blocks...)
 }
 
+func appendSectionTextBlocks(blocks []slack.Block, text string) []slack.Block {
+	for _, chunk := range splitTextByRuneLimit(text, slackSectionTextLimit) {
+		chunk = strings.TrimSpace(chunk)
+		if chunk == "" {
+			continue
+		}
+		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, chunk, false, false), nil, nil))
+	}
+	return blocks
+}
+
+func newContextTextBlock(blockID string, text string) *slack.ContextBlock {
+	return slack.NewContextBlock(blockID, slack.NewTextBlockObject(slack.MarkdownType, truncateTextByRuneLimit(text, slackContextTextLimit), false, false))
+}
+
+func truncateTextByRuneLimit(text string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	if limit == 1 {
+		return "…"
+	}
+	return string(runes[:limit-1]) + "…"
+}
+
+func splitTextByRuneLimit(text string, limit int) []string {
+	if limit <= 0 {
+		return []string{text}
+	}
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return []string{text}
+	}
+
+	chunks := make([]string, 0, (len(runes)+limit-1)/limit)
+	for len(runes) > limit {
+		chunks = append(chunks, string(runes[:limit]))
+		runes = runes[limit:]
+	}
+	if len(runes) > 0 {
+		chunks = append(chunks, string(runes))
+	}
+	return chunks
+}
+
+func appendFooterWithinBlockLimit(blocks []slack.Block, footer slack.Block) []slack.Block {
+	if len(blocks) < slackMessageBlockLimit {
+		return append(blocks, footer)
+	}
+
+	notice := newContextTextBlock("", "… 返信が長いため一部を省略しました。")
+	keep := slackMessageBlockLimit - 2
+	if keep > len(blocks) {
+		keep = len(blocks)
+	}
+	limited := make([]slack.Block, 0, slackMessageBlockLimit)
+	limited = append(limited, blocks[:keep]...)
+	limited = append(limited, notice, footer)
+	return limited
+}
+
+func limitBlocksWithinMessageLimit(blocks []slack.Block) []slack.Block {
+	if len(blocks) <= slackMessageBlockLimit {
+		return blocks
+	}
+
+	notice := newContextTextBlock("", "… 返信が長いため一部を省略しました。")
+	keep := slackMessageBlockLimit - 1
+	limited := make([]slack.Block, 0, slackMessageBlockLimit)
+	limited = append(limited, blocks[:keep]...)
+	limited = append(limited, notice)
+	return limited
+}
+
 // BuildError renders an error message in a block
 func (f *Formatter) BuildError(message string) slack.MsgOption {
-	blocks := []slack.Block{
-		slack.NewSectionBlock(
-			slack.NewTextBlockObject(slack.MarkdownType, ":warning: エラーが発生しました", false, false),
-			nil, nil,
-		),
-		slack.NewSectionBlock(
-			slack.NewTextBlockObject(slack.MarkdownType, message, false, false),
-			nil, nil,
-		),
-	}
+	blocks := appendSectionTextBlocks(nil, ":warning: エラーが発生しました")
+	blocks = appendSectionTextBlocks(blocks, message)
+	blocks = limitBlocksWithinMessageLimit(blocks)
 	return slack.MsgOptionBlocks(blocks...)
 }
 
@@ -370,7 +441,7 @@ func buildSlackResultBlocks(result *SlackConversationResult) []slack.Block {
 	if !result.IsSufficient && len(result.MissingInfo) > 0 {
 		meta += fmt.Sprintf(" / 不足情報: %s", strings.Join(result.MissingInfo, ", "))
 	}
-	blocks = append(blocks, slack.NewContextBlock("slack-meta", slack.NewTextBlockObject(slack.MarkdownType, meta, false, false)))
+	blocks = append(blocks, newContextTextBlock("slack-meta", meta))
 
 	displayCount := 0
 	truncated := false
@@ -385,10 +456,7 @@ func buildSlackResultBlocks(result *SlackConversationResult) []slack.Block {
 		stamp := slacksearch.FormatSlackTimestamp(msg.Timestamp)
 		user := slacksearch.FormatSlackUser(msg.User, msg.Username)
 		header := fmt.Sprintf("*#%s* • %s • %s", channel, stamp, user)
-		blocks = append(blocks, slack.NewContextBlock(
-			fmt.Sprintf("slack-msg-meta-%d", i),
-			slack.NewTextBlockObject(slack.MarkdownType, header, false, false),
-		))
+		blocks = append(blocks, newContextTextBlock(fmt.Sprintf("slack-msg-meta-%d", i), header))
 
 		body := slacksearch.EscapeSlackMentions(strings.TrimSpace(msg.Text))
 		if body == "" {
@@ -418,7 +486,7 @@ func buildSlackResultBlocks(result *SlackConversationResult) []slack.Block {
 
 		if len(msg.Thread) > 0 {
 			threadNote := fmt.Sprintf("スレッドの回答: %d （未展開）", len(msg.Thread))
-			blocks = append(blocks, slack.NewContextBlock(fmt.Sprintf("slack-thread-%d", i), slack.NewTextBlockObject(slack.MarkdownType, threadNote, false, false)))
+			blocks = append(blocks, newContextTextBlock(fmt.Sprintf("slack-thread-%d", i), threadNote))
 		}
 
 		displayCount++
@@ -428,7 +496,7 @@ func buildSlackResultBlocks(result *SlackConversationResult) []slack.Block {
 		remaining := totalMessages - displayCount
 		if remaining > 0 && len(blocks) < maxSlackBlocks {
 			notice := fmt.Sprintf("… Slackメッセージが多いため %d 件のみ表示しています (残り %d 件)", displayCount, remaining)
-			blocks = append(blocks, slack.NewContextBlock("slack-truncated", slack.NewTextBlockObject(slack.MarkdownType, notice, false, false)))
+			blocks = append(blocks, newContextTextBlock("slack-truncated", notice))
 		}
 	}
 
