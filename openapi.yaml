@@ -843,6 +843,11 @@ components:
           type: string
           format: uri
           description: メッセージへのパーマリンク
+        thread_replies:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlackThreadReplyItem'
+          description: スレッド返信一覧
 
     # =========================================================================
     # 認証スキーマ
