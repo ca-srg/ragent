@@ -98,10 +98,11 @@ type HybridSearchResponse struct {
 	SearchMethod        string                    `json:"search_method"`
 	URLDetected         bool                      `json:"url_detected,omitempty"`
 	FallbackReason      string                    `json:"fallback_reason,omitempty"`
+	Warnings            []string                  `json:"warnings,omitempty"`
+	ReferencedSlackURLs []HybridSearchSlackResult `json:"referenced_slack_urls,omitempty"`
 	Results             []HybridSearchResultItem  `json:"results"`
 	Metadata            *HybridSearchMetadata     `json:"metadata,omitempty"`
 	SlackResults        []HybridSearchSlackResult `json:"slack_results,omitempty"`
-	ReferencedSlackURLs []HybridSearchSlackResult `json:"referenced_slack_urls,omitempty"`
 	MCPResults          []mcpclient.ToolResult    `json:"mcp_results,omitempty"`
 	SearchSources       []string                  `json:"search_sources,omitempty"`
 }
@@ -133,11 +134,12 @@ type HybridSearchMetadata struct {
 
 // HybridSearchSlackResult represents a Slack conversation snippet in the response
 type HybridSearchSlackResult struct {
-	Message   string `json:"message"`
-	Timestamp string `json:"timestamp"`
-	User      string `json:"user"`
-	Channel   string `json:"channel"`
-	Permalink string `json:"permalink,omitempty"`
+	Message       string                 `json:"message"`
+	Timestamp     string                 `json:"timestamp"`
+	User          string                 `json:"user"`
+	Channel       string                 `json:"channel"`
+	Permalink     string                 `json:"permalink,omitempty"`
+	ThreadReplies []SlackThreadReplyItem `json:"thread_replies,omitempty"`
 }
 
 // InitializeRequest represents parameters for initialize tool

@@ -36,6 +36,7 @@ type FetchResponse struct {
 	EnrichedMessages []EnrichedMessage
 	FetchedCount     int
 	Errors           []string
+	Warnings         []string
 }
 
 // NewMessageFetcher creates a new MessageFetcher instance.
@@ -87,6 +88,7 @@ func (f *MessageFetcher) FetchByURLs(ctx context.Context, req *FetchRequest) (*F
 	response := &FetchResponse{
 		EnrichedMessages: make([]EnrichedMessage, 0, len(urls)),
 		Errors:           make([]string, 0),
+		Warnings:         make([]string, 0),
 	}
 
 	for _, urlInfo := range urls {
@@ -103,7 +105,14 @@ func (f *MessageFetcher) FetchByURLs(ctx context.Context, req *FetchRequest) (*F
 		if err != nil {
 			errMsg := fmt.Sprintf("failed to fetch %s: %v", urlInfo.OriginalURL, err)
 			f.logger.Printf("MessageFetcher: %s", errMsg)
-			response.Errors = append(response.Errors, errMsg)
+			if enriched != nil {
+				response.EnrichedMessages = append(response.EnrichedMessages, *enriched)
+				response.FetchedCount++
+				response.Warnings = append(response.Warnings,
+					fmt.Sprintf("thread replies could not be fetched for %s", urlInfo.OriginalURL))
+			} else {
+				response.Errors = append(response.Errors, errMsg)
+			}
 			span.AddEvent("fetch_error", trace.WithAttributes(
 				attribute.String("slack.url", urlInfo.OriginalURL),
 				attribute.String("error", err.Error()),
@@ -120,6 +129,7 @@ func (f *MessageFetcher) FetchByURLs(ctx context.Context, req *FetchRequest) (*F
 	span.SetAttributes(
 		attribute.Int("slack.fetched_count", response.FetchedCount),
 		attribute.Int("slack.error_count", len(response.Errors)),
+		attribute.Int("slack.warning_count", len(response.Warnings)),
 	)
 
 	f.logger.Printf("MessageFetcher: fetched %d/%d messages", response.FetchedCount, len(urls))
@@ -178,6 +188,7 @@ func (f *MessageFetcher) fetchSingleMessage(ctx context.Context, info *SlackURLI
 	}
 
 	// Fetch permalink
+	enriched.Permalink = info.OriginalURL
 	permalink, err := f.getPermalink(ctx, info.ChannelID, info.MessageTS)
 	if err != nil {
 		f.logger.Printf("MessageFetcher: failed to get permalink for %s: %v", info.MessageTS, err)
@@ -185,14 +196,20 @@ func (f *MessageFetcher) fetchSingleMessage(ctx context.Context, info *SlackURLI
 		enriched.Permalink = permalink
 	}
 
-	// Fetch thread replies if the message has a thread
-	if message.ThreadTimestamp != "" && message.ThreadTimestamp != message.Timestamp {
-		threadMessages, err := f.fetchThreadReplies(ctx, info.ChannelID, message.ThreadTimestamp, info.MessageTS)
+	threadTS := info.ThreadTS
+	if threadTS == "" {
+		threadTS = message.ThreadTimestamp
+	}
+	if threadTS == "" && message.ReplyCount > 0 {
+		threadTS = message.Timestamp
+	}
+	if threadTS != "" {
+		threadMessages, err := f.fetchThreadReplies(ctx, info.ChannelID, threadTS, info.MessageTS)
 		if err != nil {
 			f.logger.Printf("MessageFetcher: failed to fetch thread replies: %v", err)
-		} else {
-			enriched.ThreadMessages = threadMessages
+			return enriched, fmt.Errorf("failed to fetch thread replies: %w", err)
 		}
+		enriched.ThreadMessages = threadMessages
 	}
 
 	span.SetAttributes(

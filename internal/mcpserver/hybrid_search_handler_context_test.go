@@ -12,9 +12,10 @@ import (
 )
 
 type fakeSDKSearchClient struct {
-	mu          sync.Mutex
-	bm25Query   *opensearch.BM25Query
-	vectorQuery *opensearch.VectorQuery
+	mu             sync.Mutex
+	bm25Query      *opensearch.BM25Query
+	vectorQuery    *opensearch.VectorQuery
+	healthCheckErr error
 }
 
 func (c *fakeSDKSearchClient) SearchTermQuery(_ context.Context, _ string, _ *opensearch.TermQuery) (*opensearch.TermQueryResponse, error) {
@@ -55,7 +56,7 @@ func (c *fakeSDKSearchClient) GetMetrics() *opensearch.PerformanceMetrics {
 
 func (c *fakeSDKSearchClient) LogMetrics() {}
 
-func (c *fakeSDKSearchClient) HealthCheck(_ context.Context) error { return nil }
+func (c *fakeSDKSearchClient) HealthCheck(_ context.Context) error { return c.healthCheckErr }
 
 type fakeSDKEmbeddingClient struct{}
 
