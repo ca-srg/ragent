@@ -99,3 +99,28 @@ func TestBuildBM25QueryExtractsBoostPhraseFromLongQuery(t *testing.T) {
 		t.Fatalf("expected boost phrases [0円チャージ], got %v", bm25Query.BoostPhrases)
 	}
 }
+
+func TestExtractCriticalPhrasesIgnoresURLFragments(t *testing.T) {
+	query := "この URL の内容を教えて\nhttps://ca-winticket.slack.com/archives/C033LM8534M/p1783667252817109"
+	if phrases := extractCriticalPhrases(query); len(phrases) != 0 {
+		t.Fatalf("expected no URL-derived phrases, got %v", phrases)
+	}
+
+	query = "0円チャージ https://ca-winticket.slack.com/archives/C033LM8534M/p1783667252817109"
+	phrases := extractCriticalPhrases(query)
+	if len(phrases) != 1 || phrases[0] != "0円チャージ" {
+		t.Fatalf("expected non-URL phrase [0円チャージ], got %v", phrases)
+	}
+
+	query = "https://example.com/path、0円チャージ"
+	phrases = extractCriticalPhrases(query)
+	if len(phrases) != 1 || phrases[0] != "0円チャージ" {
+		t.Fatalf("expected phrase after URL punctuation [0円チャージ], got %v", phrases)
+	}
+
+	query = "https://example.com/path、https://ca-winticket.slack.com/archives/C033LM8534M/p1783667252817109、0円チャージ"
+	phrases = extractCriticalPhrases(query)
+	if len(phrases) != 1 || phrases[0] != "0円チャージ" {
+		t.Fatalf("expected phrase after consecutive URLs [0円チャージ], got %v", phrases)
+	}
+}

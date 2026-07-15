@@ -61,6 +61,11 @@ type MCPServerOptions struct {
 	DashboardBasePath string
 }
 
+const (
+	defaultSlackURLFetchTimeoutSeconds = 10
+	maxSlackURLFetchTimeoutSeconds     = 60
+)
+
 // RunMCPServer is the entry point for the mcp-server command.
 // cmd is passed so it can use cmd.Flags().Changed(...) to detect explicit flag overrides.
 func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) error {
@@ -340,16 +345,24 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		return err
 	}
 
+	// Slack URL references only need a bot token and work independently of full Slack search.
+	slackCfg, slackConfigErr := appcfg.LoadSlack()
+	slackClient, slackURLFetcher := newMCPServerSlackURLFetcher(slackCfg, cfg.SlackSearchTimeoutSeconds, logger)
+	if slackURLFetcher != nil {
+		logger.Printf("Slack URL reference support enabled for MCP server")
+	} else if slackConfigErr != nil && !cfg.SlackSearchEnabled && !opts.OnlySlack {
+		logger.Printf("Slack URL reference support disabled: %v", slackConfigErr)
+	}
+
 	// Initialize Slack search service (required in --only-slack mode, optional otherwise)
 	var slackService *slacksearch.SlackSearchService
 	if cfg.SlackSearchEnabled || opts.OnlySlack {
-		slackCfg, slackErr := appcfg.LoadSlack()
-		if slackErr != nil {
+		if slackConfigErr != nil {
 			if opts.OnlySlack {
-				return fmt.Errorf("slack configuration required in --only-slack mode: %w", slackErr)
+				return fmt.Errorf("slack configuration required in --only-slack mode: %w", slackConfigErr)
 			}
-			logger.Printf("Slack configuration not available: %v", slackErr)
-		} else if strings.TrimSpace(slackCfg.BotToken) == "" {
+			logger.Printf("Slack configuration not available: %v", slackConfigErr)
+		} else if slackCfg == nil || strings.TrimSpace(slackCfg.BotToken) == "" {
 			if opts.OnlySlack {
 				return fmt.Errorf("SLACK_BOT_TOKEN is required in --only-slack mode")
 			}
@@ -368,7 +381,6 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 			logger.Printf("Slack search disabled: SLACK_USER_TOKEN is not configured; " +
 				"the MCP server cannot supply an action_token for assistant.search.context")
 		} else {
-			slackClient := slack.New(slackCfg.BotToken)
 			service, serr := slacksearch.NewSlackSearchService(cfg, slackClient, slackBedrockClient, logger)
 			if serr != nil {
 				if opts.OnlySlack {
@@ -485,6 +497,9 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		hybridSearchHandler.GetAdapter().SetEvalWriter(evalWriter)
 		hybridSearchHandler.GetAdapter().SetMCPClient(mcpManager)
 		hybridSearchHandler.GetAdapter().SetMCPRetryPlanner(slackBedrockClient)
+		if slackURLFetcher != nil {
+			hybridSearchHandler.GetAdapter().setSlackURLFetcher(slackURLFetcher)
+		}
 
 		// Create function wrapper to match mcp.ToolHandler signature
 		toolHandlerFunc := hybridSearchHandler.HandleSDKToolCall
@@ -566,6 +581,35 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 
 	logger.Printf("MCP server (SDK-based) stopped successfully")
 	return nil
+}
+
+func newMCPServerSlackURLFetcher(
+	slackCfg *appcfg.SlackConfig,
+	timeoutSeconds int,
+	logger *log.Logger,
+) (*slack.Client, *slacksearch.MessageFetcher) {
+	if slackCfg == nil || strings.TrimSpace(slackCfg.BotToken) == "" {
+		return nil, nil
+	}
+	timeoutSeconds = normalizeSlackURLFetchTimeout(timeoutSeconds)
+
+	client := slack.New(slackCfg.BotToken)
+	limiter := slacksearch.NewRateLimiter(
+		slackCfg.RateUserPerMinute,
+		slackCfg.RateChannelPerMinute,
+		slackCfg.RateGlobalPerMinute,
+	)
+	fetcher := slacksearch.NewMessageFetcher(client, limiter, &slacksearch.SlackSearchConfig{
+		TimeoutSeconds: timeoutSeconds,
+	}, logger)
+	return client, fetcher
+}
+
+func normalizeSlackURLFetchTimeout(timeoutSeconds int) int {
+	if timeoutSeconds <= 0 || timeoutSeconds > maxSlackURLFetchTimeoutSeconds {
+		return defaultSlackURLFetchTimeoutSeconds
+	}
+	return timeoutSeconds
 }
 
 // BuildHybridSearchToolDefinition builds enriched tool definition for MCP clients.

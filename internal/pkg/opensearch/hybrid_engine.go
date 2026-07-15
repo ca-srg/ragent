@@ -34,7 +34,10 @@ type HybridSearchEngine struct {
 	urlDetector     URLDetector
 }
 
-var digitPhrasePattern = regexp.MustCompile(`[0-9０-９]+(?:円|％|%|[\p{Han}\p{Katakana}ーA-Za-z0-9０-９])+`)
+var (
+	digitPhrasePattern = regexp.MustCompile(`[0-9０-９]+(?:円|％|%|[\p{Han}\p{Katakana}ーA-Za-z0-9０-９])+`)
+	phraseURLPattern   = regexp.MustCompile(`(?i)https?://[^\s\p{Zs}、。！？「」『』（）｢｣]+`)
+)
 
 type HybridQuery struct {
 	Query                  string            `json:"query"`
@@ -474,6 +477,7 @@ func extractCriticalPhrases(original string) []string {
 	if stripped == "" {
 		return nil
 	}
+	stripped = phraseURLPattern.ReplaceAllString(stripped, " ")
 
 	// Normalize by removing spaces so patterns like "0 円" are captured
 	cleaned := strings.ReplaceAll(stripped, " ", "")

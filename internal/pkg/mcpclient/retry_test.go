@@ -48,27 +48,19 @@ func TestQueryWithRetryClearsRecoveredWarnings(t *testing.T) {
 	assert.Contains(t, logs, "MCP planned tool: %s/%s")
 }
 
-func TestQueryWithRetryFallsBackToErrorRetryWhenInitialPlanIsEmpty(t *testing.T) {
+func TestQueryWithRetryHonorsEmptyInitialPlan(t *testing.T) {
 	client := &fakeRetryClient{}
-	planner := &scriptedRetryPlanner{responses: []string{
-		`{"calls":[]}`,
-		`{"calls":[{"server":"linear","tool":"get_issue","arguments":{"id":"ASICS-1"}}]}`,
-	}}
-	var logs []string
+	planner := &scriptedRetryPlanner{responses: []string{`{"calls":[]}`}}
 
-	result, err := QueryWithRetry(context.Background(), client, planner, "ASICS-1", func(format string, args ...any) {
-		logs = append(logs, format)
-	})
+	result, err := QueryWithRetry(context.Background(), client, planner, "Slack URL の内容", nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Empty(t, result.Errors)
-	require.Len(t, result.Results, 1)
-	assert.Equal(t, "issue details", result.Results[0].Text)
-	require.Len(t, client.calls, 1)
-	assert.Equal(t, "get_issue", client.calls[0].Tool)
-	require.Len(t, planner.requests, 2)
-	assert.Contains(t, logs, "MCP retrying tool: %s/%s")
+	assert.Empty(t, result.Results)
+	assert.Empty(t, client.calls)
+	assert.Equal(t, 0, client.queryCalls)
+	require.Len(t, planner.requests, 1)
 }
 
 func TestQueryWithRetryRequiresPlannerWhenClientConfigured(t *testing.T) {
@@ -179,7 +171,7 @@ func TestQueryWithRetrySkipsInitialPlanningForEmptyQuery(t *testing.T) {
 	assert.Empty(t, planner.requests)
 }
 
-func TestQueryWithRetryFallsBackWhenInitialPlanningProducesNoResults(t *testing.T) {
+func TestQueryWithRetryDoesNotFallbackWhenInitialPlanningProducesNoResults(t *testing.T) {
 	client := &fakeNoResultInitialPlanClient{}
 	planner := &scriptedRetryPlanner{responses: []string{
 		`{"calls":[{"server":"linear","tool":"list_teams","arguments":{"query":"ML"}}]}`,
@@ -189,9 +181,8 @@ func TestQueryWithRetryFallsBackWhenInitialPlanningProducesNoResults(t *testing.
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Len(t, result.Results, 1)
-	assert.Equal(t, "fallback query context", result.Results[0].Text)
-	assert.Equal(t, 1, client.queryCalls)
+	assert.Empty(t, result.Results)
+	assert.Equal(t, 0, client.queryCalls)
 	require.Len(t, client.calls, 1)
 }
 
@@ -220,7 +211,7 @@ func TestQueryWithRetryCarriesInitialPlanningBudgetThroughFallbackRetry(t *testi
 	}
 	planner := &scriptedRetryPlanner{responses: []string{
 		`{"calls":[{"server":"linear","tool":"list_teams","arguments":{"query":"ML"}}]}`,
-		`{"calls":[]}`,
+		`not-json`,
 		`{"calls":[{"server":"linear","tool":"list_teams","arguments":{"query":"retry"}}]}`,
 	}}
 
@@ -246,10 +237,64 @@ func TestQueryWithRetryDoesNotExecuteNonReadOnlyPlannedTool(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Len(t, result.Results, 1)
-	assert.Equal(t, "fallback query context", result.Results[0].Text)
-	assert.Equal(t, 1, client.queryCalls)
+	assert.Empty(t, result.Results)
+	assert.Equal(t, 0, client.queryCalls)
 	assert.Empty(t, client.calls)
+	require.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0], "not a read-only tool")
+}
+
+func TestPlanInitialCallsAcceptsTrailingText(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+	}{
+		{
+			name:     "plain JSON followed by Japanese",
+			response: "{\"calls\":[{\"server\":\"linear\",\"tool\":\"get_issue\",\"arguments\":{\"id\":\"ASICS-1\"}}]}\nこの計画を実行します。",
+		},
+		{
+			name:     "fenced JSON followed by Japanese",
+			response: "```json\n{\"calls\":[{\"server\":\"linear\",\"tool\":\"get_issue\",\"arguments\":{\"id\":\"ASICS-1\"}}]}\n```\nこの計画を実行します。",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &fakeRetryClient{}
+			planner := &fakeRetryPlanner{response: tt.response}
+
+			plan, err := planInitialCalls(context.Background(), planner, "ASICS-1", &QueryResult{}, client.AvailableTools())
+
+			require.NoError(t, err)
+			require.Len(t, plan.Calls, 1)
+			assert.Equal(t, "get_issue", plan.Calls[0].Tool)
+			assert.Equal(t, "ASICS-1", plan.Calls[0].Arguments["id"])
+		})
+	}
+}
+
+func TestPlanInitialCallsRejectsMissingCallsArray(t *testing.T) {
+	responses := []string{
+		"null",
+		`{}`,
+		`{"calls":null}`,
+		`{"calls":{}}`,
+		`{"calls":[null]}`,
+		`{"calls":[{}]}`,
+		`{"calls":[{"server":"linear"}]}`,
+	}
+	for _, response := range responses {
+		t.Run(response, func(t *testing.T) {
+			client := &fakeRetryClient{}
+			planner := &fakeRetryPlanner{response: response}
+
+			plan, err := planInitialCalls(context.Background(), planner, "ASICS-1", &QueryResult{}, client.AvailableTools())
+
+			require.Error(t, err)
+			assert.Nil(t, plan)
+		})
+	}
 }
 
 func TestQueryWithRetryLimitsInitialPlanningCallsAcrossRounds(t *testing.T) {
@@ -293,10 +338,12 @@ func TestInitialPlanningCallLimitUsesManagerMaxTools(t *testing.T) {
 }
 
 type fakeRetryClient struct {
-	calls []ToolCall
+	queryCalls int
+	calls      []ToolCall
 }
 
 func (c *fakeRetryClient) Query(context.Context, string) (*QueryResult, error) {
+	c.queryCalls++
 	return &QueryResult{Errors: []string{"MCP linear/get_issue returned error: missing id"}}, nil
 }
 

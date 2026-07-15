@@ -52,7 +52,7 @@ type retryPlanningState struct {
 	Errors  []string     `json:"errors,omitempty"`
 }
 
-// QueryWithRetry plans safe MCP tool calls with the LLM, then falls back to the normal query pass and error retry.
+// QueryWithRetry plans safe MCP tool calls with the LLM, falling back to the normal query pass only if planning fails.
 func QueryWithRetry(ctx context.Context, client RetryClient, planner RetryChatClient, query string, logf func(string, ...any)) (*QueryResult, error) {
 	if client == nil {
 		return nil, nil
@@ -77,10 +77,11 @@ func QueryWithRetry(ctx context.Context, client RetryClient, planner RetryChatCl
 	}
 	planned, initialCalls, planningErr := queryWithInitialPlanning(ctx, client, planner, query, logf)
 	plannedCalls := initialCalls > 0
+	if planningErr == nil {
+		return planned, nil
+	}
 	if plannedCalls && planned != nil && len(planned.Results) > 0 {
-		if planningErr != nil {
-			planned.Errors = append(planned.Errors, fmt.Sprintf("MCP planning failed: %v", planningErr))
-		}
+		planned.Errors = append(planned.Errors, fmt.Sprintf("MCP planning failed: %v", planningErr))
 		return planned, nil
 	}
 	if plannedCalls && logf != nil {
@@ -365,9 +366,26 @@ func planCalls(ctx context.Context, planner RetryChatClient, systemPrompt, query
 		return nil, fmt.Errorf("failed to generate MCP tool plan: %w", err)
 	}
 
-	var plan retryPlan
-	if err := json.Unmarshal([]byte(cleanJSONResponse(text)), &plan); err != nil {
+	var rawPlan struct {
+		Calls json.RawMessage `json:"calls"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(cleanJSONResponse(text)))
+	if err := decoder.Decode(&rawPlan); err != nil {
 		return nil, fmt.Errorf("failed to parse MCP tool plan: %w", err)
+	}
+	rawCalls := strings.TrimSpace(string(rawPlan.Calls))
+	if rawCalls == "" || rawCalls == "null" {
+		return nil, fmt.Errorf("failed to parse MCP tool plan: calls must be an array")
+	}
+
+	var plan retryPlan
+	if err := json.Unmarshal(rawPlan.Calls, &plan.Calls); err != nil {
+		return nil, fmt.Errorf("failed to parse MCP tool calls: %w", err)
+	}
+	for i, call := range plan.Calls {
+		if strings.TrimSpace(call.Tool) == "" {
+			return nil, fmt.Errorf("failed to parse MCP tool calls: calls[%d].tool is required", i)
+		}
 	}
 	if len(plan.Calls) > maxRetryCalls {
 		plan.Calls = plan.Calls[:maxRetryCalls]
