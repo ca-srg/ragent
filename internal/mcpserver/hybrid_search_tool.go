@@ -757,6 +757,7 @@ func (hsta *HybridSearchToolAdapter) convertToMCPResponse(request *HybridSearchR
 		urlItems := convertEnrichedMessages(urlMessages)
 		if len(urlItems) > 0 {
 			response.ReferencedSlackURLs = urlItems
+			response.Total += len(urlItems)
 			// Add to sources if not already included
 			hasSlackURLSource := false
 			for _, s := range sources {

@@ -534,17 +534,21 @@ func stripPhraseURLs(input string) string {
 		if queryOrFragment := strings.IndexAny(match, "?#"); queryOrFragment >= 0 {
 			pathEnd = queryOrFragment
 		}
+		hasOpeningParenthesis := strings.Contains(match[:pathEnd], "(")
 		for offset := 0; offset < pathEnd; {
-			comma := strings.IndexByte(match[offset:pathEnd], ',')
-			if comma < 0 {
+			delimiter := strings.IndexAny(match[offset:pathEnd], ",.;!)")
+			if delimiter < 0 {
 				break
 			}
-			comma += offset
-			suffix := match[comma+1:]
-			if digitPhrasePrefixPattern.MatchString(suffix) {
+			delimiter += offset
+			suffix := match[delimiter+1:]
+			phrase := digitPhrasePrefixPattern.FindStringIndex(suffix)
+			isURLParenthesis := match[delimiter] == ')' && hasOpeningParenthesis
+			hasURLContinuation := len(phrase) == 2 && strings.ContainsAny(suffix[phrase[1]:], "/?:#@&=+,.;!()")
+			if len(phrase) == 2 && !isURLParenthesis && !hasURLContinuation {
 				return " " + suffix
 			}
-			offset = comma + 1
+			offset = delimiter + 1
 		}
 		return " "
 	})

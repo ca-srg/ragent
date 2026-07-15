@@ -385,17 +385,24 @@ func planCalls(ctx context.Context, planner RetryChatClient, systemPrompt, query
 	if err := decoder.Decode(&rawPlan); err != nil {
 		return nil, fmt.Errorf("failed to parse MCP tool plan: %w", err)
 	}
-	rawCalls := strings.TrimSpace(string(rawPlan.Calls))
-	if rawCalls == "" || rawCalls == "null" {
+	rawCallsJSON := strings.TrimSpace(string(rawPlan.Calls))
+	if rawCallsJSON == "" || rawCallsJSON == "null" {
 		return nil, fmt.Errorf("failed to parse MCP tool plan: calls must be an array")
 	}
 
-	var plan retryPlan
-	if err := json.Unmarshal(rawPlan.Calls, &plan.Calls); err != nil {
+	var rawCalls []json.RawMessage
+	if err := json.Unmarshal(rawPlan.Calls, &rawCalls); err != nil {
 		return nil, fmt.Errorf("failed to parse MCP tool calls: %w", err)
 	}
-	if len(plan.Calls) > maxRetryCalls {
-		plan.Calls = plan.Calls[:maxRetryCalls]
+	if len(rawCalls) > maxRetryCalls {
+		rawCalls = rawCalls[:maxRetryCalls]
+	}
+
+	plan := retryPlan{Calls: make([]retryCall, len(rawCalls))}
+	for i, rawCall := range rawCalls {
+		if err := json.Unmarshal(rawCall, &plan.Calls[i]); err != nil {
+			return nil, fmt.Errorf("failed to parse MCP tool calls: calls[%d]: %w", i, err)
+		}
 	}
 	for i, call := range plan.Calls {
 		if strings.TrimSpace(call.Tool) == "" {

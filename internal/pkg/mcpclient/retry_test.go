@@ -339,6 +339,8 @@ func TestPlanInitialCallsIgnoresInvalidCallsBeyondLimit(t *testing.T) {
 	responses := []string{
 		`{"calls":[{"tool":"first"},{"tool":"second"},{"tool":"third"},{}]}`,
 		`{"calls":[{"tool":"first"},{"tool":"second"},{"tool":"third"},null]}`,
+		`{"calls":[{"tool":"first"},{"tool":"second"},{"tool":"third"},"invalid"]}`,
+		`{"calls":[{"tool":"first"},{"tool":"second"},{"tool":"third"},{"tool":4}]}`,
 	}
 	for _, response := range responses {
 		t.Run(response, func(t *testing.T) {
@@ -356,6 +358,17 @@ func TestPlanInitialCallsIgnoresInvalidCallsBeyondLimit(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestPlanInitialCallsRejectsInvalidCallWithinLimit(t *testing.T) {
+	client := &fakeRetryClient{}
+	planner := &fakeRetryPlanner{response: `{"calls":[{"tool":"first"},{"tool":"second"},"invalid",{"tool":"fourth"}]}`}
+
+	plan, err := planInitialCalls(context.Background(), planner, "ASICS-1", &QueryResult{}, client.AvailableTools())
+
+	require.Error(t, err)
+	assert.Nil(t, plan)
+	assert.Contains(t, err.Error(), "calls[2]")
 }
 
 func TestQueryWithRetryLimitsInitialPlanningCallsAcrossRounds(t *testing.T) {

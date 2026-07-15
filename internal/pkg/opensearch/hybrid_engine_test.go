@@ -146,11 +146,28 @@ func TestExtractCriticalPhrasesIgnoresURLFragments(t *testing.T) {
 	}
 
 	for _, query = range []string{
+		"https://example.com/path.0円チャージ",
+		"https://example.com/path;0円チャージ",
+		"(https://example.com/path)0円チャージ",
+		"https://example.com/path!0円チャージ",
+	} {
+		phrases = extractCriticalPhrases(query)
+		if len(phrases) != 1 || phrases[0] != "0円チャージ" {
+			t.Fatalf("expected phrase after ASCII URL delimiter in %q, got %v", query, phrases)
+		}
+	}
+
+	for _, query = range []string{
 		"https://example.com/a,b/123円",
+		"https://example.com/report.2024年度版/section",
+		"https://example.com/items;0円プラン/details",
+		"https://example.com/a(b)2024年度版",
 		"https://example.com/path?price=0円チャージ",
 		"https://example.com/path#0円チャージ",
 		"https://example.com/path?tag=a,0円チャージ",
 		"https://example.com/path#section,0円チャージ",
+		"https://example.com/path?tag=a.0円チャージ",
+		"https://example.com/path#section;0円チャージ",
 	} {
 		if phrases = extractCriticalPhrases(query); len(phrases) != 0 {
 			t.Fatalf("expected no phrase from URL %q, got %v", query, phrases)

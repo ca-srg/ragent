@@ -59,6 +59,7 @@ func TestHybridSearchToolFetchesReferencedSlackURLWithoutSlackSearchService(t *t
 	require.Len(t, response.ReferencedSlackURLs, 1)
 	assert.Equal(t, "referenced message", response.ReferencedSlackURLs[0].Message)
 	assert.Equal(t, message.Permalink, response.ReferencedSlackURLs[0].Permalink)
+	assert.Equal(t, 1, response.Total)
 	assert.Equal(t, []string{"slack_urls"}, response.SearchSources)
 }
 
