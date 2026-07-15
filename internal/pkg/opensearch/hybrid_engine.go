@@ -35,8 +35,9 @@ type HybridSearchEngine struct {
 }
 
 var (
-	digitPhrasePattern = regexp.MustCompile(`[0-9０-９]+(?:円|％|%|[\p{Han}\p{Katakana}ーA-Za-z0-9０-９])+`)
-	phraseURLPattern   = regexp.MustCompile(`(?i)https?://[^\s\p{Zs}、。！？「」『』（）｢｣]+`)
+	digitPhrasePattern       = regexp.MustCompile(`[0-9０-９]+(?:円|％|%|[\p{Han}\p{Katakana}ーA-Za-z0-9０-９])+`)
+	digitPhrasePrefixPattern = regexp.MustCompile(`^` + digitPhrasePattern.String())
+	phraseURLPattern         = regexp.MustCompile(`(?i)https?://[^\s\p{Zs}、。！？「」『』（）｢｣]+`)
 )
 
 type HybridQuery struct {
@@ -477,7 +478,7 @@ func extractCriticalPhrases(original string) []string {
 	if stripped == "" {
 		return nil
 	}
-	stripped = phraseURLPattern.ReplaceAllString(stripped, " ")
+	stripped = stripPhraseURLs(stripped)
 
 	// Normalize by removing spaces so patterns like "0 円" are captured
 	cleaned := strings.ReplaceAll(stripped, " ", "")
@@ -525,6 +526,28 @@ func extractCriticalPhrases(original string) []string {
 	}
 
 	return phrases
+}
+
+func stripPhraseURLs(input string) string {
+	return phraseURLPattern.ReplaceAllStringFunc(input, func(match string) string {
+		pathEnd := len(match)
+		if queryOrFragment := strings.IndexAny(match, "?#"); queryOrFragment >= 0 {
+			pathEnd = queryOrFragment
+		}
+		for offset := 0; offset < pathEnd; {
+			comma := strings.IndexByte(match[offset:pathEnd], ',')
+			if comma < 0 {
+				break
+			}
+			comma += offset
+			suffix := match[comma+1:]
+			if digitPhrasePrefixPattern.MatchString(suffix) {
+				return " " + suffix
+			}
+			offset = comma + 1
+		}
+		return " "
+	})
 }
 
 func containsString(slice []string, target string) bool {

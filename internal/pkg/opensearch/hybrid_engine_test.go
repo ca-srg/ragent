@@ -100,6 +100,21 @@ func TestBuildBM25QueryExtractsBoostPhraseFromLongQuery(t *testing.T) {
 	}
 }
 
+func TestBuildBM25QueryPreservesPhraseAfterASCIIURLDelimiter(t *testing.T) {
+	hse := &HybridSearchEngine{textProcessor: NewJapaneseTextProcessor()}
+	hybridQuery := &HybridQuery{
+		Query:  "https://example.com/path,0円チャージ",
+		Fields: []string{"content", "title"},
+		K:      10,
+	}
+
+	bm25Query := hse.buildBM25Query(hybridQuery, nil)
+
+	if len(bm25Query.BoostPhrases) != 1 || bm25Query.BoostPhrases[0] != "0円チャージ" {
+		t.Fatalf("expected boost phrases [0円チャージ], got %v", bm25Query.BoostPhrases)
+	}
+}
+
 func TestExtractCriticalPhrasesIgnoresURLFragments(t *testing.T) {
 	query := "この URL の内容を教えて\nhttps://example-workspace.slack.com/archives/C01234567/p1234567890123456"
 	if phrases := extractCriticalPhrases(query); len(phrases) != 0 {
@@ -122,5 +137,23 @@ func TestExtractCriticalPhrasesIgnoresURLFragments(t *testing.T) {
 	phrases = extractCriticalPhrases(query)
 	if len(phrases) != 1 || phrases[0] != "0円チャージ" {
 		t.Fatalf("expected phrase after consecutive URLs [0円チャージ], got %v", phrases)
+	}
+
+	query = "https://example.com/path,0円チャージ"
+	phrases = extractCriticalPhrases(query)
+	if len(phrases) != 1 || phrases[0] != "0円チャージ" {
+		t.Fatalf("expected phrase after ASCII URL delimiter [0円チャージ], got %v", phrases)
+	}
+
+	for _, query = range []string{
+		"https://example.com/a,b/123円",
+		"https://example.com/path?price=0円チャージ",
+		"https://example.com/path#0円チャージ",
+		"https://example.com/path?tag=a,0円チャージ",
+		"https://example.com/path#section,0円チャージ",
+	} {
+		if phrases = extractCriticalPhrases(query); len(phrases) != 0 {
+			t.Fatalf("expected no phrase from URL %q, got %v", query, phrases)
+		}
 	}
 }

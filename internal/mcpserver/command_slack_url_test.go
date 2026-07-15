@@ -28,6 +28,26 @@ func TestNewMCPServerSlackURLFetcher(t *testing.T) {
 	require.NotNil(t, fetcher)
 }
 
+func TestSlackURLFetchTokenPrefersUserToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		userToken string
+		want      string
+	}{
+		{name: "user token", userToken: "xoxp-test", want: "xoxp-test"},
+		{name: "missing user token", want: "xoxb-test"},
+		{name: "blank user token", userToken: "  ", want: "xoxb-test"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &appcfg.SlackConfig{BotToken: "xoxb-test", UserToken: tt.userToken}
+
+			assert.Equal(t, tt.want, slackURLFetchToken(cfg))
+		})
+	}
+}
+
 func TestNormalizeSlackURLFetchTimeout(t *testing.T) {
 	tests := map[int]int{
 		-1: defaultSlackURLFetchTimeoutSeconds,

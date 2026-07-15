@@ -229,14 +229,16 @@ func (hsta *HybridSearchToolAdapter) HandleToolCallWithProgress(ctx context.Cont
 		searchRequest.EnableSlackSearch = true
 	}
 
-	if searchRequest.EnableSlackSearch && hsta.slackService == nil {
+	hasSlackURL := len(slacksearch.DetectSlackURLs(searchRequest.Query)) > 0
+	canFetchSlackURL := hasSlackURL && hsta.slackURLFetcher != nil
+	if searchRequest.EnableSlackSearch && hsta.slackService == nil && !canFetchSlackURL {
 		err := fmt.Errorf("slack search requested but not configured")
 		return CreateToolCallErrorResult(err.Error()), err
 	}
 
 	// Fetch messages from Slack URLs in the query (if any)
 	var slackURLMessages []slacksearch.EnrichedMessage
-	if slacksearch.HasSlackURL(searchRequest.Query) {
+	if hasSlackURL {
 		sendProgress(0.02, 1.0, "Fetching referenced Slack messages...")
 		slackURLMessages = hsta.fetchReferencedSlackMessages(ctx, searchRequest.Query)
 	}

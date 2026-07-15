@@ -345,7 +345,7 @@ func RunMCPServer(ctx context.Context, cmd FlagChecker, opts MCPServerOptions) e
 		return err
 	}
 
-	// Slack URL references only need a bot token and work independently of full Slack search.
+	// Slack URL references only need Slack credentials and work independently of full Slack search.
 	slackCfg, slackConfigErr := appcfg.LoadSlack()
 	slackClient, slackURLFetcher := newMCPServerSlackURLFetcher(slackCfg, cfg.SlackSearchTimeoutSeconds, logger)
 	if slackURLFetcher != nil {
@@ -594,15 +594,23 @@ func newMCPServerSlackURLFetcher(
 	timeoutSeconds = normalizeSlackURLFetchTimeout(timeoutSeconds)
 
 	client := slack.New(slackCfg.BotToken)
+	fetchClient := slack.New(slackURLFetchToken(slackCfg))
 	limiter := slacksearch.NewRateLimiter(
 		slackCfg.RateUserPerMinute,
 		slackCfg.RateChannelPerMinute,
 		slackCfg.RateGlobalPerMinute,
 	)
-	fetcher := slacksearch.NewMessageFetcher(client, limiter, &slacksearch.SlackSearchConfig{
+	fetcher := slacksearch.NewMessageFetcher(fetchClient, limiter, &slacksearch.SlackSearchConfig{
 		TimeoutSeconds: timeoutSeconds,
 	}, logger)
 	return client, fetcher
+}
+
+func slackURLFetchToken(slackCfg *appcfg.SlackConfig) string {
+	if userToken := strings.TrimSpace(slackCfg.UserToken); userToken != "" {
+		return userToken
+	}
+	return slackCfg.BotToken
 }
 
 func normalizeSlackURLFetchTimeout(timeoutSeconds int) int {
